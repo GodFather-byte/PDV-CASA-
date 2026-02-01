@@ -1,0 +1,21 @@
+# Ignorar arquivos temporários do Python (Lixo de memória)
+__pycache__/
+*.pyc
+
+# Ignorar o Banco de Dados Local (CRUCIAL!)
+# Não queremos subir as vendas da Boate A para o GitHub
+*.db
+*.sqlite3
+loja_offline.db
+
+# Ignorar configurações de ambiente (Senhas e Chaves de API)
+.env
+config.ini
+
+# Ignorar arquivos do sistema operacional (Lixo do Windows/Mac)
+.DS_Store
+Thumbs.db
+
+# Ignorar pastas de editores de código
+.vscode/
+.idea/
