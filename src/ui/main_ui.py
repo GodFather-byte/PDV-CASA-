@@ -1,120 +1,182 @@
 import flet as ft
+# Importa nossos controladores que já estão no Github
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.venda_controller import VendaController
 
 def main(page: ft.Page):
-    # 1. Configuração da Janela (Estilo Boate)
-    page.title = "PDV Boate - Sistema Offline"
-    page.theme_mode = ft.ThemeMode.DARK # Modo escuro obrigatório pra boate
-    page.padding = 20
-    page.window_width = 1000
+    # --- 1. CONFIGURAÇÃO DA JANELA ---
+    page.title = "PDV Boate - Offline System"
+    page.theme_mode = ft.ThemeMode.DARK
+    page.window_width = 1200
     page.window_height = 800
+    page.padding = 20
 
-    # Inicializa os controladores
+    # Inicializa a lógica
     produto_ctrl = ProdutoController()
     venda_ctrl = VendaController()
     
-    # Variável para controlar a venda atual
-    venda_atual_id = venda_ctrl.iniciar_venda()
-    carrinho_lista = []
+    # Estado da Aplicação (Variáveis que mudam)
+    estado = {
+        "venda_id": venda_ctrl.iniciar_venda(), # Cria a primeira venda no banco
+        "total": 0.0,
+        "itens": [] # Lista para mostrar na tela
+    }
 
-    # --- ELEMENTOS DA TELA ---
+    # --- 2. COMPONENTES VISUAIS (WIDGETS) ---
 
-    # Lista visual do carrinho (O cupom na tela)
-    lista_carrinho = ft.ListView(expand=True, spacing=10)
-    total_texto = ft.Text("Total: R$ 0.00", size=30, weight="bold", color="green")
+    # Lista de produtos no carrinho (lado direito)
+    lista_carrinho = ft.ListView(expand=True, spacing=5, auto_scroll=True)
+    texto_total = ft.Text("R$ 0.00", size=40, weight="bold", color="green")
 
-    def atualizar_carrinho():
+    # Dropdown para escolher pagamento
+    pagamento_dropdown = ft.Dropdown(
+        width=200,
+        options=[
+            ft.dropdown.Option("Dinheiro"),
+            ft.dropdown.Option("PIX"),
+            ft.dropdown.Option("Cartão Débito"),
+            ft.dropdown.Option("Cartão Crédito"),
+        ],
+        label="Forma de Pagamento"
+    )
+
+    # --- 3. FUNÇÕES DE AÇÃO (O QUE O SISTEMA FAZ) ---
+
+    def atualizar_tela():
+        """Redesenha a lista de compras e o total"""
         lista_carrinho.controls.clear()
-        total = 0
-        for item in carrinho_lista:
-            # item = (nome, preco)
+        for item in estado["itens"]:
+            # item = {"nome": "Cerveja", "preco": 10.0}
             lista_carrinho.controls.append(
-                ft.Text(f"{item[0]} - R$ {item[1]:.2f}", size=18)
+                ft.Container(
+                    content=ft.Row([
+                        ft.Text(item["nome"], size=16),
+                        ft.Text(f"R$ {item['preco']:.2f}", weight="bold")
+                    ], alignment="space_between"),
+                    padding=5,
+                    border=ft.border.only(bottom=ft.border.BorderSide(1, "white10"))
+                )
             )
-            total += item[1]
-        total_texto.value = f"Total: R$ {total:.2f}"
+        texto_total.value = f"R$ {estado['total']:.2f}"
         page.update()
 
     def adicionar_produto(e):
-        # O botão guarda o ID e Preço no 'data'
-        dados = e.control.data # Ex: {"id": 1, "nome": "Cerveja", "preco": 10.0}
+        """Chamado quando clica no botão da cerveja/drink"""
+        dados = e.control.data # Pega dados escondidos no botão
         
-        # Adiciona no Backend
-        venda_ctrl.adicionar_item(venda_atual_id, dados['id'], 1, dados['preco'])
+        # 1. Salva no Banco de Dados (Backend)
+        venda_ctrl.adicionar_item(estado["venda_id"], dados['id'], 1, dados['preco'])
         
-        # Adiciona na Tela
-        carrinho_lista.append((dados['nome'], dados['preco']))
-        atualizar_carrinho()
+        # 2. Atualiza a Memória Visual (Frontend)
+        estado["itens"].append({"nome": dados['nome'], "preco": dados['preco']})
+        estado["total"] += dados['preco']
+        
+        atualizar_tela()
 
-    # --- LAYOUT DOS PRODUTOS (Grade de Botões) ---
-    grid_produtos = ft.GridView(
-        expand=True,
-        max_extent=150, # Tamanho do botão
-        child_aspect_ratio=1.0, # Quadrado
-        spacing=10,
-        run_spacing=10,
+    def confirmar_pagamento(e):
+        """Fecha a conta e prepara pro próximo cliente"""
+        forma = pagamento_dropdown.value
+        if not forma:
+            # Se não escolheu pagamento, mostra erro
+            page.snack_bar = ft.SnackBar(ft.Text("Selecione a forma de pagamento!"), bgcolor="red")
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        # 1. Finaliza no Banco
+        venda_ctrl.finalizar_venda(estado["venda_id"], estado["total"], forma)
+        
+        # 2. Fecha o Modal (Janela)
+        modal_pagamento.open = False
+        
+        # 3. Reseta tudo para o próximo cliente
+        estado["venda_id"] = venda_ctrl.iniciar_venda()
+        estado["total"] = 0.0
+        estado["itens"] = []
+        pagamento_dropdown.value = None
+        
+        atualizar_tela()
+        
+        # 4. Feedback de Sucesso
+        page.snack_bar = ft.SnackBar(ft.Text("Venda Finalizada com Sucesso! ✅"), bgcolor="green")
+        page.snack_bar.open = True
+        page.update()
+
+    # --- 4. O MODAL (JANELA DE PAGAMENTO) ---
+    modal_pagamento = ft.AlertDialog(
+        title=ft.Text("Finalizar Venda"),
+        content=ft.Column([
+            ft.Text("Confirme o valor total:", size=16),
+            texto_total, # Mostra o valor grandão
+            pagamento_dropdown
+        ], height=150),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.close_dialog()),
+            ft.ElevatedButton("Confirmar Recebimento", on_click=confirmar_pagamento, bgcolor="green", color="white")
+        ],
     )
 
-    # Carrega produtos do banco e cria botões
-    produtos = produto_ctrl.listar_todos() 
-    # Se não tiver produtos, cria uns falsos pra você ver o layout
-    if not produtos:
-        produtos = [
-            (1, "789", "Heineken", 15.00, 100),
-            (2, "790", "Água", 5.00, 100),
-            (3, "791", "Combo Vodka", 150.00, 50),
-            (4, "792", "Red Bull", 20.00, 80),
+    def abrir_pagamento(e):
+        if estado["total"] == 0:
+            return # Não abre se a conta for zero
+        page.dialog = modal_pagamento
+        modal_pagamento.open = True
+        page.update()
+
+    # --- 5. MONTAGEM DO GRID DE PRODUTOS ---
+    grid_produtos = ft.GridView(
+        expand=True, runs_count=3, max_extent=150, spacing=10, run_spacing=10
+    )
+
+    # Busca produtos reais do banco
+    lista_db = produto_ctrl.listar_todos()
+    
+    # Se o banco estiver vazio (primeira vez), cria botões de teste
+    if not lista_db:
+        lista_db = [
+            (1, "001", "Heineken", 15.0, 100),
+            (2, "002", "Vodka Dose", 25.0, 100),
+            (3, "003", "Água", 5.0, 100),
+            (4, "004", "Red Bull", 20.0, 100),
+            (5, "005", "Gin Tônica", 35.0, 100),
         ]
 
-    for p in produtos:
-        # p = (id, codigo, nome, preco, estoque) - Ajuste conforme seu banco
-        botao = ft.Container(
+    for p in lista_db:
+        # Cria um botão para cada produto
+        btn = ft.Container(
             content=ft.Column([
-                ft.Icon(ft.icons.LIQUOR, size=40, color="white"),
-                ft.Text(p[2], size=16, weight="bold"),
-                ft.Text(f"R$ {p[3]:.2f}", color="yellow"),
+                ft.Icon(ft.icons.LOCAL_BAR, size=30, color="white54"),
+                ft.Text(p[2], size=16, weight="bold", text_align="center"),
+                ft.Text(f"R$ {p[3]:.2f}", color="cyan"),
             ], alignment="center", horizontal_alignment="center"),
-            bgcolor=ft.colors.BLUE_GREY_800,
-            border_radius=10,
+            bgcolor=ft.colors.SURFACE_VARIANT,
+            border_radius=8,
             padding=10,
             on_click=adicionar_produto,
-            data={"id": p[0], "nome": p[2], "preco": p[3]}, # Guarda os dados no botão
-            ink=True, # Efeito de clique visual
+            data={"id": p[0], "nome": p[2], "preco": p[3]}, # Guarda dados no botão
+            ink=True
         )
-        grid_produtos.controls.append(botao)
+        grid_produtos.controls.append(btn)
 
-    # --- MONTAGEM FINAL DA TELA ---
-    
-    # Coluna da Esquerda (Produtos)
-    coluna_produtos = ft.Container(
-        content=grid_produtos,
-        expand=2, # Ocupa 2/3 da tela
-        padding=10,
-        border=ft.border.all(1, ft.colors.WHITE24),
-        border_radius=10
-    )
-
-    # Coluna da Direita (Caixa/Pagamento)
-    coluna_caixa = ft.Container(
-        content=ft.Column([
-            ft.Text("Cupom Fiscal", size=20, weight="bold"),
-            ft.Divider(),
-            lista_carrinho,
-            ft.Divider(),
-            total_texto,
-            ft.ElevatedButton("Finalizar Venda (F5)", bgcolor="green", color="white", height=50, width=200)
-        ]),
-        expand=1, # Ocupa 1/3 da tela
-        padding=10,
-        bgcolor=ft.colors.BLACK54,
-        border_radius=10
-    )
-
-    # Adiciona tudo na página (Linha dividindo as duas colunas)
+    # --- 6. LAYOUT FINAL ---
     page.add(
-        ft.Row([coluna_produtos, coluna_caixa], expand=True)
+        ft.Row([
+            # Coluna Esquerda: Produtos
+            ft.Container(grid_produtos, expand=2, padding=10),
+            
+            # Coluna Direita: Caixa
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("Cupom Atual", size=20, weight="bold"),
+                    ft.Divider(),
+                    lista_carrinho, # Lista de itens
+                    ft.Divider(),
+                    ft.Row([ft.Text("Total:", size=20), texto_total], alignment="spaceBetween"),
+                    ft.ElevatedButton("RECEBER (F5)", height=60, width=300, bgcolor="blue", color="white", on_click=abrir_pagamento)
+                ]),
+                expand=1, bgcolor=ft.colors.BLACK26, padding=20, border_radius=10
+            )
+        ], expand=True)
     )
 
-# Roda o app como Desktop
 ft.app(target=main)
