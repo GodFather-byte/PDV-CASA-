@@ -3,213 +3,230 @@ from src.controllers.produto_controller import ProdutoController
 from src.controllers.venda_controller import VendaController
 
 def main(page: ft.Page):
-    # --- CONFIGURAÇÃO GERAL ---
-    page.title = "PDV Boate - Sistema Completo"
+    page.title = "PDV Profissional - Boate"
     page.theme_mode = ft.ThemeMode.DARK
     page.window_width = 1200
     page.window_height = 800
-    page.padding = 10
+    page.padding = 15
 
     # Controladores
     produto_ctrl = ProdutoController()
     venda_ctrl = VendaController()
 
-    # --- ESTADO (Memória da Tela) ---
+    # Estado
     estado = {
         "venda_id": venda_ctrl.iniciar_venda(),
+        "total_venda": 0.0,
         "carrinho": [],
-        "total_venda": 0.0
+        "produto_atual": None # Guarda o produto que está na "pré-visualização"
     }
 
     # =================================================================
-    # ABA 1: FRENTE DE CAIXA (O código que já criamos, adaptado)
+    # ELEMENTOS VISUAIS (WIDGETS)
     # =================================================================
-    
-    # Componentes do Caixa
-    lista_carrinho = ft.ListView(expand=True, spacing=5, auto_scroll=True)
-    texto_total = ft.Text("R$ 0.00", size=40, weight="bold", color="green")
-    grid_produtos = ft.GridView(expand=True, runs_count=3, max_extent=150, spacing=10, run_spacing=10)
 
-    def atualizar_carrinho_visual():
+    # 1. ÁREA DE BUSCA (TOPO)
+    txt_codigo = ft.TextField(
+        label="Código do Produto (F1)", 
+        text_size=20, 
+        width=200, 
+        autofocus=True,
+        border_color="blue"
+    )
+    
+    txt_quantidade = ft.TextField(
+        label="Qtd", 
+        value="1", 
+        text_size=20, 
+        width=100,
+        text_align="center",
+        disabled=True # Começa travado até achar um produto
+    )
+
+    # 2. ÁREA DE PRÉ-VISUALIZAÇÃO (Onde aparece "SKOL" grande antes de vender)
+    lbl_nome_produto = ft.Text("Aguardando código...", size=30, weight="bold", color="white24")
+    lbl_preco_unitario = ft.Text("R$ 0,00", size=20, color="white24")
+    
+    # Cartão que destaca o produto encontrado
+    card_preview = ft.Container(
+        content=ft.Column([
+            ft.Text("PRÉ-VISUALIZAÇÃO", size=12, color="grey"),
+            lbl_nome_produto,
+            lbl_preco_unitario
+        ], alignment="center", horizontal_alignment="center"),
+        padding=20,
+        bgcolor=ft.colors.BLACK45,
+        border=ft.border.all(1, "white10"),
+        border_radius=10,
+        width=400
+    )
+
+    # 3. LISTA DE COMPRAS (O Cupom)
+    lista_carrinho = ft.ListView(expand=True, spacing=5, auto_scroll=True)
+    lbl_total_final = ft.Text("R$ 0.00", size=45, weight="bold", color="green")
+
+    # =================================================================
+    # LÓGICA DO SISTEMA
+    # =================================================================
+
+    def atualizar_lista_visual():
         lista_carrinho.controls.clear()
         for item in estado["carrinho"]:
             lista_carrinho.controls.append(
                 ft.Container(
                     content=ft.Row([
-                        ft.Text(f"{item['nome']}", size=14),
-                        ft.Text(f"R$ {item['preco']:.2f}", weight="bold")
+                        ft.Text(f"{item['qtd']}x {item['nome']}", size=16),
+                        ft.Text(f"R$ {item['total']:.2f}", weight="bold")
                     ], alignment="space_between"),
-                    padding=5, border=ft.border.only(bottom=ft.border.BorderSide(1, "white10"))
+                    padding=5,
+                    border=ft.border.only(bottom=ft.border.BorderSide(1, "white10"))
                 )
             )
-        texto_total.value = f"Total: R$ {estado['total_venda']:.2f}"
+        lbl_total_final.value = f"Total: R$ {estado['total_venda']:.2f}"
         page.update()
 
-    def adicionar_item_venda(e):
-        dados = e.control.data
-        venda_ctrl.adicionar_item(estado["venda_id"], dados['id'], 1, dados['preco'])
-        estado["carrinho"].append({"nome": dados['nome'], "preco": dados['preco']})
-        estado["total_venda"] += dados['preco']
-        atualizar_carrinho_visual()
-        # Feedback visual rápido
-        page.snack_bar = ft.SnackBar(ft.Text(f"+ {dados['nome']} adicionado!"), duration=500)
-        page.snack_bar.open = True
-        page.update()
-
-    def carregar_grid_produtos():
-        """Lê do banco e desenha os botões na tela de vendas"""
-        grid_produtos.controls.clear()
-        produtos = produto_ctrl.listar_todos()
-        for p in produtos:
-            btn = ft.Container(
-                content=ft.Column([
-                    ft.Icon(ft.icons.LIQUOR, size=30, color="white54"),
-                    ft.Text(p[2], size=14, weight="bold", text_align="center", no_wrap=True), # Nome
-                    ft.Text(f"R$ {p[3]:.2f}", color="cyan"), # Preço
-                ], alignment="center", horizontal_alignment="center"),
-                bgcolor=ft.colors.SURFACE_VARIANT, border_radius=8, padding=10,
-                on_click=adicionar_item_venda,
-                data={"id": p[0], "nome": p[2], "preco": p[3]},
-                ink=True
-            )
-            grid_produtos.controls.append(btn)
-        page.update()
-
-    def finalizar_venda(e):
-        # Lógica simplificada para focar na estrutura
-        if estado["total_venda"] == 0: return
-        venda_ctrl.finalizar_venda(estado["venda_id"], estado["total_venda"], "Dinheiro")
+    def resetar_busca():
+        """Limpa os campos para o próximo item"""
+        estado["produto_atual"] = None
+        txt_codigo.value = ""
+        txt_quantidade.value = "1"
+        txt_quantidade.disabled = True
         
-        # Reset
-        estado["venda_id"] = venda_ctrl.iniciar_venda()
-        estado["carrinho"] = []
-        estado["total_venda"] = 0.0
-        atualizar_carrinho_visual()
-        page.snack_bar = ft.SnackBar(ft.Text("Venda Finalizada! 💰"), bgcolor="green")
+        lbl_nome_produto.value = "Aguardando código..."
+        lbl_nome_produto.color = "white24"
+        lbl_preco_unitario.value = "R$ 0,00"
+        
+        txt_codigo.focus() # Volta o foco para o código
+        page.update()
+
+    def confirmar_venda_item(e):
+        """Passo 2: Adiciona ao carrinho quando aperta ENTER na Quantidade"""
+        p = estado["produto_atual"]
+        if not p:
+            return
+
+        try:
+            qtd = int(txt_quantidade.value)
+            if qtd < 1: qtd = 1
+        except:
+            qtd = 1
+
+        valor_total_item = p[3] * qtd # Preço * Qtd
+
+        # Backend (Salva no Banco)
+        venda_ctrl.adicionar_item(estado["venda_id"], p[0], qtd, p[3])
+
+        # Frontend (Atualiza Tela)
+        estado["carrinho"].append({
+            "nome": p[2], 
+            "qtd": qtd, 
+            "total": valor_total_item
+        })
+        estado["total_venda"] += valor_total_item
+        
+        atualizar_lista_visual()
+        
+        # Feedback sonoro/visual
+        page.snack_bar = ft.SnackBar(ft.Text(f"✅ {qtd}x {p[2]} Lançado!"), bgcolor="green", duration=500)
         page.snack_bar.open = True
-        page.update()
+        
+        resetar_busca()
 
-    # Layout da Aba Vendas
-    layout_vendas = ft.Row([
-        ft.Container(grid_produtos, expand=2, padding=10), # Esquerda
-        ft.Container( # Direita
-            content=ft.Column([
-                ft.Text("Caixa Aberto", size=20, weight="bold"),
-                ft.Divider(),
-                lista_carrinho,
-                ft.Divider(),
-                texto_total,
-                ft.ElevatedButton("RECEBER (F5)", height=60, width=300, bgcolor="blue", color="white", on_click=finalizar_venda)
-            ]),
-            expand=1, bgcolor=ft.colors.BLACK26, padding=10, border_radius=10
-        )
-    ], expand=True)
+    def buscar_produto(e):
+        """Passo 1: Busca o produto quando aperta ENTER no Código"""
+        cod = txt_codigo.value.strip()
+        if not cod: return
+
+        produto = produto_ctrl.buscar_por_codigo(cod)
+        # produto = (id, codigo, nome, preco, estoque)
+
+        if produto:
+            # Achou! Mostra na tela
+            estado["produto_atual"] = produto
+            
+            lbl_nome_produto.value = produto[2] # Nome
+            lbl_nome_produto.color = "white"
+            lbl_preco_unitario.value = f"Unitário: R$ {produto[3]:.2f}"
+            
+            # Destrava quantidade e joga o foco lá
+            txt_quantidade.disabled = False
+            txt_quantidade.focus()
+            page.update()
+        else:
+            # Não achou
+            page.snack_bar = ft.SnackBar(ft.Text("❌ Produto não encontrado!"), bgcolor="red")
+            page.snack_bar.open = True
+            txt_codigo.value = ""
+            txt_codigo.focus()
+            page.update()
+
+    # Linka os ENTERs
+    txt_codigo.on_submit = buscar_produto
+    txt_quantidade.on_submit = confirmar_venda_item
 
     # =================================================================
-    # ABA 2: GESTÃO DE ESTOQUE (ADMINISTRAÇÃO)
+    # ABA ADMIN (Para cadastrar produtos de teste)
     # =================================================================
-
-    # Campos do Formulário
-    txt_nome = ft.TextField(label="Nome do Produto", width=300)
-    txt_preco = ft.TextField(label="Preço (0.00)", width=150, keyboard_type=ft.KeyboardType.NUMBER)
-    txt_cod = ft.TextField(label="Cód. Barras", width=150)
-    txt_estoque = ft.TextField(label="Qtd Inicial", width=100, value="0")
-
-    tabela_produtos = ft.DataTable(
-        columns=[
-            ft.DataColumn(ft.Text("ID")),
-            ft.DataColumn(ft.Text("Produto")),
-            ft.DataColumn(ft.Text("Preço")),
-            ft.DataColumn(ft.Text("Estoque")),
-            ft.DataColumn(ft.Text("Ações")),
-        ],
-        rows=[]
-    )
-
-    def carregar_tabela_admin():
-        tabela_produtos.rows.clear()
-        produtos = produto_ctrl.listar_todos()
-        for p in produtos:
-            tabela_produtos.rows.append(
-                ft.DataRow(cells=[
-                    ft.DataCell(ft.Text(str(p[0]))),
-                    ft.DataCell(ft.Text(p[2])),
-                    ft.DataCell(ft.Text(f"R$ {p[3]:.2f}")),
-                    ft.DataCell(ft.Text(str(p[4]))),
-                    ft.DataCell(ft.IconButton(
-                        icon=ft.icons.DELETE, 
-                        icon_color="red",
-                        tooltip="Excluir (Simulação)",
-                        on_click=lambda e: print(f"Deletar {p[0]}") # Futuro: Implementar delete real
-                    )),
-                ])
-            )
-        page.update()
+    txt_adm_nome = ft.TextField(label="Nome (Ex: Skol)")
+    txt_adm_cod = ft.TextField(label="Código (Ex: 2)", width=100)
+    txt_adm_preco = ft.TextField(label="Preço (Ex: 8.00)", width=100)
 
     def salvar_produto(e):
         try:
-            nome = txt_nome.value
-            preco = float(txt_preco.value.replace(",", "."))
-            cod = txt_cod.value
-            qtd = int(txt_estoque.value)
-            
-            sucesso, msg = produto_ctrl.cadastrar_produto(nome, preco, cod, qtd)
-            
-            if sucesso:
-                # Limpa campos e atualiza telas
-                txt_nome.value = ""
-                txt_preco.value = ""
-                txt_cod.value = ""
-                carregar_tabela_admin() # Atualiza lista da admin
-                carregar_grid_produtos() # Atualiza botões do caixa
-                page.snack_bar = ft.SnackBar(ft.Text("Produto Salvo!"), bgcolor="green")
-            else:
-                page.snack_bar = ft.SnackBar(ft.Text(f"Erro: {msg}"), bgcolor="red")
-            
+            produto_ctrl.cadastrar_produto(
+                txt_adm_nome.value, 
+                float(txt_adm_preco.value.replace(",", ".")), 
+                txt_adm_cod.value, 
+                100
+            )
+            page.snack_bar = ft.SnackBar(ft.Text("Salvo!"), bgcolor="green")
             page.snack_bar.open = True
             page.update()
+        except: pass
 
-        except ValueError:
-            page.snack_bar = ft.SnackBar(ft.Text("Preço ou Estoque inválidos!"), bgcolor="red")
-            page.snack_bar.open = True
-            page.update()
-
-    # Layout da Aba Estoque
-    layout_admin = ft.Column([
-        ft.Text("Cadastro de Produtos", size=25, weight="bold"),
-        ft.Row([txt_cod, txt_nome, txt_preco, txt_estoque]),
-        ft.ElevatedButton("Salvar Produto", icon=ft.icons.SAVE, on_click=salvar_produto, bgcolor="green", color="white"),
-        ft.Divider(),
-        ft.Text("Produtos Cadastrados", size=20),
-        ft.Container(content=tabela_produtos, height=400, border=ft.border.all(1, "white10"), border_radius=10, padding=10)
-    ], scroll=ft.ScrollMode.AUTO, expand=True)
+    layout_admin = ft.Row([
+        txt_adm_cod, txt_adm_nome, txt_adm_preco,
+        ft.ElevatedButton("Cadastrar", on_click=salvar_produto)
+    ])
 
     # =================================================================
-    # SISTEMA DE ABAS (Juntando tudo)
+    # LAYOUT FINAL
     # =================================================================
     
-    tabs = ft.Tabs(
-        selected_index=0,
-        animation_duration=300,
-        tabs=[
-            ft.Tab(
-                text="Frente de Caixa",
-                icon=ft.icons.POINT_OF_SALE,
-                content=ft.Container(layout_vendas, padding=10)
-            ),
-            ft.Tab(
-                text="Gerenciar Estoque",
-                icon=ft.icons.INVENTORY,
-                content=ft.Container(layout_admin, padding=20)
-            ),
-        ],
-        expand=True,
+    coluna_esquerda = ft.Container(
+        content=ft.Column([
+            ft.Text("CAIXA OPERACIONAL", size=20, weight="bold", color="cyan"),
+            ft.Divider(),
+            ft.Row([txt_codigo, txt_quantidade], alignment="center"),
+            ft.Container(height=20), # Espaço
+            card_preview, # AQUI APARECE A SKOL
+            ft.Container(height=20),
+            ft.ElevatedButton("CONFIRMAR ITEM (Enter)", width=400, height=50, bgcolor="blue", color="white", on_click=confirmar_venda_item)
+        ], horizontal_alignment="center"),
+        expand=1, padding=20, bgcolor=ft.colors.BLACK26
     )
 
-    # Inicialização
+    coluna_direita = ft.Container(
+        content=ft.Column([
+            ft.Text("CUPOM ATUAL", weight="bold"),
+            ft.Divider(),
+            lista_carrinho,
+            ft.Divider(),
+            lbl_total_final,
+            ft.ElevatedButton("FECHAR CONTA (F5)", bgcolor="red", color="white", height=60, width=300)
+        ]),
+        expand=1, padding=20, bgcolor=ft.colors.BLACK38, border_radius=10
+    )
+
+    tabs = ft.Tabs(
+        selected_index=0,
+        tabs=[
+            ft.Tab(text="Caixa", content=ft.Row([coluna_esquerda, coluna_direita], expand=True)),
+            ft.Tab(text="Admin (Cadastros)", content=ft.Container(layout_admin, padding=20))
+        ]
+    )
+
     page.add(tabs)
-    carregar_grid_produtos()
-    carregar_tabela_admin()
 
 if __name__ == "__main__":
     ft.app(target=main)
