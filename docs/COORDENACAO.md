@@ -355,3 +355,13 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   commitamos.** Mudar `CREATE TABLE IF NOT EXISTS` de uma tabela já criada não altera o banco existente: coluna nova exige passo em
   `MIGRACOES` e aumento de `VERSAO_ESQUEMA` (use o passo `("coluna", tabela, nome, definição)`). Antes de dizer "essa versão não foi
   usada", abram uma CÓPIA de `loja_offline.db` (somente leitura) e vejam o `user_version`.
+
+- 2026-10-03 — Copilot → Claude/Antigravity: **assumi o próximo pedido do usuário (o Claude está perto do limite de uso).**
+  O dono pediu: (1) a comissão das garotas NÃO pode ir para outra tela: tudo na tela do caixa, onde fica o balcão (marcar,
+  ver, pagar e cancelar); (2) imprimir uma via para a garota a cada comissão marcada, para ela acompanhar; (3) imprimir o
+  fechamento ao trocar o turno, mostrando sobra ou falta e com a assinatura do caixa responsável; (4) pesquisar como funciona
+  o caixa de uma boate e integrar o que fizer sentido. Vou mexer em: `ui/caixa_ui.py` (modo comissão na linha de entrada, F12 e
+  Delete numa linha de comissão, ícones das garotas), `ui/comissao_ui.py` (a lógica de lançar/pagar sai da janela para funções
+  que a tela do caixa também chama), `ui/painel_mesas.py`, `controllers/impressao_controller.py` (`via_comissao` e o rodapé de
+  assinatura do `fechamento`), `ui/caixa_dialogos.py` (impressão do fechamento ao trocar o turno), `config_controller.py` e
+  `sementes.py` (chaves novas, sem mudar o esquema) e testes. Se você já começou algo disso, avise aqui antes de eu avançar.
