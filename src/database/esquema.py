@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 7
+VERSAO_ESQUEMA = 8
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -506,4 +506,11 @@ MIGRACOES = {
     # v7: as tabelas garotas e comissoes_garotas nascem em TABELAS (IF NOT EXISTS); as chaves novas de configuração
     # (codigo_comissao, exigir_senha_comissao) nascem em CONFIG_PADRAO. Nada a migrar.
     7: [],
+    # v8: a comissão paga guarda o turno em que foi paga (pago_turno_id). Os bancos que já estavam na v7 criaram a tabela sem essa
+    # coluna, então ela é acrescentada; as pagas antigas recebem o turno da sangria do pagamento, quando houve.
+    8: [
+        ("coluna", "comissoes_garotas", "pago_turno_id", "INTEGER REFERENCES turnos(id)"),
+        "UPDATE comissoes_garotas SET pago_turno_id = (SELECT m.turno_id FROM movimentos_caixa m "
+        "WHERE m.id = comissoes_garotas.movimento_id) WHERE status = 'paga' AND pago_turno_id IS NULL AND movimento_id IS NOT NULL",
+    ],
 }

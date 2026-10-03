@@ -511,5 +511,73 @@ class TesteLimpezaDeComissaoPagaEmOutroTurno(BaseComissao):
         self.assertEqual((c["turno_id"], c["status"], c["pago_turno_id"], c["movimento_id"]), (a, "paga", None, None))
 
 
+class TesteMigracaoV8(unittest.TestCase):
+    """Bancos que já estavam na v7 criaram a tabela de comissões sem pago_turno_id: a v8 acrescenta a coluna."""
+
+    TABELA_DA_V7 = """CREATE TABLE comissoes_garotas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        garota INTEGER NOT NULL CHECK (garota BETWEEN 1 AND 99999),
+        valor_cent INTEGER NOT NULL CHECK (valor_cent > 0),
+        turno_id INTEGER REFERENCES turnos(id),
+        operador_id INTEGER REFERENCES operadores(id),
+        observacao TEXT,
+        criado_em TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','paga','cancelada')),
+        paga_em TEXT,
+        pago_por INTEGER REFERENCES operadores(id),
+        movimento_id INTEGER REFERENCES movimentos_caixa(id),
+        cancelada_em TEXT,
+        cancelada_por INTEGER REFERENCES operadores(id),
+        motivo_cancelamento TEXT
+    )"""
+
+    def test_banco_da_v7_ganha_a_coluna_e_as_pagas_antigas_recebem_o_turno(self):
+        from src.controllers.turno_controller import TurnoController
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = os.path.join(pasta, "v7.db")
+            b = BancoDados(caminho)
+            adm = b.valor("SELECT id FROM operadores WHERE nome = 'ADM'")
+            turno = TurnoController(b).abrir(adm, 1, 10000)
+            mov = TurnoController(b).movimentar(turno, adm, "saida", 2500, "Comissão garota 180")
+            b.executar("DROP TABLE comissoes_garotas")            # volta ao desenho da v7: sem pago_turno_id
+            b.executar(self.TABELA_DA_V7)
+            b.executar("INSERT INTO comissoes_garotas (garota, valor_cent, turno_id, operador_id, criado_em, status, paga_em, "
+                       "pago_por, movimento_id) VALUES (180, 2500, ?, ?, '2026-10-03 21:00:00', 'paga', '2026-10-03 22:00:00', ?, ?)",
+                       (turno, adm, adm, mov))
+            b.executar("INSERT INTO comissoes_garotas (garota, valor_cent, turno_id, operador_id, criado_em) "
+                       "VALUES (156, 4000, ?, ?, '2026-10-03 21:05:00')", (turno, adm))
+            b.executar("PRAGMA user_version = 7")
+            b.fechar()
+            b = BancoDados(caminho)
+            try:
+                self.assertEqual(b.valor("PRAGMA user_version"), VERSAO_ESQUEMA)
+                self.assertIn("pago_turno_id", [r[1] for r in b.todos("PRAGMA table_info(comissoes_garotas)")])
+                self.assertEqual(b.valor("SELECT pago_turno_id FROM comissoes_garotas WHERE garota = 180"), turno)   # preenchido
+                self.assertIsNone(b.valor("SELECT pago_turno_id FROM comissoes_garotas WHERE garota = 156"))
+                # e o fluxo novo funciona sobre o banco migrado
+                com = ComissaoController(b)
+                self.assertEqual([c["garota"] for c in com.marcadas(180, turno)] + [c["garota"] for c in com.marcadas(156, turno)],
+                                 [180, 156])
+                pago = com.pagar(156, turno, adm)
+                self.assertEqual(pago["total_cent"], 4000)
+                self.assertEqual(b.valor("SELECT pago_turno_id FROM comissoes_garotas WHERE garota = 156"), turno)
+            finally:
+                b.fechar()
+
+    def test_banco_novo_ja_nasce_com_a_coluna_e_a_migracao_nao_estraga_nada(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = os.path.join(pasta, "novo.db")
+            b = BancoDados(caminho)
+            b.executar("PRAGMA user_version = 6")                  # simula um banco antigo que já tinha a tabela nova
+            b.fechar()
+            b = BancoDados(caminho)
+            try:
+                colunas = [r[1] for r in b.todos("PRAGMA table_info(comissoes_garotas)")]
+                self.assertEqual(colunas.count("pago_turno_id"), 1)
+                self.assertEqual(b.valor("PRAGMA user_version"), VERSAO_ESQUEMA)
+            finally:
+                b.fechar()
+
+
 if __name__ == "__main__":
     unittest.main()

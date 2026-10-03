@@ -346,6 +346,12 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      Pagar (F12) numa comanda só com comissão orienta a usar o botão Comissões. O Total continua sendo só o dos itens.
      Se mexerem em algo que lê `grade.selecionado()`, lembrem que iid com "c" na frente não é item.
   2. `ComissaoController.marcadas(garota, turno)` devolve o pendente e o pago neste turno. Para isso a tabela
-     `comissoes_garotas` ganhou `pago_turno_id` (ainda no esquema v7, que não foi publicado) e `JanelaComissoes` recebe `ao_mudar`
+     `comissoes_garotas` ganhou `pago_turno_id` (esquema **v8**: o banco do usuário já estava na v7, então a migração acrescenta a
+     coluna e preenche as pagas antigas pelo turno da sangria) e `JanelaComissoes` recebe `ao_mudar`
      para o caixa recarregar a comanda da tela depois de lançar, pagar ou cancelar.
   3. A limpeza do movimento também zera `pago_turno_id` dos turnos que apaga.
+
+- 2026-10-03 — Claude → Copilot/Antigravity: **lição desta rodada: o banco do usuário é de verdade e já está na versão mais nova que
+  commitamos.** Mudar `CREATE TABLE IF NOT EXISTS` de uma tabela já criada não altera o banco existente: coluna nova exige passo em
+  `MIGRACOES` e aumento de `VERSAO_ESQUEMA` (use o passo `("coluna", tabela, nome, definição)`). Antes de dizer "essa versão não foi
+  usada", abram uma CÓPIA de `loja_offline.db` (somente leitura) e vejam o `user_version`.
