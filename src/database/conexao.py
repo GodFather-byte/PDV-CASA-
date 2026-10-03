@@ -25,9 +25,9 @@ def normalizar(texto) -> str | None:
 def _raiz_dados() -> Path:
     """Pasta do banco, de Backup/ e de impressao/. No código-fonte é a raiz do projeto. No executável
     do PyInstaller o código fica em `_internal`, que a atualização substitui, então os dados vão para
-    %LOCALAPPDATA%\\PDV-CASA e sobrevivem às versões."""
+    %LOCALAPPDATA%\\WILL-PDV e sobrevivem às versões."""
     if getattr(sys, "frozen", False):
-        return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "PDV-CASA"
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "WILL-PDV"
     return Path(__file__).resolve().parents[2]
 
 
@@ -103,6 +103,8 @@ class BancoDados:
             self.conexao.execute(comando)
         if not novo and versao < esquema.VERSAO_ESQUEMA:
             self._migrar(versao)
+        for comando in esquema.INDICES_POS_MIGRACAO:   # dependem de colunas que as migrações acabam de criar
+            self.conexao.execute(comando)
         self.conexao.execute(f"PRAGMA user_version = {esquema.VERSAO_ESQUEMA}")
 
     def _migrar(self, de: int) -> None:

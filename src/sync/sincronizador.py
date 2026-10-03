@@ -1,6 +1,6 @@
 """Cliente de sincronização PDV -> nuvem (contrato em docs/COORDENACAO.md).
 
-Roda separado da interface (`python -m src.sync.sincronizador`, ou `PDV_CasaVerde.exe --sync` no
+Roda separado da interface (`python -m src.sync.sincronizador`, ou `WillPDV.exe --sync` no
 executável). Lê o endereço, o token e a chave da loja de Configurações > Nuvem a cada rodada, só confirma
 as vendas que o servidor aceitou e põe em quarentena a venda que a nuvem recusar por dado inválido
 (para ela não travar as demais).

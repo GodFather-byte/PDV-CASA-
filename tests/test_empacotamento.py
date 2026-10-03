@@ -19,7 +19,7 @@ class TesteDadosDoExecutavel(unittest.TestCase):
     def test_executavel_grava_em_localappdata_e_nao_dentro_do_pacote(self):
         with tempfile.TemporaryDirectory() as pasta, mock.patch.object(sys, "frozen", True, create=True), \
                 mock.patch.dict(os.environ, {"LOCALAPPDATA": pasta}):
-            self.assertEqual(conexao._raiz_dados(), Path(pasta) / "PDV-CASA")
+            self.assertEqual(conexao._raiz_dados(), Path(pasta) / "WILL-PDV")
 
     def test_banco_cria_a_pasta_que_ainda_nao_existe(self):
         with tempfile.TemporaryDirectory() as pasta:

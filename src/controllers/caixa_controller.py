@@ -16,9 +16,13 @@ from src.controllers.estoque_controller import EstoqueController
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.turno_controller import TurnoController
 from src.core import formatacao as fmt
+from src.core.posicao import interpretar as interpretar_posicao
+from src.core.posicao import nome as nome_posicao
+from src.core.posicao import rotulo as rotulo_posicao
 from src.core.erros import ErroNegocio
 
 ABERTAS = ("aberta", "conta_enviada")
+NUM_COMANDAS_PADRAO = 200
 # Teto de quantidade por item (config qtd_maxima_item; 0 = sem limite): barra o código de barras bipado
 # no campo Quantidade, que viraria uma venda de bilhões.
 QTD_MAXIMA_ITEM = 99_999
@@ -97,27 +101,37 @@ class CaixaController:
             (cliente_id,))
         return r or self._nova("caderneta", cliente_id=cliente_id)
 
-    def validar_mesa(self, posicao: int) -> None:
+    def validar_mesa(self, posicao: int, comanda: bool = False) -> None:
+        if comanda:
+            maximo = self.banco.cfg_int("num_comandas", NUM_COMANDAS_PADRAO)
+            if maximo < 1:
+                raise ErroNegocio("As comandas estão desligadas (Configurações > Número de comandas).")
+            if not 1 <= posicao <= maximo:
+                raise ErroNegocio(f"Comanda inválida. Use de 1 a {maximo}.")
+            return
         maximo = self.banco.cfg_int("num_mesas", 50)
         if not 1 <= posicao <= maximo:
             raise ErroNegocio(f"Mesa inválida. Use de 1 a {maximo}.")
 
-    def abrir_mesa(self, posicao: int, pessoas: int = 0) -> tuple[int, bool]:
-        """Chama a mesa se já estiver aberta; senão abre. Retorna (venda_id, criada)."""
-        self.validar_mesa(posicao)
+    def abrir_mesa(self, posicao: int, pessoas: int = 0, comanda: bool = False) -> tuple[int, bool]:
+        """Chama a mesa (ou comanda) se já estiver aberta; senão abre. Retorna (venda_id, criada)."""
+        self.validar_mesa(posicao, comanda)
         r = self.banco.valor(
-            "SELECT id FROM vendas WHERE modalidade = 'mesa' AND posicao = ? AND status IN ('aberta','conta_enviada')",
-            (posicao,))
+            "SELECT id FROM vendas WHERE modalidade = 'mesa' AND comanda = ? AND posicao = ? "
+            "AND status IN ('aberta','conta_enviada')", (int(comanda), posicao))
         if r:
             return r, False
-        return self._nova("mesa", posicao, pessoas=max(pessoas, 0)), True
+        return self._nova("mesa", posicao, pessoas=max(pessoas, 0), comanda=int(comanda)), True
 
     def mesas(self) -> list[dict]:
+        """Mesas e comandas abertas (mesas primeiro). `rotulo` é o que a tela mostra: '5' ou 'C2'."""
         limite = self.banco.cfg_int("tempo_inatividade_min", 30)
         linhas = [dict(r) for r in self.banco.todos(
             """SELECT v.*, (SELECT COUNT(*) FROM itens_venda i WHERE i.venda_id = v.id AND i.cancelado = 0) AS n_itens
-               FROM vendas v WHERE modalidade = 'mesa' AND status IN ('aberta','conta_enviada') ORDER BY posicao""")]
+               FROM vendas v WHERE modalidade = 'mesa' AND status IN ('aberta','conta_enviada')
+               ORDER BY comanda, posicao""")]
         for m in linhas:
+            m["rotulo"] = rotulo_posicao(m["comanda"], m["posicao"])
             m["minutos_parada"] = fmt.minutos_entre(m["ultimo_lancamento_em"] or m["aberta_em"])
             m["inativa"] = bool(limite > 0 and m["status"] == "aberta" and m["minutos_parada"] >= limite)
         return linhas
@@ -204,7 +218,8 @@ class CaixaController:
             desconto = v["desconto_cent"]
         desconto = min(max(desconto, 0), subtotal)
         servico = 0
-        if v["modalidade"] == "mesa" and self.banco.cfg_bool("cobra_servico_mesa", True):
+        chave_servico = "cobra_servico_comanda" if v.get("comanda") else "cobra_servico_mesa"
+        if v["modalidade"] == "mesa" and self.banco.cfg_bool(chave_servico, True):
             if v["servico_manual"]:
                 servico = v["servico_cent"]
             else:
@@ -444,24 +459,38 @@ class CaixaController:
                             "WHERE id = ?", (pessoas, fmt.agora(), destino_id))
         self.banco.executar("DELETE FROM vendas WHERE id = ?", (origem_id,))
 
-    def _mesa_aberta(self, posicao: int) -> dict:
-        r = self.banco.um("SELECT * FROM vendas WHERE modalidade = 'mesa' AND posicao = ? AND status IN ('aberta','conta_enviada')",
-                          (posicao,))
+    @staticmethod
+    def _par(posicao_ou_par) -> tuple[bool, int]:
+        """Aceita 5 (mesa), (True, 2) (comanda) ou texto como 'C2'; devolve (comanda, número)."""
+        if isinstance(posicao_ou_par, tuple):
+            return bool(posicao_ou_par[0]), int(posicao_ou_par[1])
+        if isinstance(posicao_ou_par, str):
+            return interpretar_posicao(posicao_ou_par)
+        return False, int(posicao_ou_par)
+
+    def _mesa_aberta(self, numero: int, comanda: bool = False) -> dict:
+        r = self.banco.um(
+            "SELECT * FROM vendas WHERE modalidade = 'mesa' AND comanda = ? AND posicao = ? "
+            "AND status IN ('aberta','conta_enviada')", (int(comanda), numero))
         if r is None:
-            raise ErroNegocio(f"A mesa {posicao} não está aberta.")
+            raise ErroNegocio(f"A {nome_posicao(comanda, numero).lower()} não está aberta.")
         return dict(r)
 
-    def transferir_mesa(self, origem: int, destino: int) -> int:
-        """Mesa inteira para outra posição. Se o destino já estiver aberto, os itens se somam."""
-        self.validar_mesa(destino)
-        if origem == destino:
-            raise ErroNegocio("Origem e destino são a mesma mesa.")
+    def transferir_mesa(self, origem, destino) -> int:
+        """Mesa ou comanda inteira para outra posição (mesa->mesa, mesa->comanda, comanda->comanda...).
+        Se o destino já estiver aberto, os itens se somam. Aceita 5, 'C2' ou (True, 2)."""
+        c_origem, n_origem = self._par(origem)
+        c_destino, n_destino = self._par(destino)
+        self.validar_mesa(n_destino, c_destino)
+        if (c_origem, n_origem) == (c_destino, n_destino):
+            raise ErroNegocio(f"Origem e destino são a mesma {'comanda' if c_destino else 'mesa'}.")
         with self.banco.transacao():
-            o = self._mesa_aberta(origem)
-            d = self.banco.um("SELECT id FROM vendas WHERE modalidade = 'mesa' AND posicao = ? "
-                              "AND status IN ('aberta','conta_enviada')", (destino,))
+            o = self._mesa_aberta(n_origem, c_origem)
+            d = self.banco.um("SELECT id FROM vendas WHERE modalidade = 'mesa' AND comanda = ? AND posicao = ? "
+                              "AND status IN ('aberta','conta_enviada')", (int(c_destino), n_destino))
             if d is None:
-                self.banco.executar("UPDATE vendas SET posicao = ?, status = 'aberta' WHERE id = ?", (destino, o["id"]))
+                self.banco.executar("UPDATE vendas SET posicao = ?, comanda = ?, status = 'aberta' WHERE id = ?",
+                                    (n_destino, int(c_destino), o["id"]))
                 destino_id = o["id"]
             else:
                 destino_id = d["id"]
@@ -469,36 +498,38 @@ class CaixaController:
             self.recalcular(destino_id)
         return destino_id
 
-    def transferir_varias(self, origens: list[int], destino: int) -> int:
-        """Várias mesas para uma só (tecla T no caixa)."""
-        self.validar_mesa(destino)
-        origens = [o for o in dict.fromkeys(origens) if o != destino]
-        if not origens:
-            raise ErroNegocio("Informe ao menos uma mesa de origem.")
+    def transferir_varias(self, origens: list, destino) -> int:
+        """Várias mesas/comandas para uma só (tecla T no caixa). Origens: 5, 'C2' ou (True, 2)."""
+        c_destino, n_destino = self._par(destino)
+        self.validar_mesa(n_destino, c_destino)
+        pares = [p for p in dict.fromkeys(self._par(o) for o in origens) if p != (c_destino, n_destino)]
+        if not pares:
+            raise ErroNegocio("Informe ao menos uma mesa ou comanda de origem.")
         with self.banco.transacao():
-            for o in origens:
-                self._mesa_aberta(o)
-            destino_id, _ = self.abrir_mesa(destino)
-            for o in origens:
-                self._mover_itens(self._mesa_aberta(o)["id"], destino_id)
+            for c, n in pares:
+                self._mesa_aberta(n, c)
+            destino_id, _ = self.abrir_mesa(n_destino, comanda=c_destino)
+            for c, n in pares:
+                self._mover_itens(self._mesa_aberta(n, c)["id"], destino_id)
             self.recalcular(destino_id)
         return destino_id
 
-    def transferir_item(self, item_id: int, destino: int, quantidade: float) -> None:
-        """Parte dos produtos de uma mesa para outra."""
+    def transferir_item(self, item_id: int, destino, quantidade: float) -> None:
+        """Parte dos produtos de uma mesa ou comanda para outra (destino: 5, 'C2' ou (True, 2))."""
+        c_destino, n_destino = self._par(destino)
         quantidade = fmt.arred_qtd(quantidade)
         item = self.banco.um("SELECT * FROM itens_venda WHERE id = ? AND cancelado = 0", (item_id,))
         if item is None:
             raise ErroNegocio("Item não encontrado.")
         origem = self._aberta(item["venda_id"])
         if origem["modalidade"] != "mesa":
-            raise ErroNegocio("Só é possível transferir itens entre mesas.")
-        if origem["posicao"] == destino:
-            raise ErroNegocio("Origem e destino são a mesma mesa.")
+            raise ErroNegocio("Só é possível transferir itens entre mesas e comandas.")
+        if (bool(origem["comanda"]), origem["posicao"]) == (c_destino, n_destino):
+            raise ErroNegocio(f"Origem e destino são a mesma {'comanda' if c_destino else 'mesa'}.")
         if not 0 < quantidade <= item["quantidade"]:
             raise ErroNegocio(f"Quantidade inválida (máximo {fmt.fmt_qtd(item['quantidade'], 3)}).")
         with self.banco.transacao():
-            destino_id, _ = self.abrir_mesa(destino)
+            destino_id, _ = self.abrir_mesa(n_destino, comanda=c_destino)
             if quantidade == item["quantidade"]:
                 self.banco.executar("UPDATE itens_venda SET venda_id = ? WHERE id = ?", (destino_id, item_id))
             else:

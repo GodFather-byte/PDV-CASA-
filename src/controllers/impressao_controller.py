@@ -13,6 +13,7 @@ from src.controllers.caixa_controller import CaixaController
 from src.controllers.config_controller import ConfigController
 from src.controllers.relatorio_controller import RelatorioController
 from src.core import formatacao as fmt
+from src.core.posicao import nome as nome_posicao
 from src.core.relatorio import para_texto
 from src.database.conexao import RAIZ
 from src.hardware import impressora_termica as term
@@ -86,7 +87,7 @@ class ImpressaoController:
 
     def _origem(self, v: dict) -> str:
         if v["modalidade"] == "mesa":
-            return f"Mesa {v['posicao']}"
+            return nome_posicao(v.get("comanda"), v["posicao"])
         if v["modalidade"] == "entrega":
             return f"Entrega pedido {v['posicao']}"
         if v["modalidade"] == "caderneta":
@@ -124,10 +125,11 @@ class ImpressaoController:
         return "\n".join(linhas)
 
     def pre_conta(self, venda_id: int) -> str:
-        """Conta enviada à mesa para o cliente conferir antes de pagar."""
+        """Conta enviada à mesa ou comanda para o cliente conferir antes de pagar."""
         w = self.largura()
         v = self.caixa.obter(venda_id)
-        linhas = self.cabecalho(w) + ["=" * w, "CONTA DA MESA (NÃO É CUPOM FISCAL)".center(w),
+        titulo = "CONTA DA COMANDA (NÃO É CUPOM FISCAL)" if v.get("comanda") else "CONTA DA MESA (NÃO É CUPOM FISCAL)"
+        linhas = self.cabecalho(w) + ["=" * w, titulo.center(w),
                                       _lr(self._origem(v), fmt.fmt_datahora(fmt.agora()), w), "-" * w]
         linhas += self._corpo_itens(venda_id, w) + ["-" * w] + self._totais(v, w)
         if v["pessoas"] > 1:

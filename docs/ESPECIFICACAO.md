@@ -1,6 +1,6 @@
 # Especificação: manuais × implementação
 
-Fontes: **MANUAL ADM LOCAL** (administração do Virtual.Net), **MANUAL CAIXA** (operação de
+Fontes: **MANUAL ADM LOCAL** (administração do Willyan), **MANUAL CAIXA** (operação de
 venda) e o manual da **versão web**. Este documento liga cada seção dos manuais ao código,
 registra as decisões tomadas onde o manual não definia a regra e lista o que **não** foi feito.
 

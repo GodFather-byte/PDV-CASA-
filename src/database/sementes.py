@@ -53,7 +53,8 @@ ACESSOS = [
 
 CONFIG_PADRAO = {
     "num_mesas": "50", "cobra_servico_mesa": "S", "servico_pct": "10",
-    "controle_garcom": "N", "controle_comandas": "N", "comissao_garcom_pct": "0",
+    "num_comandas": "200", "cobra_servico_comanda": "S", "painel_mesas_fixo": "S",
+    "controle_garcom": "N", "comissao_garcom_pct": "0",
     "tempo_inatividade_min": "30", "num_turnos": "3", "pergunta_pessoas": "N",
     "exigir_senha_gaveta": "S", "exigir_senha_sangria": "S",
     "exigir_senha_cancelamento": "S", "exigir_senha_desconto": "N",

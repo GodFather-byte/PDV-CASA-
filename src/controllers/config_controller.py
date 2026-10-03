@@ -44,13 +44,15 @@ CAMPOS_MAQUINA = [
 CAMPOS_CONFIG = [
     ("mensagem_rodape", "Mensagem de rodape do cupom", "texto", "Impressao"),
     ("num_mesas", "Número de mesas / posições de consumo", "int", "Mesas e serviço"),
+    ("num_comandas", "Número de comandas (0 = não usar comandas)", "int", "Mesas e serviço"),
     ("cobra_servico_mesa", "Cobrar serviço nas mesas", "sn", "Mesas e serviço"),
+    ("cobra_servico_comanda", "Cobrar serviço nas comandas", "sn", "Mesas e serviço"),
     ("servico_pct", "Percentual de serviço (%)", "decimal", "Mesas e serviço"),
     ("controle_garcom", "Exigir o garçom ao fechar a mesa", "sn", "Mesas e serviço"),
-    ("controle_comandas", "Controle de comandas", "sn", "Mesas e serviço"),
     ("comissao_garcom_pct", "Comissão dos garçons sobre produtos (%)", "decimal", "Mesas e serviço"),
     ("tempo_inatividade_min", "Alertar mesa parada após (minutos, 0 = desligado)", "int", "Mesas e serviço"),
     ("pergunta_pessoas", "Perguntar o nº de pessoas ao abrir a mesa", "sn", "Mesas e serviço"),
+    ("painel_mesas_fixo", "Mostrar sempre a lista de mesas e comandas abertas no caixa", "sn", "Mesas e serviço"),
     ("num_turnos", "Número de turnos por dia", "int", "Caixa"),
     ("exigir_senha_gaveta", "Exigir senha de supervisor para abrir a gaveta", "sn", "Caixa"),
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),
@@ -149,6 +151,8 @@ class ConfigController:
                         raise ErroValidacao(f"'{chave}' deve estar entre 0 e 100.", {chave: "inválido"})
                 if chave == "num_mesas" and not 1 <= int(v) <= 999:
                     raise ErroValidacao("O número de mesas deve ficar entre 1 e 999.", {chave: "inválido"})
+                if chave == "num_comandas" and not 0 <= int(v) <= 9999:
+                    raise ErroValidacao("O número de comandas deve ficar entre 0 e 9999.", {chave: "inválido"})
                 if chave == "num_turnos" and not 1 <= int(v) <= 9:
                     raise ErroValidacao("O número de turnos deve ficar entre 1 e 9.", {chave: "inválido"})
                 self.banco.cfg_set(chave, v)

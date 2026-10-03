@@ -82,7 +82,7 @@ class VendaPagamento(Base):
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="PDV Casa - API de nuvem")
+app = FastAPI(title="WillPDV - API de nuvem")
 
 
 def get_db():

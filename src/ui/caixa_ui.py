@@ -1,9 +1,11 @@
 """Tela do Caixa (manual do Caixa). Operação por teclado:
 
   código + Enter -> quantidade + Enter     Enter com código vazio -> barra de tarefas (setas + Enter)
-  Esc -> painel de mesas                    Delete na grade -> cancela item        O -> observação do item
-  F2 balança  F3 leitor  F4 mesa  F5 caderneta  F6 entrega  F7 sangria  F8 pré-conta  F9 repique
+  Esc -> lista de mesas e comandas         Delete na grade -> cancela item        O -> observação do item
+  F2 balança  F3 leitor  F4 mesa/comanda  F5 caderneta  F6 entrega  F7 sangria  F8 pré-conta  F9 repique
   F10 transferir  F11 gaveta  F12 pagar
+
+Mesa e comanda: digite 5 para a mesa 5 ou C2 para a comanda 2 (no campo da posição ou direto no código).
 """
 from __future__ import annotations
 
@@ -12,6 +14,10 @@ from tkinter import ttk
 
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
+from src.core.posicao import interpretar as interpretar_posicao
+from src.core.posicao import nome as nome_posicao
+from src.core.posicao import parece_comanda
+from src.core.posicao import rotulo as rotulo_posicao
 from src.hardware.dispositivos import DispositivoIndisponivel
 from src.hardware.impressora_termica import ErroImpressao
 from src.ui import caixa_dialogos, tema
@@ -28,6 +34,7 @@ class JanelaCaixa(tk.Toplevel):
         self.produto: dict | None = None
         self.modo_cancelar = False
         self.mesas_visiveis = False
+        self.painel_fixo = ctx.banco.cfg_bool("painel_mesas_fixo", True)
         self.indice_barra: int | None = None
         self.leitor = bool(ctx.config.maquina()["leitor_optico"])
         self.title(f"Caixa - {ctx.config.nome_loja()}")
@@ -67,7 +74,7 @@ class JanelaCaixa(tk.Toplevel):
         meio.pack(fill="x")
         esq = ttk.Frame(meio)
         esq.pack(side="left", fill="y")
-        ttk.Label(esq, text="Posição (mesa)", style="Rotulo.TLabel").pack(anchor="w")
+        ttk.Label(esq, text="Mesa ou comanda (ex.: 5 ou C2)", style="Rotulo.TLabel").pack(anchor="w")
         self.var_pos = tk.StringVar(value="0")
         self.ent_pos = ttk.Entry(esq, textvariable=self.var_pos, width=8, font=("Segoe UI", 16, "bold"), justify="center")
         self.ent_pos.pack(anchor="w")
@@ -113,11 +120,11 @@ class JanelaCaixa(tk.Toplevel):
 
         corpo = ttk.Frame(self, padding=12)
         corpo.pack(fill="both", expand=True)
-        self.painel_mesas = ttk.LabelFrame(corpo, text="Mesas abertas", padding=8)
-        self.grade_mesas = tema.Grade(self.painel_mesas, [("pos", "Mesa", 60, "center"), ("sit", "Situação", 130, "w"),
+        self.painel_mesas = ttk.LabelFrame(corpo, text="Mesas e comandas abertas", padding=8)
+        self.grade_mesas = tema.Grade(self.painel_mesas, [("pos", "Posição", 70, "center"), ("sit", "Situação", 130, "w"),
                                                            ("tot", "Total", 90, "e")], altura=14)
         self.grade_mesas.pack(fill="both", expand=True)
-        ttk.Label(self.painel_mesas, text="Enter chama a mesa; T transfere outras para ela", wraplength=210, foreground=tema.COR["suave"]).pack(anchor="w", pady=(6, 0))
+        ttk.Label(self.painel_mesas, text="Enter chama a mesa ou comanda (C2); T transfere outras para ela", wraplength=260, foreground=tema.COR["suave"]).pack(anchor="w", pady=(6, 0))
         self.grade_mesas.tag("enviada", foreground=tema.COR["aviso"])
         self.grade_mesas.tag("parada", foreground=tema.COR["perigo"])
         self.grade = tema.Grade(corpo, [("cod", "Código", 120, "w"), ("prod", "Produto", 330, "w"), ("un", "Un", 50, "w"),
@@ -152,10 +159,12 @@ class JanelaCaixa(tk.Toplevel):
             self.bind(f"<{tecla}>", lambda ev, f=fn: (f(), "break")[1])
         self.bind("<Left>", lambda ev: self._barra_mover(-1))
         self.bind("<Right>", lambda ev: self._barra_mover(1))
+        if self.painel_fixo:
+            self._mostrar_painel()
 
     def _barra_tarefas(self) -> None:
         self.tarefas = [("Pagar (F12)", self.pagar), ("Cancelar", self.menu_cancelar), ("Consultar", self.consultar),
-                        ("Mesa (F4)", self.foco_mesa), ("Pré-Conta (F8)", self.pre_conta), ("Transfere (F10)", self.transferir_mesa),
+                        ("Mesa/Comanda (F4)", self.foco_mesa), ("Pré-Conta (F8)", self.pre_conta), ("Transfere (F10)", self.transferir_mesa),
                         ("Repique (F9)", self.repique), ("Sangria (F7)", self.sangria), ("Delivery (F6)", self.entrega),
                         ("Caderneta (F5)", self.caderneta), ("Impressora", self.impressora), ("Gaveta (F11)", self.gaveta),
                         ("Balança (F2)", self.balanca), ("Fecha Turno", self.fechar_turno), ("Leitor (F3)", self.alternar_leitor),
@@ -217,8 +226,9 @@ class JanelaCaixa(tk.Toplevel):
             return
         mod = v["modalidade"]
         if mod == "mesa":
-            self.lbl_situacao.configure(text=f"Mesa {v['posicao']}" + (" - CONTA ENVIADA" if v["status"] == "conta_enviada" else ""))
-            self.var_pos.set(str(v["posicao"]))
+            self.lbl_situacao.configure(text=nome_posicao(v["comanda"], v["posicao"])
+                                        + (" - CONTA ENVIADA" if v["status"] == "conta_enviada" else ""))
+            self.var_pos.set(rotulo_posicao(v["comanda"], v["posicao"]))
         else:
             self.lbl_situacao.configure(text={"balcao": "Balcão", "caderneta": "Caderneta", "entrega": f"Entrega {v['posicao']}"}[mod])
             self.var_pos.set("0")
@@ -259,6 +269,11 @@ class JanelaCaixa(tk.Toplevel):
 
     def resolver_codigo(self, texto: str) -> None:
         p = self.ctx.produtos.buscar_codigo(texto)
+        if p is None and parece_comanda(texto):      # "C2" no campo do código abre a comanda 2 (produto de mesmo código vence)
+            self.var_cod.set("")
+            self.var_pos.set(texto.strip())
+            self.chamar_mesa()
+            return
         if p is None and not texto.isdigit():
             achados = self.ctx.produtos.pesquisar(texto)
             if len(achados) == 1:
@@ -446,16 +461,29 @@ class JanelaCaixa(tk.Toplevel):
             self.grade.tree.focus_set()
             self.grade.selecionar_indice(10 ** 9 if ultimo else max(self.grade.indice(), 0))
 
-    # ============================================================== mesas
+    # ============================================================== mesas e comandas
+    def _mostrar_painel(self) -> None:
+        self.mesas_visiveis = True
+        self.painel_mesas.pack(side="right", fill="y", padx=(10, 0), before=self.grade)
+
     def alternar_mesas(self, mostrar: bool | None = None) -> None:
-        self.mesas_visiveis = (not self.mesas_visiveis) if mostrar is None else mostrar
-        if self.mesas_visiveis:
-            self.painel_mesas.pack(side="right", fill="y", padx=(10, 0), before=self.grade)
+        """Lista de mesas e comandas. Com o painel fixo (padrão) ela nunca some: 'esconder' só devolve o foco ao código."""
+        if mostrar is None:
+            mostrar = True if self.painel_fixo else not self.mesas_visiveis
+        if mostrar:
+            self._mostrar_painel()
             self.carregar_mesas()
             self.grade_mesas.tree.focus_set()
-            self.grade_mesas.selecionar_indice(0)
+            v = self.venda()
+            atual = rotulo_posicao(v["comanda"], v["posicao"]) if v and v["modalidade"] == "mesa" else None
+            if atual and self.grade_mesas.tree.exists(atual):
+                self.grade_mesas.selecionar(atual)
+            else:
+                self.grade_mesas.selecionar_indice(0)
         else:
-            self.painel_mesas.pack_forget()
+            if not self.painel_fixo:
+                self.mesas_visiveis = False
+                self.painel_mesas.pack_forget()
             self.ent_codigo.focus_set()
 
     def carregar_mesas(self) -> None:
@@ -468,9 +496,11 @@ class JanelaCaixa(tk.Toplevel):
                 sit, tag = f"Parada {m['minutos_parada']} min", ("parada",)
             else:
                 sit, tag = "Consumindo", ()
-            linhas.append([m["posicao"], sit, fmt.fmt_num(m["total_cent"])])
+            linhas.append([m["rotulo"], sit, fmt.fmt_num(m["total_cent"])])
             tags.append(tag)
-        self.grade_mesas.preencher(linhas, [m["posicao"] for m in ms], tags)
+        escolhida = self.grade_mesas.selecionado()
+        self.grade_mesas.preencher(linhas, [m["rotulo"] for m in ms], tags)
+        self.grade_mesas.selecionar(escolhida)
 
     def _mesa_escolhida(self, _=None) -> str:
         s = self.grade_mesas.selecionado()
@@ -485,23 +515,23 @@ class JanelaCaixa(tk.Toplevel):
         self.ent_pos.selection_range(0, "end")
 
     def _descartar_se_vazia(self) -> None:
-        """Ao sair de uma venda sem itens (mesa recém-aberta) ela é eliminada para não deixar mesa fantasma."""
+        """Ao sair de uma venda sem itens (mesa ou comanda recém-aberta) ela é eliminada para não deixar mesa fantasma."""
         v = self.venda()
         if v and not self.ctx.caixa.itens(v["id"]) and v["modalidade"] in ("mesa", "caderneta") and not self.ctx.caixa.pagamentos(v["id"]):
             self.ctx.caixa.cancelar_venda(v["id"])
 
     def chamar_mesa(self) -> None:
         try:
-            n = int(self.var_pos.get().strip() or 0)
-        except ValueError:
-            tema.aviso(self, "Digite o número da mesa.")
+            comanda, n = interpretar_posicao(self.var_pos.get().strip() or "0")
+        except ValueError as e:
+            tema.aviso(self, str(e))
             return
         atual = self.venda()
-        if atual and atual["modalidade"] == "mesa" and atual["posicao"] == n:
+        if atual and atual["modalidade"] == "mesa" and atual["posicao"] == n and bool(atual["comanda"]) == comanda:
             self.ent_codigo.focus_set()
             return
         if atual and self.ctx.caixa.itens(atual["id"]) and atual["modalidade"] in ("balcao", "caderneta", "entrega"):
-            tema.aviso(self, "Conclua, pague ou cancele a venda em andamento antes de chamar uma mesa.")
+            tema.aviso(self, "Conclua, pague ou cancele a venda em andamento antes de chamar uma mesa ou comanda.")
             self.var_pos.set("0")
             return
         self._descartar_se_vazia()
@@ -512,10 +542,12 @@ class JanelaCaixa(tk.Toplevel):
             self.ent_codigo.focus_set()
             return
         pessoas = 0
-        existente = self.ctx.banco.valor("SELECT id FROM vendas WHERE modalidade='mesa' AND posicao=? AND status IN ('aberta','conta_enviada')", (n,))
-        if not existente and self.ctx.banco.cfg_bool("pergunta_pessoas"):
+        existente = self.ctx.banco.valor(
+            "SELECT id FROM vendas WHERE modalidade='mesa' AND comanda=? AND posicao=? AND status IN ('aberta','conta_enviada')",
+            (int(comanda), n))
+        if not existente and not comanda and self.ctx.banco.cfg_bool("pergunta_pessoas"):
             pessoas = tema.pedir_numero(self, f"Mesa {n}", "Número de pessoas na mesa:", 1, 1, 999) or 0
-        ok, res = tema.tratar(self, self.ctx.caixa.abrir_mesa, n, pessoas)
+        ok, res = tema.tratar(self, self.ctx.caixa.abrir_mesa, n, pessoas, comanda)
         if ok:
             self.venda_id = res[0]
             self.alternar_mesas(False)
@@ -530,42 +562,50 @@ class JanelaCaixa(tk.Toplevel):
         if v["modalidade"] == "entrega":
             return self.emitir_pedido_entrega()
         if v["modalidade"] != "mesa":
-            tema.aviso(self, "A pré-conta é enviada às mesas. Escolha uma mesa (F4).")
+            tema.aviso(self, "A pré-conta é enviada às mesas e comandas. Escolha uma delas (F4).")
             return
         ok, _ = tema.tratar(self, self.ctx.caixa.enviar_conta, v["id"])
         if ok:
-            Visualizador(self, self.ctx, "Pré-conta", self.ctx.impressao.pre_conta(v["id"]), f"pre_conta_mesa_{v['posicao']}")
+            arquivo = f"pre_conta_{'comanda' if v['comanda'] else 'mesa'}_{v['posicao']}"
+            Visualizador(self, self.ctx, "Pré-conta", self.ctx.impressao.pre_conta(v["id"]), arquivo)
             self.venda_id = None
             self.recarregar()
             self.ent_codigo.focus_set()
 
+    def _pedir_posicao(self, titulo: str, rotulo: str) -> tuple[bool, int] | None:
+        """Pergunta uma mesa ('5') ou comanda ('C2'); devolve (comanda, número) ou None se cancelado."""
+        return tema.pedir_texto(self, titulo, rotulo, "", largura=14, validar=interpretar_posicao)
+
     def transferir_mesa(self) -> None:
         v = self.venda()
         if v is None or v["modalidade"] != "mesa":
-            tema.aviso(self, "Chame a mesa que será transferida (F4) e tecle F10.")
+            tema.aviso(self, "Chame a mesa ou comanda que será transferida (F4) e tecle F10.")
             return
-        destino = tema.pedir_numero(self, "Transfere mesa", f"Transferir a mesa {v['posicao']} para a mesa:", "", 1, self.ctx.banco.cfg_int("num_mesas", 50))
+        origem = nome_posicao(v["comanda"], v["posicao"])
+        destino = self._pedir_posicao("Transfere mesa ou comanda", f"Transferir a {origem.lower()} para (mesa ou comanda, ex.: 5 ou C2):")
         if destino is None:
             return
-        ok, vid = tema.tratar(self, self.ctx.caixa.transferir_mesa, v["posicao"], destino)
+        ok, vid = tema.tratar(self, self.ctx.caixa.transferir_mesa, (bool(v["comanda"]), v["posicao"]), destino)
         if ok:
             self.venda_id = vid
             self.recarregar()
-            self.avisar(f"Mesa {v['posicao']} transferida para {destino}.", tema.COR["ok"])
+            self.avisar(f"{origem} transferida para {nome_posicao(*destino).lower()}.", tema.COR["ok"])
 
     def transferir_varias(self) -> None:
         s = self.grade_mesas.selecionado()
         if s is None:
             return
-        txt = tema.pedir_texto(self, "Transfere várias mesas", f"Mesas de origem (separe por vírgula) que irão para a mesa {s}:")
+        destino = nome_posicao(*interpretar_posicao(s)).lower()
+        txt = tema.pedir_texto(self, "Transfere várias mesas ou comandas",
+                               f"Origens (separe por vírgula, ex.: 3, C2) que irão para a {destino}:")
         if not txt:
             return
         try:
-            origens = [int(x) for x in txt.replace(" ", "").split(",") if x]
-        except ValueError:
-            tema.aviso(self, "Use apenas números separados por vírgula.")
+            origens = [interpretar_posicao(x) for x in txt.replace(" ", "").split(",") if x]
+        except ValueError as e:
+            tema.aviso(self, str(e))
             return
-        ok, vid = tema.tratar(self, self.ctx.caixa.transferir_varias, origens, int(s))
+        ok, vid = tema.tratar(self, self.ctx.caixa.transferir_varias, origens, interpretar_posicao(s))
         if ok:
             self.carregar_mesas()
             if self.venda_id and not self.ctx.banco.valor("SELECT 1 FROM vendas WHERE id = ?", (self.venda_id,)):
@@ -578,7 +618,7 @@ class JanelaCaixa(tk.Toplevel):
         if s is None or v is None or v["modalidade"] != "mesa":
             return
         qtd_atual = self.ctx.banco.valor("SELECT quantidade FROM itens_venda WHERE id = ?", (int(s),))
-        destino = tema.pedir_numero(self, "Transfere item", "Mesa de destino:", "", 1, self.ctx.banco.cfg_int("num_mesas", 50))
+        destino = self._pedir_posicao("Transfere item", "Mesa ou comanda de destino (ex.: 5 ou C2):")
         if destino is None:
             return
         qtd = tema.pedir_texto(self, "Transfere item", "Quantidade a transferir:", fmt.fmt_qtd(qtd_atual, 0) if qtd_atual == int(qtd_atual) else fmt.fmt_qtd(qtd_atual))
@@ -592,7 +632,7 @@ class JanelaCaixa(tk.Toplevel):
         ok, _ = tema.tratar(self, self.ctx.caixa.transferir_item, int(s), destino, quantidade)
         if ok:
             self.recarregar()
-            self.avisar(f"Item transferido para a mesa {destino}.", tema.COR["ok"])
+            self.avisar(f"Item transferido para a {nome_posicao(*destino).lower()}.", tema.COR["ok"])
 
     # ============================================================== pagar
     def pagar(self) -> None:
@@ -723,14 +763,19 @@ class JanelaCaixa(tk.Toplevel):
 
     def repique(self) -> None:
         v = self.venda()
-        pos = v["posicao"] if v and v["modalidade"] == "mesa" else tema.pedir_numero(self, "Repique", "Posição (mesa) que deixou o repique:", "", 0, 9999)
-        if pos is None:
-            return
+        if v and v["modalidade"] == "mesa":
+            comanda, pos = bool(v["comanda"]), v["posicao"]
+        else:
+            r = tema.pedir_texto(self, "Repique", "Mesa ou comanda (ex.: 5 ou C2) que deixou o repique:", "", largura=14,
+                                 validar=interpretar_posicao)
+            if r is None:
+                return
+            comanda, pos = r
         valor = tema.pedir_dinheiro(self, "Repique", "Valor deixado pelo cliente (R$):")
         if valor is None:
             return
         t = self.ctx.turnos.atual()
-        ok, _ = tema.tratar(self, self.ctx.turnos.repique, t["id"], self.ctx.operador_id, pos, valor)
+        ok, _ = tema.tratar(self, self.ctx.turnos.repique, t["id"], self.ctx.operador_id, pos, valor, comanda)
         if ok:
             self.avisar(f"Repique de {fmt.fmt_brl(valor)} registrado.", tema.COR["ok"])
 

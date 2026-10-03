@@ -78,13 +78,14 @@ class TurnoController:
             "SELECT m.*, o.nome AS operador FROM movimentos_caixa m LEFT JOIN operadores o ON o.id = m.operador_id "
             "WHERE m.turno_id = ? ORDER BY m.id", (turno_id,))]
 
-    def repique(self, turno_id: int, operador_id: int, posicao: int, valor_cent: int) -> int:
-        """Caixinha deixada pelo cliente após pagar (não é o serviço)."""
+    def repique(self, turno_id: int, operador_id: int, posicao: int, valor_cent: int, comanda: bool = False) -> int:
+        """Caixinha deixada pelo cliente após pagar (não é o serviço). `posicao` é a mesa ou, com comanda=True, a comanda."""
         if valor_cent <= 0:
             raise ErroNegocio("Informe o valor do repique.")
         self._exigir_turno_aberto(turno_id)
         venda = self.banco.valor(
-            "SELECT id FROM vendas WHERE modalidade = 'mesa' AND posicao = ? ORDER BY id DESC LIMIT 1", (posicao,))
+            "SELECT id FROM vendas WHERE modalidade = 'mesa' AND comanda = ? AND posicao = ? ORDER BY id DESC LIMIT 1",
+            (int(comanda), posicao))
         return self.banco.inserir("repiques", {
             "turno_id": turno_id, "venda_id": venda, "posicao": posicao, "valor_cent": valor_cent,
             "operador_id": operador_id, "criado_em": fmt.agora()})
@@ -144,7 +145,7 @@ class TurnoController:
             "tm": fmt.dividir_cent(venda_total, tc),
             "pessoas": pessoas,
             "valor_por_pessoa": fmt.dividir_cent(venda_total, pessoas),
-            "posicoes": b.valor(f"SELECT COUNT(DISTINCT posicao) FROM vendas WHERE {com_itens} AND modalidade = 'mesa'", (turno_id,), 0),
+            "posicoes": b.valor(f"SELECT COUNT(DISTINCT comanda * 100000 + posicao) FROM vendas WHERE {com_itens} AND modalidade = 'mesa'", (turno_id,), 0),
             "entregas": b.valor(f"SELECT COUNT(*) FROM vendas WHERE {com_itens} AND modalidade = 'entrega'", (turno_id,), 0),
             "perc_entrega": round(entregas_total * 100 / venda_total, 2) if venda_total else 0.0,
             "cupom_inicial": t["cupom_inicial"],

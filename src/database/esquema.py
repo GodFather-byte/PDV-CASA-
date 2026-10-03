@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 3
+VERSAO_ESQUEMA = 4
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -299,6 +299,7 @@ TABELAS = [
         modalidade TEXT NOT NULL DEFAULT 'balcao'
             CHECK (modalidade IN ('balcao','mesa','caderneta','entrega')),
         posicao INTEGER NOT NULL DEFAULT 0,
+        comanda INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'aberta'
             CHECK (status IN ('aberta','conta_enviada','fechada','cancelada')),
         aberta_em TEXT NOT NULL,
@@ -327,8 +328,6 @@ TABELAS = [
         sincronizado INTEGER NOT NULL DEFAULT 0
     )""",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_vendas_cupom ON vendas(cupom) WHERE cupom IS NOT NULL",
-    """CREATE UNIQUE INDEX IF NOT EXISTS ix_mesa_aberta ON vendas(posicao)
-        WHERE modalidade = 'mesa' AND status IN ('aberta','conta_enviada')""",
     "CREATE INDEX IF NOT EXISTS ix_vendas_status ON vendas(status, modalidade)",
     "CREATE INDEX IF NOT EXISTS ix_vendas_fechada ON vendas(fechada_em)",
     "CREATE INDEX IF NOT EXISTS ix_vendas_sync ON vendas(sincronizado)",
@@ -409,6 +408,14 @@ TABELAS = [
     "CREATE INDEX IF NOT EXISTS ix_contas_quit ON contas(dt_quitacao)",
 ]
 
+# Índices que dependem de colunas criadas por migrações: rodam DEPOIS delas (ver BancoDados._criar_esquema),
+# senão um banco antigo falharia ao criar o índice de uma coluna que ainda não existe.
+INDICES_POS_MIGRACAO = [
+    # Uma mesa OU uma comanda aberta por número: a comanda 2 e a mesa 2 podem existir ao mesmo tempo (v4).
+    """CREATE UNIQUE INDEX IF NOT EXISTS ix_posicao_aberta ON vendas(comanda, posicao)
+        WHERE modalidade = 'mesa' AND status IN ('aberta','conta_enviada')""",
+]
+
 
 # Migrações por versão de destino, aplicadas em ordem quando o banco está atrasado
 # (ver BancoDados._migrar). Bancos novos já nascem na VERSAO_ESQUEMA e não as executam. Cada passo é um
@@ -432,5 +439,12 @@ MIGRACOES = {
         ("coluna", "tipos_pagamento", "na_gaveta", "INTEGER NOT NULL DEFAULT 1"),
         "UPDATE tipos_pagamento SET na_gaveta = 0 WHERE aciona_tef = 1 OR tipo_tef > 0"
         " OR lower(tipo) LIKE '%cart_o%' OR lower(tipo) LIKE '%pix%' OR lower(tipo) LIKE '%transfer%'",
+    ],
+    # v4: comandas. Uma comanda é uma venda de modalidade 'mesa' com comanda = 1 (aparece junto das mesas,
+    # com serviço, pré-conta e transferência iguais). O índice antigo, único só por posicao, impedia a comanda
+    # 2 de coexistir com a mesa 2; o novo (comanda, posicao) é criado em INDICES_POS_MIGRACAO.
+    4: [
+        ("coluna", "vendas", "comanda", "INTEGER NOT NULL DEFAULT 0"),
+        "DROP INDEX IF EXISTS ix_mesa_aberta",
     ],
 }

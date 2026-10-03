@@ -1,4 +1,6 @@
-# PDV Casa
+# WillPDV
+
+**Autor:** Willyan
 
 Sistema de ponto de venda offline-first para bares, casas noturnas e operações de
 alimentação. O objetivo é evoluir para um PDV confiável de ponta a ponta: vendas,
@@ -7,7 +9,7 @@ sincronização idempotente com a nuvem.
 
 > **Estado do projeto:** em desenvolvimento. O sistema local (cadastros, caixa, mesas,
 > caderneta, entrega, estoque, contas, relatórios, utilitários e configurações dos
-> manuais Virtual.Net) está implementado em Python + SQLite + Tkinter e coberto
+> manuais Willyan) está implementado em Python + SQLite + Tkinter e coberto
 > por testes automatizados de regras e de telas. Ainda **não foi validado em loja**: não há
 > emissão fiscal, TEF nem leitura real de balança/gaveta (ver
 > [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a sincronização com a nuvem (API + cliente) ainda não foi testada em loja.
@@ -66,7 +68,7 @@ sistema novo**; o protótipo de console `src/main.py` também é legado.
 
 ## Banco local e dados
 
-O banco padrão é `loja_offline.db`, na raiz do projeto (no executável, em `%LOCALAPPDATA%\PDV-CASA`). Para usar outro arquivo no
+O banco padrão é `loja_offline.db`, na raiz do projeto (no executável, em `%LOCALAPPDATA%\WILL-PDV`). Para usar outro arquivo no
 PowerShell:
 
 ```powershell
@@ -100,7 +102,7 @@ O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de 
    O painel do dono abre em `http://servidor:8000/` e pede o mesmo token.
 2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000/v1/sincronizar`), o token e a chave
    da loja.
-3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `PDV_CasaVerde.exe --sync`).
+3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`).
    Ele registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e só confirma o que a API aceitou.
 
 O painel inicial do PDV mostra as vendas aguardando envio e as recusadas pela nuvem (em quarentena). O contrato está em
@@ -111,8 +113,8 @@ rotina real do caixa, backup e restauração testados, hardware fiscal/periféri
 
 ## Licença mensal e executável
 
-`python build_pdv.py` gera o executável (PyInstaller) em `dist/PDV_CasaVerde/`. No executável os dados (banco, Backup,
-impressao, logs) ficam em `%LOCALAPPDATA%\PDV-CASA` e a licença é sempre exigida; rodando do código-fonte ela só vale com
+`python build_pdv.py` gera o executável (PyInstaller) em `dist/WillPDV/`. No executável os dados (banco, Backup,
+impressao, logs) ficam em `%LOCALAPPDATA%\WILL-PDV` e a licença é sempre exigida; rodando do código-fonte ela só vale com
 `licenca_exigir = S` nas configurações.
 
 A licença é um código assinado (Ed25519) com a chave da loja e o último dia de validade. O PDV só guarda a chave

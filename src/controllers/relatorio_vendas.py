@@ -6,6 +6,7 @@ from __future__ import annotations
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.turno_controller import TurnoController
 from src.core import formatacao as fmt
+from src.core.posicao import rotulo as rotulo_posicao
 from src.core.relatorio import Coluna, Relatorio
 
 M, Q = fmt.fmt_num, fmt.fmt_qtd
@@ -229,21 +230,21 @@ class RelatoriosVendas:
         rel.rodape = [("Sobra (+) / Falta (-) acumulada", M(soma))]
         return rel
 
-    # ------------------------------------------------ 6.05 e 6.06 mesas
+    # ------------------------------------------------ 6.05 e 6.06 mesas e comandas
     def comandas(self, f: dict) -> Relatorio:
         onde, p = self._onde_vendas(f)
-        rel = Relatorio("Comandas", [Coluna("Comanda", 8, "d"), Coluna("Cupom", 7, "d"), Coluna("Data/hora", 19),
-                                     Coluna("Operador", 12), Coluna("Garçom", 12), Coluna("Pessoas", 7, "d"),
-                                     Coluna("Total", 11, "d")], criterios=self.criterios(f))
+        rel = Relatorio("Mesas e comandas", [Coluna("Posição", 8, "d"), Coluna("Cupom", 7, "d"), Coluna("Data/hora", 19),
+                                             Coluna("Operador", 12), Coluna("Garçom", 12), Coluna("Pessoas", 7, "d"),
+                                             Coluna("Total", 11, "d")], criterios=self.criterios(f))
         total = 0
         for r in self.banco.todos(
                 f"""SELECT v.*, o.nome AS operador, g.nome AS garcom FROM vendas v
                     LEFT JOIN operadores o ON o.id = v.operador_id LEFT JOIN operadores g ON g.id = v.garcom_id
-                    WHERE {onde} AND v.modalidade = 'mesa' ORDER BY v.posicao, v.cupom""", p):
-            rel.add(r["posicao"], r["cupom"], fmt.fmt_datahora(r["fechada_em"]), r["operador"], r["garcom"],
-                    r["pessoas"], M(r["total_cent"]))
+                    WHERE {onde} AND v.modalidade = 'mesa' ORDER BY v.comanda, v.posicao, v.cupom""", p):
+            rel.add(rotulo_posicao(r["comanda"], r["posicao"]), r["cupom"], fmt.fmt_datahora(r["fechada_em"]),
+                    r["operador"], r["garcom"], r["pessoas"], M(r["total_cent"]))
             total += r["total_cent"]
-        rel.rodape = [("Total das comandas", M(total))]
+        rel.rodape = [("Total das mesas e comandas", M(total))]
         return rel
 
     def garcons(self, f: dict) -> Relatorio:
@@ -255,7 +256,8 @@ class RelatoriosVendas:
         t = [0, 0, 0, 0, 0]
         for r in self.banco.todos(
                 f"""SELECT COALESCE(g.nome, '(sem garçom)') AS garcom, COUNT(*) AS cupons,
-                           COUNT(DISTINCT v.posicao) AS mesas, SUM(v.subtotal_cent) AS prod, SUM(v.servico_cent) AS serv
+                           COUNT(DISTINCT v.comanda * 100000 + v.posicao) AS mesas,
+                           SUM(v.subtotal_cent) AS prod, SUM(v.servico_cent) AS serv
                     FROM vendas v LEFT JOIN operadores g ON g.id = v.garcom_id
                     WHERE {onde} AND v.modalidade = 'mesa' GROUP BY v.garcom_id ORDER BY garcom""", p):
             com = fmt.pct_de(r["prod"], pct)

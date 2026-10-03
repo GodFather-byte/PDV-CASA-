@@ -82,7 +82,7 @@ Regras do PDV (`src/sync/sincronizador.py`): a cada rodada lê `api_url`, `api_t
 `logs/sync.log`. Um `422` cujo `loc` aponta a venda coloca só ela em **quarentena** (`vendas.sincronizado = 2`:
 aparece no painel e bloqueia a limpeza do movimento) e `SyncController.reenviar_rejeitadas()` a devolve à fila (`python -m src.app --sync --reenviar`). Se o `422` apontar TODAS as
 vendas do lote, nada vai para a quarentena: é tratado como contrato incompatível e conta como falha (espera crescente).
-Para rodar: `python -m src.app --sync` (no executável, `PDV_CasaVerde.exe --sync`). O contrato é verificado com um
+Para rodar: `python -m src.app --sync` (no executável, `WillPDV.exe --sync`). O contrato é verificado com um
 lote montado pelo PDV real em `tests/test_nuvem.py`.
 
 Painel do dono: `GET /` (página sem dados, pede o token) e `GET /v1/dashboard/resumo?dia=AAAA-MM-DD&chave_loja=…`
@@ -202,7 +202,7 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      usa o maior existente.
   6. Telas avisam quando cortam a lista (últimos 1.000 cupons, 300 lançamentos) e o fechamento mostra o que ficou
      fora da gaveta.
-  7. No executável (PyInstaller) os dados ficam em `%LOCALAPPDATA%\PDV-CASA`, não em `_internal`.
+  7. No executável (PyInstaller) os dados ficam em `%LOCALAPPDATA%\WILL-PDV`, não em `_internal`.
   8. **Pedidos**: (a) removi os 7 `patch*.py` da raiz: reescreviam código-fonte e reaplicá-los desfazia correções
      (o `patch_backend.py` reinseriria as rotas do painel sem autenticação). Editem o código direto, por favor.
      (b) Commits genéricos "ANTIGRAVITY" varreram a árvore de trabalho inteira (inclusive `loja_offline.db-wal`, que

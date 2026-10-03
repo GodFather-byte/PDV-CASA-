@@ -250,7 +250,7 @@ class JanelaPagamento(tk.Toplevel):
                 garcom = caixa_dialogos.escolher_garcom(self, self.ctx)
                 if garcom is None:
                     return
-            if self.ctx.banco.cfg_bool("pergunta_pessoas") and not v["pessoas"]:
+            if self.ctx.banco.cfg_bool("pergunta_pessoas") and not v["pessoas"] and not v["comanda"]:
                 pessoas = tema.pedir_numero(self, "Mesa", "Número de pessoas na mesa:", 1, 1, 999)
                 if pessoas is None:
                     return

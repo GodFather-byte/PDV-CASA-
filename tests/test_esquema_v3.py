@@ -10,6 +10,7 @@ from src.controllers.caixa_controller import CaixaController
 from src.controllers.relatorio_controller import RelatorioController
 from src.controllers.turno_controller import TurnoController
 from src.database.conexao import BancoDados
+from src.database.esquema import VERSAO_ESQUEMA
 from tests.base import BaseTeste
 
 
@@ -34,7 +35,7 @@ class TesteMigracaoV3(unittest.TestCase):
 
             b = BancoDados(caminho)
             try:
-                self.assertEqual(b.valor("PRAGMA user_version"), 3)
+                self.assertEqual(b.valor("PRAGMA user_version"), VERSAO_ESQUEMA)
                 formas = {r["tipo"]: r["na_gaveta"] for r in b.todos("SELECT tipo, na_gaveta FROM tipos_pagamento")}
                 # Sai da gaveta só o que é claramente eletrônico (cartão, Pix, transferência, TEF). O resto mantém o
                 # comportamento antigo (fica); "Crédito Loja" e "Cartela de Ticket" não podem ser confundidos com cartão.
