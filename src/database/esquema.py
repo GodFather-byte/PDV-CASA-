@@ -431,7 +431,6 @@ MIGRACOES = {
     3: [
         ("coluna", "tipos_pagamento", "na_gaveta", "INTEGER NOT NULL DEFAULT 1"),
         "UPDATE tipos_pagamento SET na_gaveta = 0 WHERE aciona_tef = 1 OR tipo_tef > 0"
-        " OR lower(tipo) LIKE '%cart%' OR lower(tipo) LIKE '%pix%' OR lower(tipo) LIKE '%transfer%'"
-        " OR lower(tipo) LIKE '%d_bito%' OR lower(tipo) LIKE '%cr_dito%'",
+        " OR lower(tipo) LIKE '%cart_o%' OR lower(tipo) LIKE '%pix%' OR lower(tipo) LIKE '%transfer%'",
     ],
 }

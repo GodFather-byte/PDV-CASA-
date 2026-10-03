@@ -56,10 +56,14 @@ class UtilitarioController:
                               "menos 1 dia para preservar o movimento atual.")
         alvo = ("status IN ('fechada','cancelada') AND date(COALESCE(fechada_em, aberta_em)) < ?")
         if self.banco.cfg("api_url").strip():
-            pendentes = self.banco.valor(f"SELECT COUNT(*) FROM vendas WHERE sincronizado <> 1 AND {alvo}", (data,), 0)
+            pendentes = self.banco.valor(f"SELECT COUNT(*) FROM vendas WHERE sincronizado = 0 AND {alvo}", (data,), 0)
             if pendentes:
                 raise ErroNegocio(f"Existem {pendentes} venda(s) do período ainda não enviadas à nuvem. "
                                   "Sincronize antes de limpar.")
+            recusadas = self.banco.valor(f"SELECT COUNT(*) FROM vendas WHERE sincronizado = 2 AND {alvo}", (data,), 0)
+            if recusadas:
+                raise ErroNegocio(f"Existem {recusadas} venda(s) do período recusadas pela nuvem (em quarentena). Corrija a "
+                                  "causa (veja logs/sync.log) e rode 'python -m src.app --sync --reenviar' antes de limpar.")
         copia = self.backup()
         with self.banco.transacao():
             ids = [r[0] for r in self.banco.todos(f"SELECT id FROM vendas WHERE {alvo}", (data,))]

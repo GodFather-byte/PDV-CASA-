@@ -80,7 +80,8 @@ Regras do servidor (`backend/main.py`):
 Regras do PDV (`src/sync/sincronizador.py`): a cada rodada lê `api_url`, `api_token`, `chave_loja` e
 `sync_intervalo_seg` de Configurações > Nuvem; com falhas seguidas a espera dobra (até 10 min) e tudo vai para
 `logs/sync.log`. Um `422` cujo `loc` aponta a venda coloca só ela em **quarentena** (`vendas.sincronizado = 2`:
-aparece no painel e bloqueia a limpeza do movimento) e `SyncController.reenviar_rejeitadas()` a devolve à fila.
+aparece no painel e bloqueia a limpeza do movimento) e `SyncController.reenviar_rejeitadas()` a devolve à fila (`python -m src.app --sync --reenviar`). Se o `422` apontar TODAS as
+vendas do lote, nada vai para a quarentena: é tratado como contrato incompatível e conta como falha (espera crescente).
 Para rodar: `python -m src.app --sync` (no executável, `PDV_CasaVerde.exe --sync`). O contrato é verificado com um
 lote montado pelo PDV real em `tests/test_nuvem.py`.
 

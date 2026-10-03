@@ -268,6 +268,22 @@ class TestePainelDoDono(BasePDV):
         for ruim in ("amanha", "2026-13-40", "2026-10-3"):
             self.assertEqual(self.resumo(dia=ruim).status_code, 422, ruim)
 
+    def test_dia_padrao_do_painel_respeita_a_loja_pedida(self):
+        sync = SyncController(self.banco)
+        v1 = self.vender()                                                   # loja A, 03/10
+        self.enviar(sync.montar_lote())
+        sync.confirmar([self.uuid_de(v1)])
+        self._hora["t"] = datetime(2026, 10, 5, 20, 0, 0)
+        self.vender(qtd=2)                                                   # será enviada como loja B, 05/10
+        lote_b = sync.montar_lote()
+        lote_b["chave_loja"] = "LOJA-2"
+        self.enviar(lote_b)
+        a, b, todas = self.resumo(chave_loja="LOJA-1").json(), self.resumo(chave_loja="LOJA-2").json(), self.resumo().json()
+        self.assertEqual((a["dia"], a["receita_cent"]), ("2026-10-03", 1000))     # não vaza a data da venda da loja B
+        self.assertEqual((b["dia"], b["receita_cent"]), ("2026-10-05", 2000))
+        self.assertEqual(todas["dia"], "2026-10-05")
+        self.assertEqual(self.resumo(chave_loja="NAO-EXISTE").json()["cupons"], 0)
+
     def test_sem_nenhuma_venda_o_painel_responde_zerado(self):
         r = self.resumo().json()
         self.assertEqual((r["cupons"], r["receita_cent"], r["ticket_medio_cent"], r["top_produtos"]), (0, 0, 0, []))
@@ -374,12 +390,43 @@ class TesteSincronizador(BasePDV):
         self.assertEqual(r["estado"], "erro")
         self.assertEqual(self.sincronizado(v), 0)
 
-    def test_venda_em_quarentena_bloqueia_a_limpeza_do_movimento(self):
+    def test_venda_em_quarentena_bloqueia_a_limpeza_do_movimento_com_mensagem_propria(self):
         self.vender()
         SyncController(self.banco).rejeitar([self.uuid_de(1)], "teste")
         self.avancar(days=2)
-        with self.assertRaisesRegex(ErroNegocio, "não enviadas"):
+        with self.assertRaisesRegex(ErroNegocio, "recusadas pela nuvem.*--sync --reenviar"):
             UtilitarioController(self.banco).limpar_movimento("2026-10-04")
+        self.assertEqual(SyncController(self.banco).reenviar_rejeitadas(), 1)
+        with self.assertRaisesRegex(ErroNegocio, "ainda não enviadas"):          # agora é só uma pendente comum
+            UtilitarioController(self.banco).limpar_movimento("2026-10-04")
+
+    def test_422_em_todas_as_vendas_do_lote_nao_poe_ninguem_em_quarentena(self):
+        v1, v2 = self.vender(), self.vender()
+        detalhe = {"detail": [{"loc": ["body", "vendas", i, "modalidade"], "msg": "Input should be 'x'"} for i in (0, 1)]}
+        sync = SyncController(self.banco)
+        r = self.cliente(lambda lote: RespostaFalsa(422, detalhe)).enviar_pendentes()
+        self.assertEqual(r["estado"], "erro")
+        self.assertIn("TODAS", r["mensagem"])
+        self.assertEqual(([self.sincronizado(v) for v in (v1, v2)], sync.contagem_rejeitadas()), ([0, 0], 0))
+        esperas = []
+        self.cliente(lambda lote: RespostaFalsa(422, detalhe)).iniciar_loop(rodadas=3, dormir=esperas.append)
+        self.assertEqual(esperas, [120, 240, 480])                  # sem laço quente e sem esvaziar o backlog
+
+    def test_lote_de_uma_venda_so_apontada_tambem_fica_pendente(self):
+        v = self.vender()
+        detalhe = {"detail": [{"loc": ["body", "vendas", 0, "posicao"], "msg": "x"}]}
+        r = self.cliente(lambda lote: RespostaFalsa(422, detalhe)).enviar_pendentes()
+        self.assertEqual(r["estado"], "erro")
+        self.assertEqual(self.sincronizado(v), 0)
+
+    def test_reenviar_devolve_a_quarentena_para_a_fila(self):
+        self.vender(), self.vender()
+        sync = SyncController(self.banco)
+        sync.rejeitar([self.uuid_de(1), self.uuid_de(2)], "teste")
+        self.assertEqual((sync.contagem_pendentes(), sync.contagem_rejeitadas()), (0, 2))
+        self.assertEqual(sincronizador.reenviar(self.banco), 2)
+        self.assertEqual((sync.contagem_pendentes(), sync.contagem_rejeitadas()), (2, 0))
+        self.assertEqual(sincronizador.reenviar(self.banco), 0)
 
     def test_falhas_de_rede_e_respostas_quebradas_mantem_tudo_pendente(self):
         v = self.vender()

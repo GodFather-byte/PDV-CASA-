@@ -2,6 +2,7 @@
 
 Com `--sync` roda só o envio das vendas para a nuvem (sem janela), a partir do mesmo programa:
 python -m src.app --sync   ou   PDV_CasaVerde.exe --sync
+Com `--sync --reenviar` devolve à fila as vendas que a nuvem recusou (quarentena) e termina.
 """
 import sys
 

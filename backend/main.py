@@ -212,18 +212,19 @@ def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{
     """Faturamento, cupons, ticket médio e mais vendidos de um dia. Sem `dia`, vale o da venda mais recente
     (assim o painel não depende do fuso do servidor). Só vendas fechadas com itens; recebimentos de
     caderneta (subtotal 0) e cancelamentos ficam de fora, como no painel do PDV."""
+    base = [Venda.status == "fechada", Venda.subtotal_cent > 0]        # filtros que valem também para achar o dia padrão
+    if chave_loja:
+        base.append(Venda.chave_loja == chave_loja)
     if dia is None:
-        ultima = db.query(func.max(Venda.fechada_em)).scalar()
+        ultima = db.query(func.max(Venda.fechada_em)).filter(*base).scalar()
         dia = ultima[:10] if ultima else date.today().isoformat()
     try:
         inicio = date.fromisoformat(dia)
     except ValueError:
         raise HTTPException(status_code=422, detail="dia inválido")
-    filtro = [Venda.status == "fechada", Venda.subtotal_cent > 0,
+    filtro = [*base,
               Venda.fechada_em >= f"{inicio.isoformat()} 00:00:00",
               Venda.fechada_em < f"{(inicio + timedelta(days=1)).isoformat()} 00:00:00"]
-    if chave_loja:
-        filtro.append(Venda.chave_loja == chave_loja)
     receita, cupons = db.query(func.coalesce(func.sum(Venda.total_cent), 0), func.count(Venda.id)).filter(*filtro).one()
     mais_vendidos = (db.query(VendaItem.nome, func.sum(VendaItem.quantidade), func.sum(VendaItem.total_cent))
                      .join(Venda, Venda.uuid == VendaItem.venda_uuid)

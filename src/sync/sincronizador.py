@@ -101,6 +101,11 @@ class Sincronizador:
         indices = [i for i in sorted(motivos) if 0 <= i < len(vendas)]
         if not indices:
             return self._erro(f"A nuvem recusou o lote (HTTP 422) sem apontar a venda: {str(detalhes)[:200]}")
+        if len(indices) >= len(vendas):
+            # Todas as vendas do lote apontadas: é mais provável um contrato incompatível (servidor mais
+            # estrito, versão errada) do que dado ruim. Não quarentena nada; espera e tenta de novo.
+            return self._erro(f"A nuvem recusou TODAS as {len(vendas)} venda(s) do lote (HTTP 422): contrato incompatível? "
+                              f"Ex.: {'; '.join(motivos[indices[0]])[:150]}")
         n = self.sync.rejeitar([vendas[i]["uuid"] for i in indices], "; ".join(motivos[indices[0]])[:200])
         log.error("Nuvem recusou %d venda(s) por dado inválido; em quarentena. Ex.: cupom %s: %s",
                   n, vendas[indices[0]].get("cupom"), "; ".join(motivos[indices[0]]))
@@ -143,9 +148,21 @@ def configurar_log() -> None:
     logging.basicConfig(level=logging.INFO, handlers=handlers, format="%(asctime)s %(levelname)s %(message)s")
 
 
-def main() -> None:
+def reenviar(banco) -> int:
+    """Devolve à fila as vendas em quarentena (depois de corrigir a causa da recusa da nuvem)."""
+    n = SyncController(banco).reenviar_rejeitadas()
+    log.info("%d venda(s) recusada(s) pela nuvem devolvida(s) à fila de envio.", n)
+    return n
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Sem argumentos: laço de envio. Com --reenviar: só devolve a quarentena à fila e termina."""
     configurar_log()
-    Sincronizador().iniciar_loop()
+    s = Sincronizador()
+    if "--reenviar" in (sys.argv[1:] if argv is None else argv):
+        print(f"{reenviar(s.banco)} venda(s) devolvida(s) à fila de envio.")
+        return
+    s.iniciar_loop()
 
 
 if __name__ == "__main__":

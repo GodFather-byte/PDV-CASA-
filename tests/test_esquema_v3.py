@@ -22,6 +22,10 @@ class TesteMigracaoV3(unittest.TestCase):
             b.executar("INSERT INTO tipos_pagamento(tipo, ordem, aciona_tef) VALUES ('Maquineta', 21, 1)")
             b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Voucher', 22)")
             b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Transferência', 23)")
+            b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Crédito Loja', 24)")
+            b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Cartela de Ticket', 25)")
+            b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Cartão Elo', 26)")
+            b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('PIX Pessoal', 27)")
             b.executar("DROP INDEX ix_vendas_cliente")
             b.executar("DROP INDEX ix_movest_ref")
             b.executar("ALTER TABLE tipos_pagamento DROP COLUMN na_gaveta")      # como era no banco v2
@@ -32,9 +36,13 @@ class TesteMigracaoV3(unittest.TestCase):
             try:
                 self.assertEqual(b.valor("PRAGMA user_version"), 3)
                 formas = {r["tipo"]: r["na_gaveta"] for r in b.todos("SELECT tipo, na_gaveta FROM tipos_pagamento")}
+                # Sai da gaveta só o que é claramente eletrônico (cartão, Pix, transferência, TEF). O resto mantém o
+                # comportamento antigo (fica); "Crédito Loja" e "Cartela de Ticket" não podem ser confundidos com cartão.
                 self.assertEqual(formas, {
-                    "Dinheiro": 1, "Cheque": 1, "Ticket": 1, "Contra Vale": 1, "Voucher": 1,
-                    "Cartão Débito": 0, "Cartão Crédito": 0, "Pix": 0, "Visa Crédito": 0, "Maquineta": 0, "Transferência": 0})
+                    "Dinheiro": 1, "Cheque": 1, "Ticket": 1, "Contra Vale": 1, "Voucher": 1, "Visa Crédito": 1,
+                    "Crédito Loja": 1, "Cartela de Ticket": 1,
+                    "Cartão Débito": 0, "Cartão Crédito": 0, "Pix": 0, "Maquineta": 0, "Transferência": 0,
+                    "Cartão Elo": 0, "PIX Pessoal": 0})
                 indices = {r[1] for r in b.todos("PRAGMA index_list(vendas)")}
                 self.assertIn("ix_vendas_cliente", indices)
                 self.assertIn("ix_movest_ref", {r[1] for r in b.todos("PRAGMA index_list(movimentos_estoque)")})
