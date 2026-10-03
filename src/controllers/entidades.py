@@ -92,7 +92,19 @@ def _antes_aliquota(banco, d, id_):
     return d
 
 
+def _mesmo_codigo(a, b) -> bool:
+    a, b = str(a or "").strip(), str(b or "").strip()
+    if not a or not b:
+        return False
+    return int(a) == int(b) if a.isdigit() and b.isdigit() else a.lower() == b.lower()
+
+
 def _antes_produto(banco, d, id_):
+    reservado = (banco.cfg("codigo_comissao", "50") or "").strip()
+    if reservado and any(_mesmo_codigo(d.get(c), reservado) for c in ("codigo", "cbarra", "atalho")):
+        raise ErroValidacao(f"O código {reservado} é reservado para lançar a comissão das garotas no caixa "
+                            "(Configurações). Use outro código, atalho ou código de barras para este produto.",
+                            {"codigo": "reservado"})
     if d.get("preco_cent", 0) < 0:
         raise ErroValidacao("O preço de venda não pode ser negativo.", {"preco_cent": "negativo"})
     if d.get("cbarra") is not None and not re.fullmatch(r"\d{1,14}", d["cbarra"]):
@@ -131,6 +143,12 @@ def _antes_excluir_operador(banco, id_):
 def _antes_cliente(banco, d, id_):
     d.pop("saldo_cent", None)  # saldo só muda pela caderneta
     return d
+
+
+def _antes_excluir_garota(banco, id_):
+    g = banco.um("SELECT numero FROM garotas WHERE id = ?", (id_,))
+    if g and banco.valor("SELECT 1 FROM comissoes_garotas WHERE garota = ? LIMIT 1", (g["numero"],)):
+        raise ErroNegocio("Esta garota tem comissões registradas. Desmarque 'Ativa' em vez de excluir.")
 
 
 # --------------------------------------------------------------- entidades
@@ -273,6 +291,14 @@ _ENTIDADES = [
         _sn("ativo", "Ativo", 1),
     ], ordem="nome", busca=("nome", "numero_consulta", "telefone", "cpf"), antes_salvar=_antes_cliente,
         msg_em_uso="Este cliente possui movimento. Desmarque 'Ativo' em vez de excluir.", tem_ativo=True),
+
+    Entidade("garotas", "Cadastro de Garotas", "garotas", "cad_garotas", [
+        Campo("numero", "Número (o mesmo da comanda dela)", "int", obrigatorio=True, largura=12, minimo=1, maximo=99999),
+        Campo("nome", "Nome", obrigatorio=True, tamanho=40, largura=30),
+        Campo("observacao", "Observações", tamanho=120, na_grade=False),
+        _sn("ativo", "Ativa", 1, na_grade=True),
+    ], ordem="numero", busca=("nome", "numero"), antes_excluir=_antes_excluir_garota, tem_ativo=True,
+        msg_em_uso="Esta garota tem comissões registradas. Desmarque 'Ativa' em vez de excluir."),
 
     Entidade("tipos_pagamento", "Cadastro de Tipos de Pagamento", "tipos_pagamento", "cad_tipos_pagamento", [
         Campo("tipo", "Tipo de pagamento", obrigatorio=True, tamanho=30, largura=22),

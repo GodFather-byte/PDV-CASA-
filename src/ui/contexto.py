@@ -5,6 +5,7 @@ from src.controllers.acesso_controller import AcessoController, Operador
 from src.controllers.cadastro_controller import CadastroController
 from src.controllers.caderneta_controller import CadernetaController
 from src.controllers.caixa_controller import CaixaController
+from src.controllers.comissao_controller import ComissaoController
 from src.controllers.config_controller import ConfigController
 from src.controllers.contas_controller import ContasController
 from src.controllers.entrega_controller import EntregaController
@@ -30,6 +31,7 @@ class Contexto:
         self.relatorios = RelatorioController(banco)
         self.impressao = ImpressaoController(banco)
         self.caderneta = CadernetaController(banco)
+        self.comissoes = ComissaoController(banco)
 
     @property
     def operador_id(self) -> int | None:

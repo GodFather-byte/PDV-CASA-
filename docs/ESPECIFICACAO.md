@@ -41,6 +41,7 @@ Convenção: `C` = controlador (regra, em `src/controllers/`), `UI` = tela (em `
 | Lançar item: código, quantidade, Enter; lista por nome; Consultar; observação (tecla O) | UI `caixa_ui` · C `caixa_controller.adicionar_item` |
 | Cancelar item e venda inteira; senha de supervisor | UI `caixa_ui.menu_cancelar` · C `acesso_controller.validar_supervisor` |
 | Pagamento (F12): formas, múltiplos pagamentos, desconto % e valor, serviço editável, troco, contra-vale | UI `caixa_pagamento` · C `caixa_controller.liquidar/fechar` |
+| Comissão das garotas (código 50), pagamento com recibo, cadastro e relatório | C `comissao_controller`, `relatorio_comissoes` · UI `comissao_ui`, `caixa_ui` |
 | Mesas e comandas (F4, `123` e `M5`), transferir inteira (F10), várias (T) e parte dos itens, pré-conta (F8), tempo de inatividade | C `caixa_controller`, `core/posicao` · UI `caixa_ui` |
 | Repique (F9), sangria (F7), gaveta (F11), balança (F2), leitor óptico (F3) | UI `caixa_ui` · `hardware/dispositivos.py` (interfaces) |
 | Caderneta (F5): escolher/incluir/consultar cliente, débito, crédito, excedente vira crédito | C `caderneta_controller`, `caixa_controller` · UI `clientes_ui` |
@@ -85,6 +86,14 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   só o turno), cupons cancelados (pelo `turno_id`) e itens cancelados e transferências (pela janela de tempo do turno, lidos
   do `log_eventos`: eventos `item_cancelado` e `transferencia`, sem tabela nova). Um item cancelado aparece no local atual
   da posição (se ela foi transferida depois, o nome novo). Só avisa: não bloqueia a troca de turno com posições abertas.
+- **Comissão das garotas** (pedido do dono, boate; esquema v7): o número da garota é o da comanda dela (comanda 180 = garota
+  180) e o código 50 (`codigo_comissao`) abre a janela do valor. É um registro à parte (`comissoes_garotas`), não uma venda:
+  fica fora do faturamento, do estoque e da nuvem, e a comanda da garota continua vazia. Situações: pendente, paga e
+  cancelada (nada se apaga). Pagar tudo o que está pendente de uma garota registra uma sangria no turno (a conferência da
+  gaveta já conta), abre a gaveta e imprime um recibo para assinar; também dá para pagar fora do caixa. O cadastro de
+  garotas (`garotas`) é opcional e serve para mostrar o nome e pedir confirmação de número desconhecido. O código 50 é
+  reservado: nenhum produto pode usá-lo (código, atalho ou barras). **A confirmar com o dono:** se as garotas são pagas no
+  fim da noite com dinheiro da gaveta (é o que fizemos) e se a comissão deve abater consumo da própria garota.
 - **Estoque baixa ao fechar a venda**, não ao lançar o item; cancelar o cupom estorna. Estoque negativo é permitido.
 - **Promoções** (período, dias da semana, horário) valem em conjunto; havendo mais de uma, vence a de menor
   preço. Faixas que viram a meia-noite funcionam (ex.: 22:00 às 02:00).

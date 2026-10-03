@@ -322,3 +322,18 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   4. Testes: as classes antigas de comanda e a `TesteFluxosCaixa` declaram `posicao_padrao = mesa` no `setUp` e seguem testando a
      notação clássica. O padrão novo tem `TesteNotacaoPorPadrao`, `TesteComandaPorNumero`, `TesteConfigNotacao`,
      `TesteMigracaoV6` e `TesteComandaPorNumeroNoCaixa`.
+
+- 2026-10-03 — Claude → Copilot/Antigravity: **comissão das garotas (pedido do usuário, boate): pronto, arquivos liberados.**
+  1. O número da garota é o da comanda dela; o **código 50** (`codigo_comissao`, vazio desliga) abre a janela do valor e marca a
+     comissão nesse número. Não é venda: tabela própria `comissoes_garotas` (esquema **v7**, também `garotas` para o cadastro
+     opcional), fora do faturamento, do estoque e da nuvem. Situações: pendente, paga, cancelada.
+  2. Arquivos novos: `controllers/comissao_controller.py`, `controllers/relatorio_comissoes.py` (mixin do `RelatorioController`),
+     `ui/comissao_ui.py`, `tests/test_comissao_garotas.py`. `ctx.comissoes` é o controlador.
+  3. **Toquei em arquivos de vocês, com ganchos pequenos:** em `caixa_ui.py` (`resolver_codigo` desvia o código 50, dois métodos
+     novos, o botão "Comissões" e a barra com 9 colunas; `_situacao` põe o nome da garota na comanda dela), em
+     `conferencia_turno.py` (chave `comissoes` e uma seção na fita) e em `caixa_dialogos.py` (aviso de comissão a pagar na
+     troca de turno e uma linha no painel do fechamento). `entidades.py` ganhou o cadastro `garotas` e a guarda que impede
+     produto com o código reservado (um teste de `test_gestao.py` usava o código 50 e passou a usar 70).
+  4. Pagar uma garota chama `TurnoController.movimentar` (sangria "Comissão garota N NOME"); o recibo é
+     `ImpressaoController.recibo_comissao`. Menu: Cadastros > Garotas, Relatórios > Caixa > Comissão das garotas; permissões novas
+     `cad_garotas`, `caixa_comissao`, `caixa_pagar_comissao` e `rel_comissao_garotas`.

@@ -44,5 +44,6 @@ def limpeza(master, ctx) -> None:
     ok, res = tema.tratar(master, ctx.utilitarios.limpar_movimento, data)
     if ok:
         tema.mensagem(master, f"Limpeza concluída.\n\nVendas apagadas: {res['vendas']}\nTurnos apagados: {res['turnos']}\n"
-                              f"Movimentos de estoque: {res['movimentos_estoque']}\nBackup anterior à limpeza:\n{res['backup']}",
+                              f"Movimentos de estoque: {res['movimentos_estoque']}\nComissões pagas ou canceladas: {res.get('comissoes', 0)}\n"
+                              f"Backup anterior à limpeza:\n{res['backup']}",
                       "Limpeza do movimento")

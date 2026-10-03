@@ -15,7 +15,7 @@ from src.ui.login import JanelaLogin
 
 CADASTROS = [("unidades", "Unidades"), ("grupos", "Grupos"), ("subgrupos", "Subgrupos"), ("produtos", "Produtos"),
              ("observacoes", "Observações"), ("composicao", "Composição"), ("cargos", "Cargos"),
-             ("operadores", "Operadores"), ("fornecedores", "Fornecedores"), ("clientes", "Clientes"),
+             ("operadores", "Operadores"), ("fornecedores", "Fornecedores"), ("clientes", "Clientes"), ("garotas", "Garotas"),
              ("bairros", "Bairros e taxas de entrega"), ("tipos_pagamento", "Tipos de Pagamento"),
              ("planos_contas", "Plano de Contas"), ("subplanos", "Sub Planos"), ("aliquotas", "Alíquotas")]
 MODULO_CADASTRO = {"planos_contas": "cad_plano_contas"}   # os demais seguem o padrão cad_<chave>
@@ -27,7 +27,8 @@ RELATORIOS = [
                 ("informativo", "Informativo por dia", "rel_informativos"), ("horas", "Vendas por hora", "rel_informativos"),
                 ("cancelados", "Cancelamentos", "rel_informativos")]),
     ("Caixa", [("caixa_mov", "Entradas e saídas financeiras", "rel_caixa"), ("fechamentos", "Fechamentos do caixa", "rel_caixa"),
-               ("comandas", "Comandas", "rel_comandas"), ("garcons", "Garçons", "rel_garcons")]),
+               ("comandas", "Comandas", "rel_comandas"), ("garcons", "Garçons", "rel_garcons"),
+               ("comissao_garotas", "Comissão das garotas", "rel_comissao_garotas")]),
     ("Gestão", [("cmv", "C.M.V. (custo da mercadoria vendida)", "rel_cmv"),
                 ("comissao_produto", "Comissão por produto", "rel_comissoes"), ("comissao_venda", "Comissão por venda", "rel_comissoes"),
                 ("comissao_cliente", "Vendas por cliente", "rel_comissoes")]),

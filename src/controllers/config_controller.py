@@ -3,6 +3,8 @@
 As listas `CAMPOS_*` descrevem os formulários; a interface os desenha sem código extra."""
 from __future__ import annotations
 
+import re
+
 from src.core.erros import ErroNegocio, ErroValidacao
 
 # (chave, rótulo, tipo[texto|int|decimal|sn|escolha], seção, opções)
@@ -62,6 +64,8 @@ CAMPOS_CONFIG = [
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),
     ("exigir_senha_cancelamento", "Exigir senha de supervisor para cancelamentos", "sn", "Caixa"),
     ("exigir_senha_desconto", "Exigir senha de supervisor para desconto", "sn", "Caixa"),
+    ("exigir_senha_comissao", "Exigir senha de supervisor para lançar comissão das garotas", "sn", "Caixa"),
+    ("codigo_comissao", "Código que lança a comissão das garotas no caixa (vazio = desligado)", "texto", "Caixa"),
     ("imprimir_cupom", "Imprimir cupom ao fechar a venda", "sn", "Caixa"),
     ("taxa_entrega_padrao", "Taxa de entrega padrão (R$)", "texto", "Caixa"),
     ("programa_comunicacao", "Programa de comunicação (caminho do executável)", "texto", "Utilitários"),
@@ -128,6 +132,23 @@ class ConfigController:
         self.banco.atualizar("maquinas", atual["id"], limpos)
 
     # --------------------------------------------------------------- config
+    def _validar_codigo_comissao(self, v: str) -> str:
+        """O código da comissão é reservado: não pode ser de um produto, senão o produto nunca seria vendido."""
+        v = v.strip()
+        if not v:
+            return ""
+        if not re.fullmatch(r"[A-Za-z0-9]{1,13}", v):
+            raise ErroValidacao("O código da comissão deve ter até 13 letras ou números, sem espaços.",
+                                {"codigo_comissao": "inválido"})
+        if v.isdigit():
+            v = str(int(v))                                  # 050 e 50 são o mesmo código
+        achado = self.banco.um("SELECT nome FROM produtos WHERE codigo = ? OR cbarra = ? OR atalho = ? COLLATE NOCASE",
+                               (v.zfill(13) if v.isdigit() else v, v, v))
+        if achado:
+            raise ErroValidacao(f"O produto '{achado['nome']}' já usa o código {v}. Troque o código dele ou escolha "
+                                "outro para a comissão.", {"codigo_comissao": "em uso"})
+        return v
+
     def todas(self) -> dict:
         return {c[0]: self.banco.cfg(c[0]) for c in CAMPOS_CONFIG}
 
@@ -157,6 +178,8 @@ class ConfigController:
                         raise ErroValidacao(f"Número inválido em '{chave}'.", {chave: "inválido"}) from None
                     if float(v) < 0 or float(v) > 100:
                         raise ErroValidacao(f"'{chave}' deve estar entre 0 e 100.", {chave: "inválido"})
+                if chave == "codigo_comissao":
+                    v = self._validar_codigo_comissao(v)
                 if chave == "num_mesas" and not 1 <= int(v) <= 999:
                     raise ErroValidacao("O número de mesas deve ficar entre 1 e 999.", {chave: "inválido"})
                 if chave == "num_comandas" and not 0 <= int(v) <= 10000:

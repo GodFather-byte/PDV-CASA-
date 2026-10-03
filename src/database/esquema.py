@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 6
+VERSAO_ESQUEMA = 7
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -409,6 +409,34 @@ TABELAS = [
         venda_id INTEGER
     )""",
     "CREATE INDEX IF NOT EXISTS ix_fila_status ON fila_impressao(status, destino, id)",
+    # Comissão das garotas (v7): o código 50 do caixa marca a comissão no número da garota (o mesmo da comanda dela).
+    # Não é venda: não entra em faturamento nem estoque. Fica 'pendente' até ser paga (sai dinheiro do caixa) ou cancelada.
+    """CREATE TABLE IF NOT EXISTS garotas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero INTEGER NOT NULL UNIQUE CHECK (numero BETWEEN 1 AND 99999),
+        nome TEXT NOT NULL,
+        observacao TEXT,
+        ativo INTEGER NOT NULL DEFAULT 1
+    )""",
+    """CREATE TABLE IF NOT EXISTS comissoes_garotas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        garota INTEGER NOT NULL CHECK (garota BETWEEN 1 AND 99999),
+        valor_cent INTEGER NOT NULL CHECK (valor_cent > 0),
+        turno_id INTEGER REFERENCES turnos(id),
+        operador_id INTEGER REFERENCES operadores(id),
+        observacao TEXT,
+        criado_em TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','paga','cancelada')),
+        paga_em TEXT,
+        pago_por INTEGER REFERENCES operadores(id),
+        movimento_id INTEGER REFERENCES movimentos_caixa(id),
+        cancelada_em TEXT,
+        cancelada_por INTEGER REFERENCES operadores(id),
+        motivo_cancelamento TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_comissoes_garota ON comissoes_garotas(garota, status)",
+    "CREATE INDEX IF NOT EXISTS ix_comissoes_criado ON comissoes_garotas(criado_em)",
+    "CREATE INDEX IF NOT EXISTS ix_comissoes_turno ON comissoes_garotas(turno_id)",
     # Índices dos relatórios e do fechamento (v3). São criados também em bancos antigos, na próxima abertura.
     "CREATE INDEX IF NOT EXISTS ix_vendas_status_fechada ON vendas(status, fechada_em)",
     "CREATE INDEX IF NOT EXISTS ix_vendas_cliente ON vendas(cliente_id, status, fechada_em)",
@@ -474,4 +502,7 @@ MIGRACOES = {
     6: [
         "UPDATE config SET valor = '10000' WHERE chave = 'num_comandas' AND valor = '200'",
     ],
+    # v7: as tabelas garotas e comissoes_garotas nascem em TABELAS (IF NOT EXISTS); as chaves novas de configuração
+    # (codigo_comissao, exigir_senha_comissao) nascem em CONFIG_PADRAO. Nada a migrar.
+    7: [],
 }

@@ -42,6 +42,11 @@ def trocar_turno(master, ctx) -> bool:
         nomes = ", ".join(p["nome"] for p in abertas[:6]) + (", ..." if len(abertas) > 6 else "")
         aviso = (f"\n\nATENÇÃO: {len(abertas)} mesa(s)/comanda(s) aberta(s), {fmt.fmt_brl(sum(p['total_cent'] for p in abertas))}:"
                  f"\n{nomes}.\nElas continuam abertas no próximo turno.")
+    a_pagar = ctx.comissoes.pendentes_por_garota()
+    if a_pagar:                 # comissão paga com dinheiro da gaveta muda a contagem: melhor pagar antes de contar
+        aviso += (f"\n\nComissão das garotas a pagar: {fmt.fmt_brl(sum(p['total_cent'] for p in a_pagar))} "
+                  f"({len(a_pagar)} garota(s)).\nSe vai pagar com dinheiro da gaveta, responda Não, pague "
+                  "(botão Comissões) e conte o caixa de novo.")
     if not tema.confirmar(master, f"Confirma {fmt.fmt_brl(valor)} como valor final?\n"
                                   "Depois de confirmar o turno é encerrado e não pode ser acertado." + aviso, "Troca de turno"):
         return False
@@ -66,6 +71,7 @@ class PainelFechamento(tk.Toplevel):
         esq = ttk.LabelFrame(corpo, text="Turno", padding=10)
         esq.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         abertas = res.get("posicoes_abertas") or []
+        com = res.get("comissoes") or {}
         dados = [("Turno", t["numero"]), ("Abertura", fmt.fmt_datahora(t["aberto_em"])), ("Valor inicial (+)", M(res["valor_inicial"])),
                  ("Cupom inicial", res["cupom_inicial"]), ("Fechamento", fmt.fmt_datahora(fmt.agora())),
                  ("Valor final (-)", M(res["valor_final"])), ("Cupom final", res["cupom_final"]), ("Posições", res["posicoes"]),
@@ -75,7 +81,8 @@ class PainelFechamento(tk.Toplevel):
                  ("Posições em aberto", f"{len(abertas)} ({M(sum(p['total_cent'] for p in abertas))})" if abertas else "nenhuma"),
                  ("Cupons cancelados", len(res.get("cupons_cancelados") or ())),
                  ("Itens cancelados", len(res.get("itens_cancelados") or ())),
-                 ("Transferências", len(res.get("transferencias") or ()))]
+                 ("Transferências", len(res.get("transferencias") or ())),
+                 ("Comissões das garotas", M(com["total_cent"]) if com.get("quantidade") else "nenhuma")]
         for i, (r, v) in enumerate(dados):
             ttk.Label(esq, text=r).grid(row=i, column=0, sticky="w")
             ttk.Label(esq, text=str(v), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(20, 0))

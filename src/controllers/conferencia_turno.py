@@ -91,11 +91,14 @@ def _transferencias(banco, inicio: str, fim: str) -> list[dict]:
 
 def conferencia(banco, turno: dict) -> dict:
     """Tudo que a conferência traz, para o turno `turno` (aberto: até agora; fechado: até o fechamento)."""
+    from src.controllers.comissao_controller import ComissaoController      # import tardio: ele importa o TurnoController
     inicio, fim = turno["aberto_em"], turno.get("fechado_em") or fmt.agora()
+    comissoes = ComissaoController(banco)
     return {"posicoes_abertas": posicoes_abertas(banco),
             "cupons_cancelados": _cupons_cancelados(banco, turno["id"]),
             "itens_cancelados": _itens_cancelados(banco, inicio, fim),
-            "transferencias": _transferencias(banco, inicio, fim)}
+            "transferencias": _transferencias(banco, inicio, fim),
+            "comissoes": {**comissoes.resumo_turno(turno["id"]), "a_pagar_cent": comissoes.total_a_pagar()}}
 
 
 # ----------------------------------------------------------------- texto da fita
@@ -163,6 +166,18 @@ def linhas_fita(res: dict, w: int = 40) -> list[str]:
         saida += _secao("ITENS CANCELADOS", res["itens_cancelados"], item, w)
     if res.get("transferencias"):
         saida += _secao("TRANSFERÊNCIAS", res["transferencias"], transferencia, w)
+
+    def comissao(g):
+        quem = f"{g['garota']} {g['nome']}".strip()
+        return [_lr(f"  {quem} ({g['lancamentos']}x)", M(g["total_cent"]), w)]
+
+    c = res.get("comissoes") or {}
+    if c.get("por_garota") or c.get("a_pagar_cent"):
+        saida += _secao("COMISSÕES DAS GAROTAS", c.get("por_garota") or [], comissao, w)
+        if c.get("por_garota"):
+            saida.append(_lr("  Total lançado no turno", M(c["total_cent"]), w))
+        if c.get("a_pagar_cent"):
+            saida.append(_lr("  A pagar às garotas (todas)", M(c["a_pagar_cent"]), w))
     return saida
 
 

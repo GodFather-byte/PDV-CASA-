@@ -32,6 +32,8 @@ FILTROS = {
     "por": ("Considerar a data de", "escolha:dt_quitacao|dt_entrada|dt_vencimento"),
     "apenas_resultado": ("Somente contas que afetam o resultado", "sn"), "apenas_debitos": ("Somente débitos", "sn"),
     "incluir_previsao": ("Incluir previsões", "sn"),
+    "garota": ("Garota (número)", "int"), "situacao_comissao": ("Situação da comissão", "escolha:pendente|paga|cancelada"),
+    "detalhar": ("Listar cada lançamento", "sn"),
 }
 VENDAS = ["de", "ate", "hora_ini", "hora_fim", "cupom_ini", "cupom_fim", "turno_atual", "turno", "operador_id", "modalidade"]
 VENDAS_MAIS = ["garcom_id", "vendedor_id", "entregador_id", "cliente_id"]
@@ -64,6 +66,8 @@ SPECS: dict[str, Spec] = {
     "fechamentos": Spec("Fechamentos do caixa", PERIODO_TURNO, lambda c, f: c.relatorios.fechamentos(f), "mes"),
     "comandas": Spec("Comandas", VENDAS, lambda c, f: c.relatorios.comandas(f), mais=VENDAS_MAIS),
     "garcons": Spec("Garçons", VENDAS, lambda c, f: c.relatorios.garcons(f), mais=VENDAS_MAIS),
+    "comissao_garotas": Spec("Comissão das garotas", PERIODO + ["turno", "garota", "situacao_comissao", "detalhar"],
+                             lambda c, f: c.relatorios.comissoes_garotas(f), "mes"),
     "cmv": Spec("C.M.V. - Custo da mercadoria vendida", VENDAS, lambda c, f: c.relatorios.cmv(f), mais=VENDAS_MAIS),
     "comissao_produto": Spec("Comissão por produto", PERIODO, lambda c, f: c.relatorios.comissoes_produto(f), "mes"),
     "comissao_venda": Spec("Comissão por venda", PERIODO, lambda c, f: c.relatorios.comissoes_venda(f), "mes"),

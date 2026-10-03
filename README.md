@@ -90,6 +90,33 @@ São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
 - Relatórios: "Mesas e comandas" mostra a posição como `123` (comanda) ou `M5` (mesa); o filtro *Modalidade* separa `mesa` de `comanda`.
 - A **nuvem** ainda recebe a comanda como venda de mesa (o contrato de sincronização não mudou).
 
+## Comissão das garotas
+
+Na boate as garotas ganham comissão pelas bebidas. O número de cada garota (156, 180...) é o mesmo da comanda dela, e o
+**código 50** do caixa é o das comissões:
+
+1. No campo **Comanda**, digite o número da garota (ex.: `180`) e Enter.
+2. No campo do código, digite `50` e Enter. Abre a janela *Comissão da garota* já com o número 180 (e o nome, se ela estiver
+   cadastrada).
+3. Digite o **valor da comissão** (ex.: `25` ou `25,00`) e Enter. Ficou marcado no número dela.
+
+Fora de comanda (no balcão, por exemplo) a janela pergunta o número da garota. O 50 nunca vira produto nem entra na venda: a
+comanda da garota continua vazia e some sozinha, e a comissão fica guardada.
+
+- **Contra erro de digitação:** havendo garotas cadastradas, um número que não está no cadastro (ou de garota inativa) pede
+  confirmação, e valor acima de R$ 500,00 também. Lançamento errado se cancela na janela *Comissões*, e fica guardado.
+- **Comissões** (botão na barra do caixa): o que há a pagar a cada garota, com os lançamentos dela. *Pagar a garota escolhida*
+  paga tudo o que está pendente: o dinheiro sai da gaveta (uma sangria "Comissão garota 180 NOME", então a conferência do caixa
+  já conta), a gaveta abre e sai um **recibo** com a linha de assinatura. Desmarcando a opção, paga fora do caixa (só dá baixa).
+- **Troca de turno:** avisa se há comissão a pagar (pague antes de contar a gaveta). O fechamento e a Leitura X trazem a seção
+  *Comissões das garotas*: o lançado no turno, por garota, e o total que ainda falta pagar.
+- **Relatório:** Relatórios > Caixa > *Comissão das garotas*, por garota (total, pago e a pagar) ou lançamento a lançamento, com
+  filtro de período, turno, garota e situação.
+- **Cadastro:** Manutenção de Cadastros > *Garotas* (número, nome, ativa). É opcional: serve para mostrar o nome e conferir o número.
+- **Configurações > Caixa:** o *código* que lança a comissão (50; vazio desliga; não pode ser o de um produto) e *Exigir senha
+  de supervisor para lançar comissão* (desligado de fábrica). Pagar segue a regra da sangria e cancelar a do cancelamento.
+- A comissão **não é venda**: não entra no faturamento, no estoque nem na nuvem. Só vira movimento do caixa quando é paga.
+
 ## Fechamento do turno
 
 Além dos totais e da conferência do dinheiro, o fechamento (e a Leitura X) traz a **conferência do turno**, para auditar a

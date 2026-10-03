@@ -1351,3 +1351,503 @@ class TesteComandaPorNumeroNoCaixa(BaseUI):
         form.gravar()
         self.assertEqual(self.banco.cfg("posicao_padrao"), "mesa")
         self.sem_travar()
+
+
+class TesteComissaoDasGarotasNoCaixa(BaseUI):
+    """O código 50 no caixa: na comanda 180 a janela já vem com a garota 180; o valor fica marcado no número dela."""
+
+    def setUp(self):
+        super().setUp()
+        self.abrir_turno()
+        from src.ui.caixa_ui import JanelaCaixa
+        self.cx = JanelaCaixa(self.root, self.ctx)
+        self.cx.update()
+        self.com = self.ctx.comissoes
+        self.turno = self.ctx.turnos.atual()["id"]
+
+    # ---------------------------------------------------------------- ajudantes
+    def posicao(self, texto):
+        self.cx.var_pos.set(texto); self.cx.chamar_mesa(); self.cx.update()
+
+    def digitar_codigo(self, texto):
+        self.cx.var_cod.set(texto); self.cx._enter_codigo(); self.cx.update()
+
+    def cadastrar(self, numero, nome, ativa="S"):
+        self.ctx.cadastros.salvar("garotas", {"numero": numero, "nome": nome, "ativo": ativa})
+
+    def dar(self, garota, reais):
+        return self.com.lancar(garota, round(reais * 100), self.turno, self.ctx.operador_id)
+
+    @staticmethod
+    def textos(janela):
+        achados = []
+
+        def varre(w):
+            for f in w.winfo_children():
+                if isinstance(f, ttk.Label):
+                    achados.append(str(f.cget("text")))
+                varre(f)
+        varre(janela)
+        return achados
+
+    def dialogos(self, regras: dict, vezes: int = 400):
+        """Responde aos diálogos pelo título. Cada valor é uma função(janela) ou o texto do botão que será clicado.
+        Cada janela é tratada uma vez; as que não têm regra ficam com o vigia do robô. Cada chamada substitui a anterior."""
+        self.robo.regras[:] = [r for r in self.robo.regras if r[0] != "Dialogo"]
+        feitos = set()
+
+        def acao(w):
+            alvo = next((v for t, v in regras.items() if w.title().startswith(t)), None)
+            if alvo is None or str(w) in feitos:
+                return
+            feitos.add(str(w))
+            alvo(w) if callable(alvo) else clicar(w, alvo)
+        self.robo.quando("Dialogo", acao, vezes=vezes)
+
+    def lancando(self, numero=None, valor="25,00", visto=None):
+        """Preenche a janela da comissão. O clique em Lançar é adiado: ele pode abrir uma pergunta e o robô só
+        consegue responder depois que esta função devolver o controle."""
+        def acao(w):
+            ents = entradas(w)
+            if visto is not None:
+                visto["numero"], visto["textos"] = ents[0].get(), self.textos(w)
+            if numero is not None:
+                ents[0].delete(0, "end"); ents[0].insert(0, str(numero))
+            ents[1].insert(0, valor)
+            w.after(10, lambda: clicar(w, "Lançar"))
+        return acao
+
+    @staticmethod
+    def desistindo_depois_de(botao):
+        """Clica no botão da pergunta e fecha a janela de baixo (a da comissão), que continuaria esperando."""
+        def acao(w):
+            de_baixo = w.master
+            clicar(w, botao)
+            de_baixo.after(20, de_baixo.cancelar)
+        return acao
+
+    # ---------------------------------------------------------------- lançar
+    def test_codigo_50_na_comanda_180_traz_o_numero_e_marca_a_comissao(self):
+        visto = {}
+        self.dialogos({"Comissão da garota": self.lancando(valor="25,00", visto=visto)})
+        self.posicao("180")
+        self.digitar_codigo("50")
+        self.assertEqual(visto["numero"], "180")                                     # a comanda é a garota
+        c = self.banco.um("SELECT garota, valor_cent, status, turno_id, operador_id FROM comissoes_garotas")
+        self.assertEqual((c["garota"], c["valor_cent"], c["status"], c["turno_id"], c["operador_id"]),
+                         (180, 2500, "pendente", self.turno, self.ctx.operador_id))
+        self.assertIn("Comissão de R$ 25,00 lançada para a garota 180", self.cx.status.cget("text"))
+        self.assertIn("A pagar a ela: R$ 25,00", self.cx.status.cget("text"))
+        self.assertEqual(self.cx.var_cod.get(), "")
+        self.assertIsNone(self.cx.produto)                                           # o 50 nunca vira produto
+        self.assertEqual(self.cx.grade.total(), 0)
+        self.sem_travar()
+
+    def test_cada_lancamento_soma_no_numero_da_garota(self):
+        for reais in ("25,00", "30,00"):
+            self.dialogos({"Comissão da garota": self.lancando(valor=reais)})
+            self.posicao("180")
+            self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(180), 5500)
+        self.assertIn("A pagar a ela: R$ 55,00", self.cx.status.cget("text"))
+        self.sem_travar()
+
+    def test_a_comanda_vazia_da_garota_nao_deixa_fantasma_mas_a_comissao_fica(self):
+        self.dialogos({"Comissão da garota": self.lancando(valor="10,00")})
+        self.posicao("180")
+        self.digitar_codigo("50")
+        self.posicao("0")
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas"), 0)
+        self.assertEqual(self.com.pendente(180), 1000)
+        self.sem_travar()
+
+    def test_nome_da_garota_aparece_na_janela_e_na_comanda_dela(self):
+        self.cadastrar(180, "MARIA")
+        visto = {}
+        self.dialogos({"Comissão da garota": self.lancando(valor="25,00", visto=visto)})
+        self.posicao("180")
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Comanda 180 - MARIA")
+        self.digitar_codigo("50")
+        self.assertIn("MARIA", visto["textos"])
+        self.assertIn("garota 180 MARIA", self.cx.status.cget("text"))
+        self.posicao("181")
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Comanda 181")           # só a comanda da garota leva o nome
+        self.sem_travar()
+
+    def test_garota_inativa_nao_leva_o_nome_na_comanda(self):
+        self.cadastrar(180, "MARIA", ativa="N")
+        self.posicao("180")
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Comanda 180")
+
+    def test_fora_de_comanda_a_janela_pergunta_o_numero(self):
+        visto = {}
+        self.dialogos({"Comissão da garota": self.lancando(numero=156, valor="40", visto=visto)})
+        self.digitar_codigo("50")                                                    # no balcão
+        self.assertEqual(visto["numero"], "")
+        self.assertEqual(self.com.pendente(156), 4000)
+        self.sem_travar()
+
+    def test_numero_da_mesa_nao_e_sugerido_como_garota(self):
+        visto = {}
+        self.dialogos({"Comissão da garota": self.lancando(numero=156, valor="40", visto=visto)})
+        self.posicao("M5")
+        self.digitar_codigo("50")
+        self.assertEqual(visto["numero"], "")
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- perguntas de segurança
+    def test_garota_nao_cadastrada_pergunta_quando_ja_ha_cadastro(self):
+        self.cadastrar(180, "MARIA")
+        self.dialogos({"Comissão da garota": self.lancando(numero=810, valor="25"),
+                       "Garota não cadastrada": self.desistindo_depois_de("Não")})
+        self.digitar_codigo("50")
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM comissoes_garotas"), 0)    # engano de digitação (810 por 180)
+        self.dialogos({"Comissão da garota": self.lancando(numero=810, valor="25"), "Garota não cadastrada": "Sim"})
+        self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(810), 2500)
+        self.sem_travar()
+
+    def test_sem_nenhuma_garota_cadastrada_nao_pergunta_nada(self):
+        self.dialogos({"Comissão da garota": self.lancando(numero=810, valor="25")})
+        self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(810), 2500)
+        self.sem_travar()
+
+    def test_garota_inativa_pergunta_antes_de_lancar(self):
+        self.cadastrar(180, "MARIA", ativa="N")
+        self.dialogos({"Comissão da garota": self.lancando(numero=180, valor="25"),
+                       "Garota inativa": self.desistindo_depois_de("Não")})
+        self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(180), 0)
+        self.dialogos({"Comissão da garota": self.lancando(numero=180, valor="25"), "Garota inativa": "Sim"})
+        self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(180), 2500)
+        self.sem_travar()
+
+    def test_valor_alto_pede_confirmacao(self):
+        self.dialogos({"Comissão da garota": self.lancando(numero=180, valor="2500"),
+                       "Confirma o valor": self.desistindo_depois_de("Não")})        # 2500 no lugar de 25,00
+        self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(180), 0)
+        self.dialogos({"Comissão da garota": self.lancando(numero=180, valor="800"), "Confirma o valor": "Sim"})
+        self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(180), 80000)
+        self.sem_travar()
+
+    def test_numero_e_valor_invalidos_avisam_na_propria_janela(self):
+        mensagens = []
+
+        def tenta(numero, valor):
+            def acao(w):
+                ents = entradas(w)
+                ents[0].delete(0, "end"); ents[0].insert(0, numero)
+                ents[1].delete(0, "end"); ents[1].insert(0, valor)
+
+                def clicar_e_ver():
+                    clicar(w, "Lançar")
+                    mensagens.append([t for t in self.textos(w) if t])
+                    w.cancelar()
+                w.after(10, clicar_e_ver)
+            return acao
+        for numero, valor, esperado in (("abc", "10", "número da garota"), ("180", "abc", "Valor inválido"),
+                                        ("180", "0", "Informe o valor"), ("0", "10", "vai de 1 a")):
+            self.dialogos({"Comissão da garota": tenta(numero, valor)})
+            self.digitar_codigo("50")
+            self.assertTrue(any(esperado in t for t in mensagens[-1]), (numero, valor, mensagens[-1]))
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM comissoes_garotas"), 0)
+        self.sem_travar()
+
+    def test_esc_na_janela_nao_lanca_nada(self):
+        self.dialogos({"Comissão da garota": lambda w: w.after(10, w.cancelar)})
+        self.posicao("180")
+        self.digitar_codigo("50")
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM comissoes_garotas"), 0)
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- senha, código desligado, turno
+    def test_operador_so_caixa_lanca_sem_senha_e_com_senha_quando_configurado(self):
+        self.ctx.cadastros.salvar("operadores", {"nome": "BAR", "senha": "1", "nivel": "0"})
+        self.ctx.operador = self.ctx.acesso.autenticar("BAR", "1")
+        self.dialogos({"Comissão da garota": self.lancando(numero=180, valor="10")})
+        self.digitar_codigo("50")
+        self.assertEqual(self.com.pendente(180), 1000)                               # por padrão não pede senha
+        self.banco.cfg_set("exigir_senha_comissao", "S")
+        pedidas = []
+
+        def senha(w):
+            pedidas.append(w.title())
+            entradas(w)[0].insert(0, "ADM"); clicar(w, "OK")
+        self.dialogos({"Autorização": senha, "Comissão da garota": self.lancando(numero=180, valor="20")})
+        self.digitar_codigo("50")
+        self.assertEqual(pedidas, ["Autorização"])
+        self.assertEqual(self.com.pendente(180), 3000)
+        self.assertEqual(self.banco.valor("SELECT operador_id FROM comissoes_garotas ORDER BY id DESC LIMIT 1"), self.ctx.operador_id)
+        self.sem_travar()
+
+    def test_com_senha_exigida_desistir_da_senha_nao_abre_a_janela(self):
+        self.ctx.cadastros.salvar("operadores", {"nome": "BAR", "senha": "1", "nivel": "0"})
+        self.ctx.operador = self.ctx.acesso.autenticar("BAR", "1")
+        self.banco.cfg_set("exigir_senha_comissao", "S")
+        self.dialogos({"Autorização": lambda w: w.after(10, w.cancelar)})
+        self.digitar_codigo("50")
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM comissoes_garotas"), 0)
+        self.sem_travar()
+
+    def test_codigo_desligado_volta_a_ser_busca_de_produto(self):
+        from src.controllers.config_controller import ConfigController
+        ConfigController(self.banco).salvar_config({"codigo_comissao": ""})
+        self.digitar_codigo("50")
+        self.assertIn("não encontrado", self.cx.status.cget("text"))
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM comissoes_garotas"), 0)
+        self.sem_travar()
+
+    def test_o_dono_pode_trocar_o_codigo(self):
+        from src.controllers.config_controller import ConfigController
+        ConfigController(self.banco).salvar_config({"codigo_comissao": "90"})
+        self.dialogos({"Comissão da garota": self.lancando(numero=180, valor="10")})
+        self.digitar_codigo("090")
+        self.assertEqual(self.com.pendente(180), 1000)
+        self.digitar_codigo("50")                                                    # o 50 já não é a comissão
+        self.assertIn("não encontrado", self.cx.status.cget("text"))
+        self.sem_travar()
+
+    def test_produto_de_codigo_parecido_continua_sendo_vendido(self):
+        self.digitar_codigo("2")                                                     # AGUA, código 2
+        self.assertEqual(self.cx.produto["nome"], "AGUA")
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- janela das comissões
+    def abrir_comissoes(self):
+        from src.ui.comissao_ui import JanelaComissoes
+        self.cx.comissoes()
+        janela = next(w for w in self.cx.winfo_children() if isinstance(w, JanelaComissoes))
+        janela.update()
+        return janela
+
+    def test_botao_comissoes_esta_na_barra_do_caixa(self):
+        nomes = [t[0] for t in self.cx.tarefas]
+        self.assertIn("Comissões", nomes)
+        self.assertEqual(nomes[-1], "Sair")
+        self.assertEqual(len(self.cx.botoes_tarefa), len(self.cx.tarefas))
+
+    def test_janela_lista_o_que_pagar_a_cada_garota(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 25); self.dar(180, 30); self.dar(156, 40)
+        j = self.abrir_comissoes()
+        self.assertEqual([[str(c) for c in j.grade.valores(i)] for i in j.grade.tree.get_children()],
+                         [["156", "", "1", "40,00"], ["180", "MARIA", "2", "55,00"]])
+        self.assertIn("R$ 95,00", j.lbl.cget("text"))
+        j.grade.selecionar(180); j._mostrar_itens()
+        self.assertEqual([j.itens.valores(i)[2] for i in j.itens.tree.get_children()], ["25,00", "30,00"])
+        j.destroy()
+
+    def test_janela_sem_nada_a_pagar_avisa(self):
+        j = self.abrir_comissoes()
+        self.assertEqual(j.grade.total(), 0)
+        self.assertIn("Nenhuma comissão a pagar", j.lbl.cget("text"))
+        self.dialogos({"Aviso": lambda w: clicar(w, "OK")})
+        j.pagar()                                                                    # nenhuma garota escolhida
+        j.destroy()
+        self.sem_travar()
+
+    def test_pagar_tira_do_caixa_e_mostra_o_recibo(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 25); self.dar(180, 30)
+        esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
+        recibos = []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.dialogos({"Pagar comissão": "Pagar"})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.pagar(); j.update()
+        self.assertEqual(self.com.pendente(180), 0)
+        m = self.banco.um("SELECT tipo, valor_cent, descricao FROM movimentos_caixa")
+        self.assertEqual((m["tipo"], m["valor_cent"], m["descricao"]), ("saida", 5500, "Comissão garota 180 MARIA"))
+        self.assertEqual(self.ctx.turnos.resumo(self.turno)["esperado"], esperado - 5500)
+        self.assertIn("RECIBO DE COMISSÃO", recibos[0])
+        self.assertIn("Garota: 180 MARIA", recibos[0])
+        self.assertIn("55,00", recibos[0])
+        self.assertEqual(j.grade.total(), 0)
+        self.assertIn("paga à garota 180", j.status.cget("text"))
+        j.destroy()
+        self.sem_travar()
+
+    def test_pagar_fora_do_caixa_nao_registra_sangria(self):
+        self.dar(180, 25)
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+
+        def pagar_fora(w):
+            [c for c in w.winfo_children()[0].winfo_children() if isinstance(c, ttk.Checkbutton)][0].invoke()
+            clicar(w, "Pagar")
+        self.dialogos({"Pagar comissão": pagar_fora})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.pagar()
+        self.assertEqual(self.com.pendente(180), 0)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
+        j.destroy()
+        self.sem_travar()
+
+    def test_desistir_do_pagamento_nao_muda_nada(self):
+        self.dar(180, 25)
+        self.dialogos({"Pagar comissão": "Cancelar"})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.pagar()
+        self.assertEqual(self.com.pendente(180), 2500)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
+        j.destroy()
+        self.sem_travar()
+
+    def test_cancelar_um_lancamento_pela_janela(self):
+        errado = self.dar(180, 999); self.dar(180, 25)
+        self.dialogos({"Cancelar comissão": "Sim"})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.itens.selecionar(errado)
+        j.cancelar()
+        self.assertEqual(self.com.pendente(180), 2500)
+        self.assertEqual(self.banco.valor("SELECT status FROM comissoes_garotas WHERE id = ?", (errado,)), "cancelada")
+        self.assertEqual(j.itens.total(), 1)
+        j.destroy()
+        self.sem_travar()
+
+    def test_lancar_pela_propria_janela(self):
+        self.dialogos({"Comissão da garota": self.lancando(numero=156, valor="40")})
+        j = self.abrir_comissoes()
+        j.lancar()
+        self.assertEqual(self.com.pendente(156), 4000)
+        self.assertEqual(j.grade.total(), 1)
+        self.assertIn("garota 156", j.status.cget("text"))
+        j.destroy()
+        self.sem_travar()
+
+    def test_pagar_exige_senha_de_supervisor_do_operador_so_caixa(self):
+        self.dar(180, 25)
+        self.ctx.cadastros.salvar("operadores", {"nome": "BAR", "senha": "1", "nivel": "0"})
+        self.ctx.operador = self.ctx.acesso.autenticar("BAR", "1")
+        pedidas = []
+
+        def senha(w):
+            pedidas.append(w.title())
+            entradas(w)[0].insert(0, "ADM"); clicar(w, "OK")
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.dialogos({"Autorização": senha, "Pagar comissão": "Pagar"})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.pagar()
+        self.assertEqual(pedidas, ["Autorização"])
+        self.assertEqual(self.com.pendente(180), 0)
+        j.destroy()
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- relatório e cadastro
+    def test_relatorio_mostra_as_comissoes_por_garota(self):
+        from src.ui.relatorios_ui import abrir_relatorio
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 25); self.dar(180, 30)
+        j = abrir_relatorio(self.root, self.ctx, "comissao_garotas")
+        j.update()
+        texto = j.caixa.get("1.0", "end")
+        for trecho in ("COMISSÃO DAS GAROTAS", "180", "MARIA", "55,00", "A pagar"):
+            self.assertIn(trecho, texto)
+        j.destroy()
+
+    def test_cadastro_de_garotas_abre_e_grava_pelo_formulario(self):
+        from src.ui.cadastros_tk import JanelaCadastro
+        j = JanelaCadastro(self.root, self.ctx, "garotas")
+        j.update()
+        j.incluir()
+        j.campos["numero"].var.set("180")
+        j.campos["nome"].var.set("MARIA")
+        j.gravar(); j.update()
+        g = self.banco.um("SELECT numero, nome, ativo FROM garotas")
+        self.assertEqual((g["numero"], g["nome"], g["ativo"]), (180, "MARIA", 1))
+        self.assertEqual(j.grade.total(), 1)
+        j.destroy()
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- troca de turno
+    def trocando_o_turno(self, textos: list, resposta: str):
+        """Responde à troca de turno: digita o valor da gaveta e, na pergunta final, guarda o texto e clica em `resposta`."""
+        def troca(w):
+            campos = entradas(w)
+            if campos:
+                campos[0].delete(0, "end"); campos[0].insert(0, "100,00"); clicar(w, "OK")
+            else:
+                textos.append(self.textos(w)); clicar(w, resposta)
+        return troca
+
+    def test_troca_de_turno_avisa_da_comissao_a_pagar(self):
+        self.dar(180, 25); self.dar(156, 40)
+        textos = []
+        self.dialogos({"Troca de turno": self.trocando_o_turno(textos, "Não")})
+        self.cx.fechar_turno(); self.cx.update()
+        aviso = " ".join(t for t in textos[0] if "Comissão" in t)
+        self.assertIn("Comissão das garotas a pagar: R$ 65,00 (2 garota(s))", aviso)
+        self.assertIn("botão Comissões", aviso)
+        self.assertEqual(self.banco.valor("SELECT status FROM turnos"), "aberto")        # respondeu Não: o turno segue aberto
+        self.sem_travar()
+
+    def test_troca_de_turno_sem_comissao_pendente_nao_avisa(self):
+        textos = []
+        self.dialogos({"Troca de turno": self.trocando_o_turno(textos, "Não")})
+        self.cx.fechar_turno(); self.cx.update()
+        self.assertFalse([t for t in textos[0] if "Comissão" in t], textos)
+        self.sem_travar()
+
+    def test_painel_do_fechamento_mostra_o_total_de_comissao_lancado(self):
+        self.dar(180, 25); self.dar(180, 30)
+        vistos = []
+        self.robo.quando("PainelFechamento", lambda w: (vistos.append(self.textos(w)), w.destroy()))
+        self.dialogos({"Troca de turno": self.trocando_o_turno([], "Sim")})
+        self.cx.fechar_turno(); self.cx.update()
+        self.assertIn("Comissões das garotas", vistos[0])
+        self.assertIn("55,00", vistos[0])
+        self.assertEqual(self.banco.valor("SELECT status FROM turnos"), "fechado")
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- impressora térmica
+    def configurar_termica(self):
+        import os
+        import shutil
+        from pathlib import Path
+        pasta = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, pasta, True)
+        saida = os.path.join(pasta, "saida.prn")
+        self.ctx.impressao.pasta_saida = lambda: Path(pasta)
+        self.ctx.config.salvar_maquina({"modo_impressao": "termica", "impressora_termica_conexao": "arquivo",
+                                        "impressora_termica_endereco": saida, "impressora_termica_gaveta": "S"})
+        return Path(saida)
+
+    def test_recibo_sai_na_termica_e_abre_a_gaveta_quando_o_dinheiro_sai_do_caixa(self):
+        saida = self.configurar_termica()
+        self.cadastrar(180, "MARIA"); self.dar(180, 25)
+        self.dialogos({"Pagar comissão": "Pagar"})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.pagar()
+        self.ctx.impressao.fila.processar()
+        dados = saida.read_bytes()
+        self.assertIn("RECIBO DE COMISSÃO".encode("cp850"), dados)
+        self.assertIn(b"\x1bp", dados)                                               # a gaveta abriu
+        j.destroy()
+        self.sem_travar()
+
+    def test_pagando_fora_do_caixa_o_recibo_sai_mas_a_gaveta_nao_abre(self):
+        saida = self.configurar_termica()
+        self.dar(180, 25)
+
+        def pagar_fora(w):
+            [c for c in w.winfo_children()[0].winfo_children() if isinstance(c, ttk.Checkbutton)][0].invoke()
+            clicar(w, "Pagar")
+        self.dialogos({"Pagar comissão": pagar_fora})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.pagar()
+        self.ctx.impressao.fila.processar()
+        dados = saida.read_bytes()
+        self.assertIn("Pago fora do caixa.".encode("cp850"), dados)
+        self.assertNotIn(b"\x1bp", dados)
+        j.destroy()
+        self.sem_travar()

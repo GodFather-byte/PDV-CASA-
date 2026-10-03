@@ -19,9 +19,10 @@ from src.core.posicao import nome as nome_posicao
 from src.core.posicao import exemplos, parece_posicao, rotulo_do_campo
 from src.hardware.dispositivos import DispositivoIndisponivel
 from src.hardware.impressora_termica import ErroImpressao
-from src.ui import caixa_dialogos, tema
+from src.ui import caixa_dialogos, comissao_ui, tema
 from src.ui.caixa_pagamento import JanelaPagamento
 from src.ui.clientes_ui import JanelaClientes, JanelaEntregas
+from src.ui.comissao_ui import JanelaComissoes
 from src.ui.fila_impressao_ui import JanelaFilaImpressao
 from src.ui.painel_mesas import PainelMesas
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
@@ -165,13 +166,13 @@ class JanelaCaixa(tk.Toplevel):
                         ("Repique (F9)", self.repique), ("Sangria (F7)", self.sangria), ("Delivery (F6)", self.entrega),
                         ("Caderneta (F5)", self.caderneta), ("Impressora", self.impressora), ("Gaveta (F11)", self.gaveta),
                         ("Balança (F2)", self.balanca), ("Fecha Turno", self.fechar_turno), ("Leitor (F3)", self.alternar_leitor),
-                        ("Sair", self.sair)]
+                        ("Comissões", self.comissoes), ("Sair", self.sair)]
         self.botoes_tarefa = []
         for i, (rotulo, fn) in enumerate(self.tarefas):
             b = ttk.Button(self.barra, text=rotulo, style="Barra.TButton", takefocus=False, command=lambda f=fn: self._exec_barra(f))
-            b.grid(row=i // 8, column=i % 8, padx=2, pady=2, sticky="ew")
+            b.grid(row=i // 9, column=i % 9, padx=2, pady=2, sticky="ew")
             self.botoes_tarefa.append(b)
-        for c in range(8):
+        for c in range(9):
             self.barra.columnconfigure(c, weight=1)
 
     # ============================================================== estado
@@ -248,7 +249,9 @@ class JanelaCaixa(tk.Toplevel):
             return
         mod = v["modalidade"]
         if mod == "mesa":
+            garota = self.ctx.comissoes.garota(v["posicao"]) if v["comanda"] else None
             self.lbl_situacao.configure(text=nome_posicao(v["comanda"], v["posicao"])
+                                        + (f" - {garota['nome']}" if garota and garota["ativo"] else "")
                                         + (" - CONTA ENVIADA" if v["status"] == "conta_enviada" else ""))
             self.var_pos.set(self.ctx.caixa.rotular_posicao(v["comanda"], v["posicao"]))
         else:
@@ -290,6 +293,10 @@ class JanelaCaixa(tk.Toplevel):
         return "break"
 
     def resolver_codigo(self, texto: str) -> None:
+        if self.ctx.comissoes.eh_codigo(texto):          # o código da comissão (50) não é produto: abre a janela da garota
+            self.var_cod.set("")
+            self.lancar_comissao()
+            return
         p = self.ctx.produtos.buscar_codigo(texto)
         if p is None and parece_posicao(texto):      # "C2" ou "M5" no campo do código troca de posição (produto de mesmo código vence)
             self.var_cod.set("")
@@ -804,6 +811,18 @@ class JanelaCaixa(tk.Toplevel):
             self.venda_id = None
             self.recarregar()
             self.ent_codigo.focus_set()
+
+    def lancar_comissao(self) -> None:
+        """Código 50: na comanda 180 a garota é a 180 (a janela já vem com o número); fora de comanda ela pergunta."""
+        v = self.venda()
+        sugerida = str(v["posicao"]) if v and v["modalidade"] == "mesa" and v["comanda"] else ""
+        comissao_ui.lancar(self, self.ctx, sugerida, ao_lancar=lambda texto: self.avisar(texto, tema.COR["ok"]))
+        self.ent_codigo.focus_set()
+
+    def comissoes(self) -> None:
+        """Botão Comissões: o que há a pagar a cada garota, pagamento com recibo e cancelamento de lançamento."""
+        JanelaComissoes(self, self.ctx)
+        self.ent_codigo.focus_set()
 
     def repique(self) -> None:
         v = self.venda()

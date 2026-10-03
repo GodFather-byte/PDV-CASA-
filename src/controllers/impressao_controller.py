@@ -226,6 +226,20 @@ class ImpressaoController:
                                               _lr("Valor", M(valor_cent), w), f"Motivo: {descricao}"[:w * 2],
                                               f"Operador: {operador}", "", "_" * w, "Assinatura".center(w)])
 
+    def recibo_comissao(self, pag: dict, operador: str) -> str:
+        """Recibo da comissão paga a uma garota (não fiscal): cada lançamento, o total e a linha da assinatura."""
+        w = self.largura()
+        quem = f"{pag['garota']} {pag['nome']}".strip()
+        linhas = self.cabecalho(w) + ["=" * w, "RECIBO DE COMISSÃO".center(w), fmt.fmt_datahora(pag["pago_em"]).center(w),
+                                      f"Garota: {quem}"[:w], "-" * w]
+        for i in pag["lancamentos"]:
+            d = fmt.fmt_datahora(i["criado_em"])
+            linhas.append(_lr(f"{d[:5]} {d[11:16]}  lançamento {i['id']}", M(i["valor_cent"]), w))
+        linhas += ["-" * w, _lr(f"TOTAL PAGO ({pag['quantidade']})", M(pag["total_cent"]), w),
+                   "Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.",
+                   f"Operador: {operador}", "", "_" * w, "Assinatura da garota".center(w)]
+        return "\n".join(linhas)
+
     def leitura_x(self, turno_id: int) -> str:
         """Parcial gerencial do turno (equivale ao uso da Leitura X do manual; não é fiscal)."""
         from src.controllers.turno_controller import TurnoController

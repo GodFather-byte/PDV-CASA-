@@ -343,7 +343,7 @@ class TesteImpressao(BaseCaixa):
         cozinha = self.banco.inserir("subgrupos", {"nome": "COZINHA", "grupo_id": self.banco.valor("SELECT id FROM grupos LIMIT 1"),
                                                    "impressora_remota": 1})
         prato = CadastroController(self.banco).salvar("produtos", {
-            "codigo": "50", "nome": "FILE", "subgrupo_id": cozinha,
+            "codigo": "70", "nome": "FILE", "subgrupo_id": cozinha,
             "unidade_id": self.banco.valor("SELECT id FROM unidades LIMIT 1"), "preco_cent": "30,00"})
         vid = self.caixa.abrir_balcao()
         self.caixa.adicionar_item(vid, self.skol, 1)

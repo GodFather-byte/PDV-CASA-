@@ -76,14 +76,23 @@ class UtilitarioController:
             turnos = [r[0] for r in self.banco.todos(
                 """SELECT t.id FROM turnos t WHERE t.status = 'fechado' AND date(t.aberto_em) < ?
                    AND NOT EXISTS (SELECT 1 FROM vendas v WHERE v.turno_id = t.id)""", (data,))]
+            comissoes = 0
             for t in turnos:
+                # Comissões das garotas: a paga aponta para a sangria que vai ser apagada; as pagas e canceladas saem com o
+                # turno, mas a PENDENTE é dinheiro devido e fica (só perde o turno).
+                self.banco.executar("UPDATE comissoes_garotas SET movimento_id = NULL WHERE movimento_id IN "
+                                    "(SELECT id FROM movimentos_caixa WHERE turno_id = ?)", (t,))
+                self.banco.executar("UPDATE comissoes_garotas SET turno_id = NULL WHERE turno_id = ? AND status = 'pendente'", (t,))
+                comissoes += self.banco.executar(
+                    "DELETE FROM comissoes_garotas WHERE turno_id = ? AND status <> 'pendente'", (t,)).rowcount
                 self.banco.executar("DELETE FROM movimentos_caixa WHERE turno_id = ?", (t,))
                 self.banco.executar("DELETE FROM repiques WHERE turno_id = ?", (t,))
                 self.banco.executar("DELETE FROM turnos WHERE id = ?", (t,))
             movs = self.banco.executar("DELETE FROM movimentos_estoque WHERE date(criado_em) < ?", (data,)).rowcount
             logs = self.banco.executar("DELETE FROM log_eventos WHERE date(quando) < ?", (data,)).rowcount
             self.banco.log("limpeza_movimento", f"até {data}: {len(ids)} vendas, {len(turnos)} turnos", self.operador_id)
-        return {"vendas": len(ids), "turnos": len(turnos), "movimentos_estoque": movs, "logs": logs, "backup": copia}
+        return {"vendas": len(ids), "turnos": len(turnos), "movimentos_estoque": movs, "logs": logs, "comissoes": comissoes,
+                "backup": copia}
 
     # ------------------------------------------------------ comunicação
     def abrir_programa_comunicacao(self) -> None:
