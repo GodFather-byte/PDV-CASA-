@@ -107,8 +107,8 @@ pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno e Lei
 
 **Como imprime**
 
-- **Fila:** o documento é gravado no banco na hora e uma thread o envia. Impressora desligada, sem papel ou fora da
-  rede não trava o caixa: o documento espera e sai sozinho quando ela volta (novas tentativas após 5, 10, 20, 40 e 60 s,
+- **Fila:** o documento é gravado no banco na hora e uma thread o envia. Impressora desligada ou fora da rede não
+  trava o caixa: o documento espera e sai sozinho quando ela volta (novas tentativas após 5, 10, 20, 40 e 60 s,
   e depois a cada minuto; passada cerca de uma hora vira *erro* e aguarda o operador). A ordem de cada destino (caixa e
   cozinha/bar) é preservada. Os já impressos ou cancelados saem da lista depois de 7 dias; pendentes e com erro nunca
   são apagados sozinhos.
@@ -129,6 +129,8 @@ pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno e Lei
 
 **Limites:** não há ECF, NFC-e, SAT nem TEF. Nada foi validado em equipamento real: os testes usam uma impressora TCP
 simulada e arquivos. A página de código, o corte, a gaveta e a velocidade serial variam por modelo; use a página de teste.
+A fila só sabe se a impressora aceitou os bytes: falta de papel e tampa aberta não são detectadas (o documento conta
+como impresso; reimprima pela 2ª via).
 
 ## Arquitetura
 

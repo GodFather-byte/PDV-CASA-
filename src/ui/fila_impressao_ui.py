@@ -24,7 +24,8 @@ class JanelaFilaImpressao(tk.Toplevel):
         self.lbl = ttk.Label(corpo, text="", font=tema.FONTE_B)
         self.lbl.pack(anchor="w", pady=(0, 6))
         ttk.Label(corpo, text="Os documentos da impressora térmica e da cozinha/bar são gravados aqui antes de imprimir. Se a "
-                              "impressora estiver desligada, sem papel ou sem rede, eles esperam e saem sozinhos quando ela voltar.",
+                              "impressora estiver desligada ou fora da rede, eles esperam e saem sozinhos quando ela voltar. Falta de papel e "
+                              "tampa aberta não são detectadas: o documento conta como impresso.",
                   wraplength=1000, foreground=tema.COR["suave"]).pack(anchor="w", pady=(0, 8))
         self.grade = tema.Grade(corpo, [("id", "Nº", 50, "e"), ("hora", "Gerado em", 130, "w"), ("dest", "Destino", 90, "w"),
                                         ("doc", "Documento", 170, "w"), ("status", "Situação", 90, "w"), ("tent", "Tentativas", 86, "e"),
