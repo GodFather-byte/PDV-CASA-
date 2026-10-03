@@ -2,10 +2,12 @@
 Pulados automaticamente se não houver ambiente gráfico."""
 from __future__ import annotations
 
+import shutil
 import tempfile
 import tkinter as tk
 import unittest
 from datetime import date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from tkinter import ttk
 from unittest import mock
@@ -47,6 +49,9 @@ class BaseUI(unittest.TestCase):
         self.root.withdraw()
         tema.aplicar_tema(self.root)
         self.robo = Robo(self.root)
+        self.pasta_impressao = tempfile.mkdtemp()            # o histórico de impressão dos testes não vai para a pasta do projeto
+        self.ctx.impressao.pasta_saida = lambda: Path(self.pasta_impressao)
+        self.addCleanup(shutil.rmtree, self.pasta_impressao, True)
         self.addCleanup(self._fechar)
 
     def _fechar(self):
@@ -1354,10 +1359,12 @@ class TesteComandaPorNumeroNoCaixa(BaseUI):
 
 
 class TesteComissaoDasGarotasNoCaixa(BaseUI):
-    """O código 50 no caixa: na comanda 180 a janela já vem com a garota 180; o valor fica marcado no número dela."""
+    """O código 50 pela JANELA (config 'comissao_na_linha' desligada): na comanda 180 a janela já vem com a garota 180; o valor
+    fica marcado no número dela. O modo padrão, na linha de entrada, está em tests/test_comissao_na_tela.py."""
 
     def setUp(self):
         super().setUp()
+        self.banco.cfg_set("comissao_na_linha", "N")
         self.abrir_turno()
         from src.ui.caixa_ui import JanelaCaixa
         self.cx = JanelaCaixa(self.root, self.ctx)

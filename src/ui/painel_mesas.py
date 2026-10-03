@@ -3,10 +3,12 @@
 Esc (ou F4) leva ao "marcar comanda": o painel aparece e o foco vai para o campo da posição. Cada posição aberta é um
 ícone com o número e o total embaixo: mesinha com garrafa e copo (mesa consumindo), cartão (comanda consumindo), conta
 sobre a bandeja (conta já enviada ao cliente) e um relógio quando está parada além do tempo de inatividade.
-O primeiro ícone é o balcão. Tudo é desenhado com formas do Tk, sem arquivos de imagem.
+O primeiro ícone é o balcão. A garota com comissão a pagar aparece com uma estrela (ou um selo na própria comanda, se ela
+tem consumo aberto): a comissão fica à vista na mesma tela do balcão. Tudo é desenhado com formas do Tk, sem arquivos de imagem.
 """
 from __future__ import annotations
 
+import math
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable
@@ -24,15 +26,21 @@ ESTADOS = {
     "parada": {"fundo": "#fdeaea", "borda": "#e39a9a", "texto": tema.COR["perigo"]},
     "conta": {"fundo": "#fff3dc", "borda": "#e2b25a", "texto": "#8a5a00"},
     "balcao": {"fundo": "#eaf6ef", "borda": "#8cc8a5", "texto": "#14623f"},
+    "garota": {"fundo": "#e4f5f2", "borda": "#7cc4b8", "texto": "#0b7a6b"},
 }
 
 
-def montar_tiles(mesas: list[dict], balcao: dict | None = None) -> list[dict]:
-    """Modelo dos ícones, sem Tk: o balcão primeiro e depois as mesas e comandas, na ordem recebida.
+def montar_tiles(mesas: list[dict], balcao: dict | None = None, garotas=()) -> list[dict]:
+    """Modelo dos ícones, sem Tk: o balcão primeiro, depois as mesas e comandas (na ordem recebida) e, por fim, as garotas
+    com comissão a pagar.
 
-    `mesas` é o que `CaixaController.mesas()` devolve; `balcao`, a venda de balcão em andamento (ou None)."""
+    `mesas` é o que `CaixaController.mesas()` devolve; `balcao`, a venda de balcão em andamento (ou None); `garotas`, uma
+    lista de {'rotulo': a comanda da garota na notação da loja, 'total_cent': o que há a pagar a ela}. A garota que também
+    tem consumo aberto na comanda não ganha um ícone à parte: o ícone da comanda leva o selo `garota` (o total a pagar). Se a
+    comanda dela está aberta mas vazia (o operador só foi ver ou marcar a comissão), o ícone é o da garota, como seria fora dela."""
     tiles = [{"chave": "0", "rotulo": "Balcão", "tipo": "balcao", "estado": "balcao",
               "total": fmt.fmt_num(balcao["total_cent"]) if balcao and balcao["total_cent"] else "", "minutos": 0}]
+    a_pagar = {g["rotulo"]: g for g in garotas}
     for m in mesas:
         if m["status"] == "conta_enviada":
             estado = "conta"
@@ -40,8 +48,17 @@ def montar_tiles(mesas: list[dict], balcao: dict | None = None) -> list[dict]:
             estado = "parada"
         else:
             estado = "consumindo"
-        tiles.append({"chave": m["rotulo"], "rotulo": m["rotulo"], "tipo": "comanda" if m["comanda"] else "mesa",
-                      "estado": estado, "total": fmt.fmt_num(m["total_cent"]), "minutos": m["minutos_parada"]})
+        tile = {"chave": m["rotulo"], "rotulo": m["rotulo"], "tipo": "comanda" if m["comanda"] else "mesa",
+                "estado": estado, "total": fmt.fmt_num(m["total_cent"]), "minutos": m["minutos_parada"]}
+        g = a_pagar.pop(m["rotulo"], None) if m["comanda"] else None
+        if g is not None and m.get("n_itens", 1) == 0:
+            tile.update(tipo="garota", estado="garota", total=fmt.fmt_num(g["total_cent"]), minutos=0)
+        elif g is not None:
+            tile["garota"] = fmt.fmt_num(g["total_cent"])
+        tiles.append(tile)
+    for g in a_pagar.values():
+        tiles.append({"chave": g["rotulo"], "rotulo": g["rotulo"], "tipo": "garota", "estado": "garota",
+                      "total": fmt.fmt_num(g["total_cent"]), "minutos": 0})
     return tiles
 
 
@@ -96,7 +113,28 @@ def _icone_relogio(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
     c.create_line(cx, cy, cx + 3, cy, fill=cor, width=2, tags=tags)
 
 
-ICONES = {"mesa": _icone_mesa, "comanda": _icone_comanda, "conta": _icone_conta, "balcao": _icone_balcao}
+def _estrela(cx: float, cy: float, externo: float, interno: float) -> list[float]:
+    pontos = []
+    for i in range(10):
+        raio = externo if i % 2 == 0 else interno
+        angulo = math.radians(-90 + i * 36)
+        pontos += [cx + raio * math.cos(angulo), cy + raio * math.sin(angulo)]
+    return pontos
+
+
+def _icone_garota(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
+    c.create_oval(x + 2, y + 1, x + 34, y + 31, fill="#0b7a6b", outline="#075247", width=2, tags=tags)
+    c.create_polygon(_estrela(x + 18, y + 16.5, 12, 5), fill="#ffd84d", outline="#b8860b", tags=tags)
+
+
+def _selo_garota(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
+    """Selo no canto do ícone da comanda: a garota dela tem comissão a pagar."""
+    c.create_oval(x, y, x + 15, y + 15, fill="#0b7a6b", outline="#075247", tags=tags)
+    c.create_polygon(_estrela(x + 7.5, y + 7.8, 6, 2.6), fill="#ffd84d", outline="", tags=tags)
+
+
+ICONES = {"mesa": _icone_mesa, "comanda": _icone_comanda, "conta": _icone_conta, "balcao": _icone_balcao,
+          "garota": _icone_garota}
 
 
 class PainelMesas(ttk.Frame):
@@ -125,7 +163,8 @@ class PainelMesas(ttk.Frame):
         cabecalho.pack(fill="x")
         ttk.Label(cabecalho, text="Mesas e comandas abertas", style="Rotulo.TLabel").pack(side="left")
         ttk.Label(cabecalho, text="Esc marca a comanda   |   setas + Enter escolhem   |   T transfere outras para a escolhida"
-                                  "   |   0 = balcão", font=("Segoe UI", 8), foreground=tema.COR["suave"]).pack(side="right")
+                                  "   |   0 = balcão   |   estrela = comissão de garota a pagar",
+                  font=("Segoe UI", 8), foreground=tema.COR["suave"]).pack(side="right")
         c = self.canvas = tk.Canvas(self, height=ALTURA + 2 * MARGEM, bg=tema.COR["fundo"], bd=0, takefocus=True,
                                     highlightthickness=1, highlightbackground=tema.COR["borda"],
                                     highlightcolor=tema.COR["marinho2"], yscrollincrement=ALTURA)
@@ -143,9 +182,9 @@ class PainelMesas(ttk.Frame):
         c.tag_bind("tile", "<Leave>", lambda ev: c.configure(cursor=""))
 
     # -------------------------------------------------------------- dados
-    def atualizar(self, mesas: list[dict], balcao: dict | None = None, atual: str | None = None) -> None:
-        tiles = montar_tiles(mesas, balcao)
-        assinatura = ([(t["chave"], t["tipo"], t["estado"], t["total"]) for t in tiles], atual)
+    def atualizar(self, mesas: list[dict], balcao: dict | None = None, atual: str | None = None, garotas=()) -> None:
+        tiles = montar_tiles(mesas, balcao, garotas)
+        assinatura = ([(t["chave"], t["tipo"], t["estado"], t["total"], t.get("garota")) for t in tiles], atual)
         if assinatura == self._assinatura:
             return
         self._assinatura = assinatura
@@ -156,6 +195,9 @@ class PainelMesas(ttk.Frame):
 
     def tiles(self) -> list[dict]:
         return [dict(t) for t in self._tiles]
+
+    def _tipo(self, chave: str | None) -> str | None:
+        return next((t["tipo"] for t in self._tiles if t["chave"] == chave), None)
 
     def cursor(self) -> str | None:
         return self._cursor
@@ -235,6 +277,8 @@ class PainelMesas(ttk.Frame):
         ICONES[tipo_icone](c, ox, oy, marca + ("icone", f"icone:{tipo_icone}"))
         if t["estado"] == "parada":
             _icone_relogio(c, ox, oy, marca + ("relogio",))
+        if t.get("garota"):
+            _selo_garota(c, x + 5, y + 6, marca + ("selo",))
         meio = x + LARGURA // 2
         c.create_text(meio, y + 46, text=t["rotulo"], font=("Segoe UI", 11, "bold"), fill=estilo["texto"], tags=marca + ("rotulo",))
         if t["total"]:
@@ -318,7 +362,7 @@ class PainelMesas(ttk.Frame):
         elif k == "Escape":
             self._ao_voltar()
         elif k in ("t", "T"):
-            if self._cursor and self._cursor != "0":
+            if self._cursor and self._cursor != "0" and self._tipo(self._cursor) != "garota":
                 self._ao_transferir(self._cursor)
         elif ev.char and (ev.char.isdigit() or ev.char in "cCmM"):
             self._ao_digitar(ev.char)

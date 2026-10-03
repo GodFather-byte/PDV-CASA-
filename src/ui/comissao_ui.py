@@ -1,4 +1,7 @@
-"""Telas da comissão das garotas: lançar (o código 50 do caixa), ver o que há a pagar, pagar com recibo e cancelar lançamento."""
+"""Comissão das garotas: lançar (o código 50 do caixa), imprimir a via dela, ver o que há a pagar, pagar com recibo e cancelar.
+
+As funções soltas (`registrar_comissao`, `pagar_garota`, `cancelar_lancamento`, `conferir_lancamento`) são o que a tela do caixa
+usa na linha de entrada, no F12 e no Delete; a janela do código 50 e a `JanelaComissoes` chamam as mesmas."""
 from __future__ import annotations
 
 import tkinter as tk
@@ -16,6 +19,24 @@ def autorizar(master, ctx, modulo: str, cfg: str, motivo: str) -> bool:
     if not ctx.acesso.precisa_senha(ctx.operador, modulo, cfg):
         return True
     return tema.pedir_senha_supervisor(master, ctx, modulo, motivo) is not None
+
+
+def conferir_lancamento(master, ctx, numero: int, cent: int) -> str | None:
+    """As perguntas antes de lançar: garota não cadastrada, inativa e valor alto. Devolve None se tudo foi confirmado, ou o
+    campo a corrigir ('numero' ou 'valor') quando o operador respondeu Não."""
+    g = ctx.comissoes.garota(numero)
+    if g is None and not ctx.comissoes.cadastro_vazio():
+        if not tema.confirmar(master, f"A garota {numero} não está cadastrada.\nLançar a comissão assim mesmo?",
+                              "Garota não cadastrada", padrao_sim=False):
+            return "numero"
+    elif g is not None and not g["ativo"]:
+        if not tema.confirmar(master, f"A garota {numero} - {g['nome']} está inativa.\nLançar a comissão assim mesmo?",
+                              "Garota inativa", padrao_sim=False):
+            return "numero"
+    if cent > LIMITE_CONFIRMAR_CENT and not tema.confirmar(
+            master, f"Valor alto: {fmt.fmt_brl(cent)} para a garota {numero}.\nConfirma?", "Confirma o valor", padrao_sim=False):
+        return "valor"
+    return None
 
 
 def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
@@ -68,20 +89,9 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
             msg.configure(text="Informe o valor da comissão.")
             ev.focus_set()
             return
-        g = ctx.comissoes.garota(n)
-        if g is None and not ctx.comissoes.cadastro_vazio():
-            if not tema.confirmar(dlg, f"A garota {n} não está cadastrada.\nLançar a comissão assim mesmo?",
-                                  "Garota não cadastrada", padrao_sim=False):
-                en.focus_set()
-                return
-        elif g is not None and not g["ativo"]:
-            if not tema.confirmar(dlg, f"A garota {n} - {g['nome']} está inativa.\nLançar a comissão assim mesmo?",
-                                  "Garota inativa", padrao_sim=False):
-                en.focus_set()
-                return
-        if cent > LIMITE_CONFIRMAR_CENT and not tema.confirmar(
-                dlg, f"Valor alto: {fmt.fmt_brl(cent)} para a garota {n}.\nConfirma?", "Confirma o valor", padrao_sim=False):
-            ev.focus_set()
+        campo = conferir_lancamento(dlg, ctx, n, cent)
+        if campo is not None:
+            (en if campo == "numero" else ev).focus_set()
             return
         dlg.ok((n, cent))
 
@@ -95,8 +105,36 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
     return dlg.mostrar(ev if sugerida else en)
 
 
+def entregar_via(ctx, lancamento_id: int) -> str:
+    """Imprime a via que a garota leva a cada comissão lançada (config 'imprimir_via_comissao'). Devolve a frase para o status
+    da tela. Sem impressora (modo tela) a via só fica gravada no histórico: abrir uma janela a cada lançamento travaria o caixa."""
+    if not ctx.banco.cfg_bool("imprimir_via_comissao", True):
+        return ""
+    try:
+        ctx.impressao.imprimir_via_comissao(lancamento_id, ctx.operador.nome)
+    except Exception as e:  # noqa: BLE001 - a comissão já está gravada: falha de impressão nunca pode parecer falha do lançamento
+        ctx.banco.log("via_comissao_falhou", f"lançamento {lancamento_id}: {e}"[:300], ctx.operador_id)
+        return f" ATENÇÃO: a via da garota não foi impressa ({e})."
+    if ctx.impressao.deve_mostrar_na_tela():
+        return " Sem impressora configurada: a via ficou só no histórico."
+    return " Via da garota enviada para a impressora."
+
+
+def registrar_comissao(master, ctx, turno_id: int, numero: int, cent: int, ao_lancar=None) -> int | None:
+    """Grava a comissão, imprime a via da garota e avisa o operador. Devolve o id do lançamento ou None se não gravou."""
+    ok, lancamento_id = tema.tratar(master, ctx.comissoes.lancar, numero, cent, turno_id, ctx.operador_id)
+    if not ok:
+        return None
+    nome = ctx.comissoes.nome(numero)
+    texto = (f"Comissão de {fmt.fmt_brl(cent)} lançada para a garota {numero}{' ' + nome if nome else ''}. "
+             f"A pagar a ela: {fmt.fmt_brl(ctx.comissoes.pendente(numero))}.") + entregar_via(ctx, lancamento_id)
+    if ao_lancar:
+        ao_lancar(texto)
+    return lancamento_id
+
+
 def lancar(master, ctx, sugerida: str = "", ao_lancar=None) -> int | None:
-    """O fluxo inteiro do código 50: autoriza, abre a janela, grava e avisa. Devolve o número da garota ou None."""
+    """O fluxo inteiro do código 50 pela janela: autoriza, abre a janela, grava e avisa. Devolve o número da garota ou None."""
     if not autorizar(master, ctx, "caixa_comissao", "exigir_senha_comissao", "Lançar comissão exige autorização:"):
         return None
     turno = ctx.turnos.atual()
@@ -107,14 +145,7 @@ def lancar(master, ctx, sugerida: str = "", ao_lancar=None) -> int | None:
     if escolha is None:
         return None
     numero, cent = escolha
-    ok, _ = tema.tratar(master, ctx.comissoes.lancar, numero, cent, turno["id"], ctx.operador_id)
-    if not ok:
-        return None
-    nome = ctx.comissoes.nome(numero)
-    if ao_lancar:
-        ao_lancar(f"Comissão de {fmt.fmt_brl(cent)} lançada para a garota {numero}{' ' + nome if nome else ''}. "
-                  f"A pagar a ela: {fmt.fmt_brl(ctx.comissoes.pendente(numero))}.")
-    return numero
+    return numero if registrar_comissao(master, ctx, turno["id"], numero, cent, ao_lancar) is not None else None
 
 
 def dialogo_pagar(master, numero: int, nome: str, total_cent: int, quantidade: int) -> bool | None:
@@ -129,6 +160,40 @@ def dialogo_pagar(master, numero: int, nome: str, total_cent: int, quantidade: i
     b = tema._botoes(dlg, "Pagar", comando_ok=lambda: dlg.ok(bool(do_caixa.get())))
     dlg.bind("<Return>", lambda e: dlg.ok(bool(do_caixa.get())))
     return dlg.mostrar(b)
+
+
+def pagar_garota(master, ctx, numero: int) -> dict | None:
+    """Paga toda a comissão pendente da garota: autoriza, confirma, tira do caixa (se for o caso) e entrega o recibo.
+    Devolve o pagamento, ou None se não houve (sem autorização, nada a pagar, desistência ou erro)."""
+    if not autorizar(master, ctx, "caixa_pagar_comissao", "exigir_senha_sangria", "Pagar comissão exige autorização:"):
+        return None
+    itens = ctx.comissoes.lancamentos(numero)
+    if not itens:
+        tema.aviso(master, f"A garota {numero} não tem comissão pendente.")
+        return None
+    do_caixa = dialogo_pagar(master, numero, ctx.comissoes.nome(numero), sum(i["valor_cent"] for i in itens), len(itens))
+    if do_caixa is None:
+        return None
+    turno = ctx.turnos.atual()
+    ok, pag = tema.tratar(master, ctx.comissoes.pagar, numero, turno["id"] if turno else None, ctx.operador_id, do_caixa)
+    if not ok:
+        return None
+    enviar_ou_mostrar(master, ctx, "Recibo de comissão", ctx.impressao.recibo_comissao(pag, ctx.operador.nome),
+                      f"recibo_comissao_{numero}", tipo="comprovante", abrir_gaveta=pag["tirou_do_caixa"])
+    return pag
+
+
+def cancelar_lancamento(master, ctx, lancamento_id: int, rotulo: str, ja_autorizado: bool = False) -> bool:
+    """Cancela um lançamento de comissão (senha de cancelamento e confirmação). `rotulo` o descreve na pergunta;
+    `ja_autorizado` dispensa a senha quando o operador já a deu (modo cancelar do caixa)."""
+    if not ja_autorizado and not autorizar(master, ctx, "caixa_cancelamento", "exigir_senha_cancelamento",
+                                           "Cancelar comissão exige autorização:"):
+        return False
+    if not tema.confirmar(master, f"Cancelar {rotulo}?\nEle deixa de contar como comissão a pagar.", "Cancelar comissão",
+                          padrao_sim=False):
+        return False
+    ok, _ = tema.tratar(master, ctx.comissoes.cancelar, int(lancamento_id), ctx.operador_id, "cancelado no caixa")
+    return ok
 
 
 class JanelaComissoes(tk.Toplevel):
@@ -211,23 +276,11 @@ class JanelaComissoes(tk.Toplevel):
         n = self._garota()
         if n is None:
             return
-        if not autorizar(self, self.ctx, "caixa_pagar_comissao", "exigir_senha_sangria", "Pagar comissão exige autorização:"):
-            return
-        itens = self.ctx.comissoes.lancamentos(n)
-        if not itens:
-            tema.aviso(self, f"A garota {n} não tem comissão pendente.")
-            self.atualizar()
-            return
-        do_caixa = dialogo_pagar(self, n, self.ctx.comissoes.nome(n), sum(i["valor_cent"] for i in itens), len(itens))
-        if do_caixa is None:
-            return
-        turno = self.ctx.turnos.atual()
-        ok, pag = tema.tratar(self, self.ctx.comissoes.pagar, n, turno["id"] if turno else None, self.ctx.operador_id, do_caixa)
-        if not ok:
+        pag = pagar_garota(self, self.ctx, n)
+        if pag is None:
+            self.atualizar()                       # nada a pagar (ou já pago em outro lugar): a lista se corrige
             return
         self.status.configure(text=f"Comissão de {fmt.fmt_brl(pag['total_cent'])} paga à garota {n}.")
-        enviar_ou_mostrar(self, self.ctx, "Recibo de comissão", self.ctx.impressao.recibo_comissao(pag, self.ctx.operador.nome),
-                          f"recibo_comissao_{n}", tipo="comprovante", abrir_gaveta=pag["tirou_do_caixa"])
         self.atualizar()
         self.ao_mudar()
 
@@ -236,14 +289,8 @@ class JanelaComissoes(tk.Toplevel):
         if escolhido is None:
             tema.aviso(self, "Escolha, na lista da direita, o lançamento que será cancelado.")
             return
-        if not autorizar(self, self.ctx, "caixa_cancelamento", "exigir_senha_cancelamento", "Cancelar comissão exige autorização:"):
-            return
         valores = self.itens.valores(escolhido)
-        if not tema.confirmar(self, f"Cancelar o lançamento {valores[0]} de R$ {valores[2]}?\nEle deixa de contar como comissão a pagar.",
-                              "Cancelar comissão", padrao_sim=False):
-            return
-        ok, _ = tema.tratar(self, self.ctx.comissoes.cancelar, int(escolhido), self.ctx.operador_id, "cancelado no caixa")
-        if ok:
+        if cancelar_lancamento(self, self.ctx, int(escolhido), f"o lançamento {valores[0]} de R$ {valores[2]}"):
             self.status.configure(text=f"Lançamento {valores[0]} cancelado.")
             self.atualizar()
             self.ao_mudar()

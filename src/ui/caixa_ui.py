@@ -7,6 +7,10 @@
 
 Comanda e mesa: no campo da posição digite o número da comanda (ex.: 123) ou M e o número da mesa (ex.: M5). Com
 `posicao_padrao = mesa` é o contrário: 5 é a mesa e C2 a comanda. C2 e M5 também valem direto no campo do código.
+
+Comissão das garotas, sem sair desta tela: o código 50 troca a linha de entrada para "Garota nº" e "Valor (R$)" (Enter
+confirma e imprime a via da garota; Esc cancela). Na comanda da garota, F12 paga o que está marcado e Delete cancela a
+linha selecionada. As garotas com comissão a pagar aparecem como ícones (estrela) ao lado do balcão, no rodapé.
 """
 from __future__ import annotations
 
@@ -27,6 +31,8 @@ from src.ui.fila_impressao_ui import JanelaFilaImpressao
 from src.ui.painel_mesas import PainelMesas
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
+COR_COMISSAO = "#0b7a6b"        # o verde-azulado da comissão: linhas da comanda, faixa, ícone da garota
+
 
 class JanelaCaixa(tk.Toplevel):
     def __init__(self, master, ctx):
@@ -40,6 +46,7 @@ class JanelaCaixa(tk.Toplevel):
         self.indice_barra: int | None = None
         self.comissao_marcada: list[dict] = []     # comissões marcadas na comanda da tela (só se for comanda de garota)
         self._itens_na_grade = 0                   # quantas linhas da lista são itens da venda (o resto é comissão)
+        self.modo_comissao = False                 # a linha de entrada está lançando comissão (garota nº + valor), não produto
         self.leitor = bool(ctx.config.maquina()["leitor_optico"])
         self.title(f"Caixa - {ctx.config.nome_loja()}")
         self.configure(bg=tema.COR["fundo"])
@@ -107,8 +114,10 @@ class JanelaCaixa(tk.Toplevel):
 
         ent = ttk.Frame(self, padding=(12, 8, 12, 0))
         ent.pack(fill="x")
-        ttk.Label(ent, text="Código", style="Rotulo.TLabel").grid(row=0, column=0, sticky="w")
+        self.lbl_cod_titulo = ttk.Label(ent, text="Código", style="Rotulo.TLabel")
+        self.lbl_cod_titulo.grid(row=0, column=0, sticky="w")
         self.var_cod = tk.StringVar()
+        self.var_cod.trace_add("write", lambda *_: self._comissao_nome() if self.modo_comissao else None)
         self.ent_codigo = ttk.Entry(ent, textvariable=self.var_cod, width=18, font=("Segoe UI", 14))
         self.ent_codigo.grid(row=1, column=0, sticky="w")
         ttk.Button(ent, text="Consultar", command=self.consultar).grid(row=1, column=1, padx=8)
@@ -118,7 +127,8 @@ class JanelaCaixa(tk.Toplevel):
         ttk.Label(ent, text="Unidade", style="Rotulo.TLabel").grid(row=0, column=3, sticky="w")
         self.lbl_un = ttk.Label(ent, text="", font=("Segoe UI", 12), width=6)
         self.lbl_un.grid(row=1, column=3, sticky="w")
-        ttk.Label(ent, text="Quantidade", style="Rotulo.TLabel").grid(row=0, column=4, sticky="w")
+        self.lbl_qtd_titulo = ttk.Label(ent, text="Quantidade", style="Rotulo.TLabel")
+        self.lbl_qtd_titulo.grid(row=0, column=4, sticky="w")
         self.var_qtd = tk.StringVar()
         self.ent_qtd = ttk.Entry(ent, textvariable=self.var_qtd, width=10, font=("Segoe UI", 14), state="disabled")
         self.ent_qtd.grid(row=1, column=4, sticky="w", padx=(0, 10))
@@ -137,15 +147,16 @@ class JanelaCaixa(tk.Toplevel):
                                         ("preco", "Preço", 90, "e"), ("qtd", "Quantidade", 90, "e"), ("tot", "Total", 100, "e"),
                                         ("obs", "Observação", 200, "w")], altura=14)
         self.grade.pack(fill="both", expand=True)
-        self.grade.tag("comissao", foreground="#0b7a6b")          # comissão marcada na comanda da garota: só leitura
+        self.grade.tag("comissao", foreground=COR_COMISSAO)       # comissão marcada na comanda da garota: só leitura
         self.grade.tag("comissao_paga", foreground="#8a94a6")
 
         e = self.ent_codigo
         e.bind("<Return>", self._enter_codigo)
         e.bind("<Escape>", self._esc_codigo)
-        e.bind("<Down>", lambda ev: self._foco_grade())
+        e.bind("<Down>", self._baixo_codigo)
         self.ent_qtd.bind("<Return>", lambda ev: self.confirmar_item())
         self.ent_qtd.bind("<Escape>", lambda ev: self.cancelar_item_pendente())
+        self.ent_qtd.bind("<Up>", self._cima_valor)
         self.ent_pos.bind("<Return>", lambda ev: self.chamar_mesa())
         self.ent_pos.bind("<Escape>", self._esc_posicao)
         self.ent_pos.bind("<Down>", lambda ev: self.painel_mesas.focar(self._chave_atual()))
@@ -264,10 +275,12 @@ class JanelaCaixa(tk.Toplevel):
                                  iid=f"c{c['id']}", tags=("comissao_paga" if paga else "comissao",))
 
     def _linha_de_comissao(self, iid) -> bool:
-        """True (e avisa) se a linha escolhida da lista é uma comissão marcada, que não é item da venda."""
+        """True (e avisa) se a linha escolhida da lista é uma comissão marcada, que não é item da venda (observação e
+        transferência não valem para ela)."""
         if iid is not None and str(iid).startswith("c"):
             tema.aviso(self, "Esta linha é uma comissão marcada na comanda da garota.\n"
-                             "Para pagar ou cancelar, use o botão Comissões.")
+                             + ("Ela não aceita observação nem transferência: para pagar use F12 e para cancelar, Delete."
+                                if self._comissao_na_linha() else "Para pagar ou cancelar, use o botão Comissões."))
             return True
         return False
 
@@ -306,7 +319,9 @@ class JanelaCaixa(tk.Toplevel):
             txt = f"COMISSÃO MARCADA NA COMANDA {v['posicao']}{' ' + nome if nome else ''}     A pagar: {fmt.fmt_brl(a_pagar)}"
             if paga:
                 txt += f"     Paga neste turno: {fmt.fmt_brl(paga)}"
-            self.faixa.configure(text=txt, bg="#0b7a6b")
+            if a_pagar and self._comissao_na_linha():
+                txt += "     F12 paga a garota"
+            self.faixa.configure(text=txt, bg=COR_COMISSAO)
             self.faixa.pack(fill="x", before=self.barra)
         else:
             self.faixa.pack_forget()
@@ -315,6 +330,9 @@ class JanelaCaixa(tk.Toplevel):
     def _enter_codigo(self, _=None) -> str:
         if self.indice_barra is not None:
             return self._barra_enter()
+        if self.modo_comissao:
+            self._comissao_ir_ao_valor()
+            return "break"
         texto = self.var_cod.get().strip()
         if not texto:
             self._entrar_barra()
@@ -322,17 +340,32 @@ class JanelaCaixa(tk.Toplevel):
         self.resolver_codigo(texto)
         return "break"
 
+    def _baixo_codigo(self, _=None) -> str:
+        if self.modo_comissao:
+            self._comissao_ir_ao_valor()
+        else:
+            self._foco_grade()
+        return "break"
+
+    def _cima_valor(self, _=None) -> str | None:
+        """Lançando comissão, a seta para cima volta do valor para o número da garota."""
+        if not self.modo_comissao:
+            return None
+        self.ent_codigo.focus_set()
+        self.ent_codigo.selection_range(0, "end")
+        return "break"
+
     def _esc_codigo(self, _=None) -> str:
         if self.indice_barra is not None:
             return self._barra_esc()
-        if self.produto is not None:
+        if self.produto is not None or self.modo_comissao:
             self.cancelar_item_pendente()
         else:
             self.foco_mesa()      # Esc volta ao "marcar comanda": ícones à vista e o campo da posição pronto para digitar
         return "break"
 
     def resolver_codigo(self, texto: str) -> None:
-        if self.ctx.comissoes.eh_codigo(texto):          # o código da comissão (50) não é produto: abre a janela da garota
+        if self.ctx.comissoes.eh_codigo(texto):          # o código da comissão (50) não é produto: lança a comissão da garota
             self.var_cod.set("")
             self.lancar_comissao()
             return
@@ -376,6 +409,8 @@ class JanelaCaixa(tk.Toplevel):
         if self.venda_id and self.venda() and self.venda()["modalidade"] == "caderneta" and not self.venda()["cliente_id"]:
             tema.aviso(self, "Escolha o cliente da caderneta (F5).")
             return
+        if self.modo_comissao:
+            self._limpar_entrada()            # escolheu um produto no meio da comissão: a comissão é descartada
         self.produto = p
         preco = self.ctx.produtos.preco_vigente(p)
         un = self.ctx.banco.valor("SELECT abreviatura FROM unidades WHERE id = ?", (p["unidade_id"],), "")
@@ -406,6 +441,11 @@ class JanelaCaixa(tk.Toplevel):
 
     def _limpar_entrada(self) -> None:
         self.produto = None
+        if self.modo_comissao:
+            self.modo_comissao = False
+            self.lbl_cod_titulo.configure(text="Código")
+            self.lbl_qtd_titulo.configure(text="Quantidade")
+            self.lbl_desc.configure(foreground=tema.COR["marinho"])
         self.var_cod.set("")
         self.var_qtd.set("")
         self.ent_qtd.configure(state="disabled")
@@ -413,6 +453,9 @@ class JanelaCaixa(tk.Toplevel):
             lbl.configure(text="")
 
     def confirmar_item(self) -> None:
+        if self.modo_comissao:
+            self._comissao_confirmar()
+            return
         p = self.produto
         if p is None:
             return
@@ -506,6 +549,9 @@ class JanelaCaixa(tk.Toplevel):
 
     def cancelar_item_selecionado(self) -> None:
         s = self.grade.selecionado()
+        if s is not None and str(s).startswith("c") and self._comissao_na_linha():
+            self._cancelar_comissao(s)                 # linha de comissão: cancela o lançamento, não um item
+            return
         if s is None or self._linha_de_comissao(s):
             return
         if not self.modo_cancelar and not self._autorizar("caixa_cancelamento", "exigir_senha_cancelamento", "Cancelar item exige autorização:"):
@@ -551,7 +597,11 @@ class JanelaCaixa(tk.Toplevel):
         return None
 
     def carregar_mesas(self) -> None:
-        self.painel_mesas.atualizar(self.ctx.caixa.mesas(), self.ctx.caixa.balcao_aberto(), self._chave_atual())
+        garotas = []
+        if self.ctx.banco.cfg_bool("painel_mostra_garotas", True):          # as garotas com comissão a pagar viram ícones também
+            garotas = [{"rotulo": self.ctx.caixa.rotular_posicao(True, p["garota"]), "total_cent": p["total_cent"]}
+                       for p in self.ctx.comissoes.pendentes_por_garota()]
+        self.painel_mesas.atualizar(self.ctx.caixa.mesas(), self.ctx.caixa.balcao_aberto(), self._chave_atual(), garotas)
 
     def foco_mesa(self) -> None:
         """Esc ou F4: volta ao 'marcar comanda'. Os ícones aparecem e o campo da posição fica pronto para digitar."""
@@ -619,6 +669,8 @@ class JanelaCaixa(tk.Toplevel):
             self.var_pos.set("0")
             return
         self._descartar_se_vazia()
+        if self.modo_comissao:
+            self._limpar_entrada()      # o número da garota veio da comanda anterior: não pode valer na nova
         if n == 0:
             balcao = self.ctx.caixa.balcao_aberto()
             self.venda_id = balcao["id"] if balcao else None
@@ -728,11 +780,25 @@ class JanelaCaixa(tk.Toplevel):
     def pagar(self) -> None:
         v = self.venda()
         if v is None or (not self.ctx.caixa.itens(v["id"]) and v["modalidade"] != "caderneta"):
-            so_comissao = v is not None and any(c["status"] == "pendente" for c in self.comissao_marcada)
+            so_comissao = v is not None and self._a_pagar_na_comanda()
+            if so_comissao and self._comissao_na_linha():
+                self._pagar_comissao(v)                  # comanda da garota só com comissão: F12 paga a ela
+                return
             tema.aviso(self, "Esta comanda só tem comissão marcada.\nPara pagar à garota, use o botão Comissões."
                        if so_comissao else "Lance ao menos um item antes de pagar.")
             return
         itens = self.ctx.caixa.itens(v["id"])
+        if itens and self._a_pagar_na_comanda() and self._comissao_na_linha():
+            escolha = tema.escolher(self, "Pagar...", [
+                ("itens", f"Pagar a comanda (R$ {fmt.fmt_num(v['total_cent'])})"),
+                ("comissao", "Pagar a comissão da garota (R$ " + fmt.fmt_num(
+                    sum(c["valor_cent"] for c in self.comissao_marcada if c["status"] == "pendente")) + ")")],
+                "Esta comanda tem consumo e comissão a pagar. Escolha e tecle Enter:", altura=2)
+            if escolha is None:
+                return
+            if escolha == "comissao":
+                self._pagar_comissao(v)
+                return
         if v["modalidade"] == "caderneta" and itens:
             c = self.ctx.caderneta.obter(v["cliente_id"])
             if not tema.confirmar(self, f"Lançar {fmt.fmt_brl(v['total_cent'])} na caderneta de {c['nome']}?", "Caderneta"):
@@ -867,13 +933,136 @@ class JanelaCaixa(tk.Toplevel):
             self.recarregar()
             self.ent_codigo.focus_set()
 
+    def _comissao_na_linha(self) -> bool:
+        """Comissão lançada, paga e cancelada na própria tela do caixa (padrão) ou pelas janelas (config desligada)."""
+        return self.ctx.banco.cfg_bool("comissao_na_linha", True)
+
     def lancar_comissao(self) -> None:
-        """Código 50: na comanda 180 a garota é a 180 (a janela já vem com o número); fora de comanda ela pergunta."""
+        """Código 50. Na própria linha de entrada: 'Garota nº' (já vem o da comanda) e 'Valor (R$)'. Sem janela."""
+        if not self._comissao_na_linha():
+            self._lancar_comissao_na_janela()
+            return
+        if not comissao_ui.autorizar(self, self.ctx, "caixa_comissao", "exigir_senha_comissao", "Lançar comissão exige autorização:"):
+            self.ent_codigo.focus_set()
+            return
+        if self.ctx.turnos.atual() is None:
+            tema.aviso(self, "Abra o turno do caixa antes de lançar comissão.")
+            return
+        self._limpar_entrada()                       # um item esperando quantidade é descartado
+        v = self.venda()
+        garota = str(v["posicao"]) if v and v["modalidade"] == "mesa" and v["comanda"] else ""
+        self.modo_comissao = True
+        self.lbl_cod_titulo.configure(text="Garota nº")
+        self.lbl_qtd_titulo.configure(text="Valor (R$)")
+        self.lbl_desc.configure(foreground=COR_COMISSAO)
+        self.ent_qtd.configure(state="normal")
+        self.var_cod.set(garota)
+        self._comissao_nome()
+        if garota:
+            self.avisar(f"Comissão da garota {garota}: digite o valor e tecle Enter (Esc cancela).", tema.COR["aviso"])
+            self.ent_qtd.focus_set()
+        else:
+            self.avisar("Comissão: digite o número da garota e tecle Enter (Esc cancela).", tema.COR["aviso"])
+            self.ent_codigo.focus_set()
+            self.ent_codigo.selection_range(0, "end")
+
+    def _comissao_nome(self) -> None:
+        """Mostra na Descrição quem é a garota do número digitado."""
+        texto = self.var_cod.get().strip()
+        try:
+            n = self.ctx.comissoes.validar_numero(texto) if texto else None
+        except ErroNegocio:
+            n = None
+        g = self.ctx.comissoes.garota(n) if n is not None else None
+        if n is None:
+            desc = "COMISSÃO - digite a garota"
+        elif g is not None:
+            desc = f"COMISSÃO - {g['nome']}" + ("" if g["ativo"] else " (inativa)")
+        elif self.ctx.comissoes.cadastro_vazio():
+            desc = f"COMISSÃO - garota {n}"
+        else:
+            desc = "COMISSÃO - não cadastrada"
+        self.lbl_desc.configure(text=desc)
+
+    def _comissao_ir_ao_valor(self) -> None:
+        try:
+            self.ctx.comissoes.validar_numero(self.var_cod.get())
+        except ErroNegocio as e:
+            self.bell()
+            self.avisar(str(e), tema.COR["perigo"])
+            return
+        self.ent_qtd.focus_set()
+        self.ent_qtd.selection_range(0, "end")
+
+    def _comissao_confirmar(self) -> None:
+        """Enter no valor: confere (garota, valor, perguntas de exceção), grava, imprime a via da garota e deixa o caixa livre."""
+        try:
+            numero = self.ctx.comissoes.validar_numero(self.var_cod.get())
+        except ErroNegocio as e:
+            self.bell()
+            self.avisar(str(e), tema.COR["perigo"])
+            self.ent_codigo.focus_set()
+            return
+        try:
+            cent = fmt.para_centavos(self.var_qtd.get())
+        except ValueError:
+            self.avisar("Valor inválido.", tema.COR["perigo"])
+            self.ent_qtd.focus_set()
+            return
+        if cent <= 0:
+            self.avisar("Informe o valor da comissão.", tema.COR["perigo"])
+            self.ent_qtd.focus_set()
+            return
+        campo = comissao_ui.conferir_lancamento(self, self.ctx, numero, cent)
+        if campo is not None:
+            (self.ent_codigo if campo == "numero" else self.ent_qtd).focus_set()
+            return
+        turno = self.ctx.turnos.atual()
+        if turno is None:
+            tema.aviso(self, "Abra o turno do caixa antes de lançar comissão.")
+            return
+        if comissao_ui.registrar_comissao(self, self.ctx, turno["id"], numero, cent,
+                                          ao_lancar=lambda texto: self.avisar(texto, tema.COR["ok"])) is None:
+            self.ent_qtd.focus_set()                 # a mensagem do erro já foi mostrada: o operador corrige e tenta de novo
+            return
+        self._limpar_entrada()
+        self.recarregar()                            # a comissão nova já aparece na comanda da garota e no ícone dela
+        self.ent_codigo.focus_set()
+
+    def _lancar_comissao_na_janela(self) -> None:
+        """Com 'comissao_na_linha' desligado: na comanda 180 a garota é a 180 (a janela já vem com o número)."""
         v = self.venda()
         sugerida = str(v["posicao"]) if v and v["modalidade"] == "mesa" and v["comanda"] else ""
         comissao_ui.lancar(self, self.ctx, sugerida, ao_lancar=lambda texto: self.avisar(texto, tema.COR["ok"]))
         self.recarregar()                       # a comissão nova já aparece na comanda da garota
         self.ent_codigo.focus_set()
+
+    def _a_pagar_na_comanda(self) -> bool:
+        return any(c["status"] == "pendente" for c in self.comissao_marcada)
+
+    def _pagar_comissao(self, v: dict) -> None:
+        """F12 na comanda da garota: paga a ela o que está marcado (recibo na impressora e sangria no caixa)."""
+        numero = v["posicao"]
+        pag = comissao_ui.pagar_garota(self, self.ctx, numero)
+        if pag is not None:
+            self.recarregar()
+            self.avisar(f"Comissão de {fmt.fmt_brl(pag['total_cent'])} paga à garota {numero}.", tema.COR["ok"])
+        self.ent_codigo.focus_set()
+
+    def _cancelar_comissao(self, iid) -> None:
+        """Delete (ou Enter, no modo cancelar) numa linha de comissão da comanda da garota."""
+        lanc = next((c for c in self.comissao_marcada if f"c{c['id']}" == str(iid)), None)
+        if lanc is None:
+            return
+        if lanc["status"] != "pendente":
+            tema.aviso(self, "Esta comissão já foi paga: não pode mais ser cancelada.")
+            return
+        quem = f"a comissão de {fmt.fmt_brl(lanc['valor_cent'])} da garota {lanc['garota']}"
+        if comissao_ui.cancelar_lancamento(self, self.ctx, lanc["id"], quem, ja_autorizado=self.modo_cancelar):
+            self.modo_cancelar = False
+            self.recarregar()
+            self.avisar("Comissão cancelada.", tema.COR["aviso"])
+            self.ent_codigo.focus_set()
 
     def comissoes(self) -> None:
         """Botão Comissões: o que há a pagar a cada garota, pagamento com recibo e cancelamento de lançamento."""
