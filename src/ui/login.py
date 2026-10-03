@@ -43,7 +43,7 @@ class JanelaLogin(tk.Toplevel):
         self.bind("<Escape>", lambda e: self.destroy())
         tema.centralizar(self)
         self.lift()
-        self.grab_set()
+        tema.modalizar(self)
         (self.ent_senha if self.var_usuario.get() else self.ent_usuario).focus_set()
 
     def entrar(self) -> None:

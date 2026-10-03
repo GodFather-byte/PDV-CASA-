@@ -42,6 +42,8 @@ class JanelaCaixa(tk.Toplevel):
             self.destroy()
             return
         self._montar()
+        self.venda_id = ctx.banco.valor(   # retoma a venda de balcão interrompida (queda de energia, saída do caixa)
+            "SELECT id FROM vendas WHERE modalidade = 'balcao' AND status = 'aberta' ORDER BY id DESC LIMIT 1")
         self.deiconify()
         self.lift()
         self.focus_force()
@@ -93,7 +95,7 @@ class JanelaCaixa(tk.Toplevel):
         self.var_cod = tk.StringVar()
         self.ent_codigo = ttk.Entry(ent, textvariable=self.var_cod, width=18, font=("Segoe UI", 14))
         self.ent_codigo.grid(row=1, column=0, sticky="w")
-        ttk.Button(ent, text="Consultar (F1)", command=self.consultar).grid(row=1, column=1, padx=8)
+        ttk.Button(ent, text="Consultar", command=self.consultar).grid(row=1, column=1, padx=8)
         ttk.Label(ent, text="Descrição", style="Rotulo.TLabel").grid(row=0, column=2, sticky="w")
         self.lbl_desc = ttk.Label(ent, text="", font=("Segoe UI", 14, "bold"), foreground=tema.COR["marinho"], width=36)
         self.lbl_desc.grid(row=1, column=2, sticky="w", padx=(0, 10))
@@ -127,7 +129,6 @@ class JanelaCaixa(tk.Toplevel):
         e.bind("<Return>", self._enter_codigo)
         e.bind("<Escape>", self._esc_codigo)
         e.bind("<Down>", lambda ev: self._foco_grade())
-        e.bind("<F1>", lambda ev: self.consultar())
         self.ent_qtd.bind("<Return>", lambda ev: self.confirmar_item())
         self.ent_qtd.bind("<Escape>", lambda ev: self.cancelar_item_pendente())
         self.ent_pos.bind("<Return>", lambda ev: self.chamar_mesa())
@@ -143,7 +144,7 @@ class JanelaCaixa(tk.Toplevel):
         gm.bind("<Double-1>", self._mesa_escolhida)
         gm.bind("t", lambda ev: self.transferir_varias()); gm.bind("T", lambda ev: self.transferir_varias())
         gm.bind("<Escape>", lambda ev: self.alternar_mesas(False))
-        for tecla, fn in (("F2", self.balanca), ("F3", self.alternar_leitor), ("F4", self.foco_mesa), ("F5", self.caderneta),
+        for tecla, fn in (("F1", self.f1), ("F2", self.balanca), ("F3", self.alternar_leitor), ("F4", self.foco_mesa), ("F5", self.caderneta),
                           ("F6", self.entrega), ("F7", self.sangria), ("F8", self.pre_conta), ("F9", self.repique),
                           ("F10", self.transferir_mesa), ("F11", self.gaveta), ("F12", self.pagar)):
             self.bind(f"<{tecla}>", lambda ev, f=fn: (f(), "break")[1])
@@ -228,6 +229,8 @@ class JanelaCaixa(tk.Toplevel):
 
     # =============================================================== itens
     def _enter_codigo(self, _=None) -> str:
+        if self.indice_barra is not None:
+            return self._barra_enter()
         texto = self.var_cod.get().strip()
         if not texto:
             self._entrar_barra()
@@ -236,6 +239,8 @@ class JanelaCaixa(tk.Toplevel):
         return "break"
 
     def _esc_codigo(self, _=None) -> str:
+        if self.indice_barra is not None:
+            return self._barra_esc()
         if self.produto is not None:
             self.cancelar_item_pendente()
         else:
@@ -293,6 +298,14 @@ class JanelaCaixa(tk.Toplevel):
         self.var_qtd.set("1")
         self.ent_qtd.focus_set()
         self.ent_qtd.selection_range(0, "end")
+
+    def f1(self) -> None:
+        """Na entrega libera o troco (manual do Caixa); nas demais telas abre a consulta de produtos."""
+        v = self.venda()
+        if v and v["modalidade"] == "entrega":
+            self.liberar_troco()
+        else:
+            self.consultar()
 
     def cancelar_item_pendente(self) -> None:
         self._limpar_entrada()
@@ -477,11 +490,9 @@ class JanelaCaixa(tk.Toplevel):
             return
         self._descartar_se_vazia()
         if n == 0:
-            self.venda_id = self.ctx.caixa.abrir_balcao() if self.ctx.caixa.itens(self.ctx.caixa.abrir_balcao()) else None
-            if self.venda_id is None:
-                self.recarregar()
-            else:
-                self.recarregar()
+            self.venda_id = self.ctx.banco.valor(
+                "SELECT id FROM vendas WHERE modalidade = 'balcao' AND status = 'aberta' ORDER BY id DESC LIMIT 1")
+            self.recarregar()
             self.ent_codigo.focus_set()
             return
         pessoas = 0
@@ -783,16 +794,11 @@ class JanelaCaixa(tk.Toplevel):
         self.indice_barra = 0
         self._pintar_barra()
         self.avisar("Barra de tarefas: use as setas e Enter. Esc volta. (Pagar já está selecionado)")
-        self.ent_codigo.unbind("<Return>")
-        self.bind("<Return>", self._barra_enter)
-        self.bind("<Escape>", self._barra_esc)
 
     def _sair_barra(self) -> None:
         self.indice_barra = None
         self._pintar_barra()
-        self.unbind("<Return>")
-        self.unbind("<Escape>")
-        self.ent_codigo.bind("<Return>", self._enter_codigo)
+        self.avisar("")
         self.ent_codigo.focus_set()
 
     def _barra_mover(self, d: int) -> None:

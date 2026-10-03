@@ -46,7 +46,7 @@ class Visualizador(tk.Toplevel):
         self.transient(master.winfo_toplevel())
         self.caixa.focus_set()
         if modal:
-            self.grab_set()
+            tema.modalizar(self)
             self.wait_window(self)
 
     def imprimir(self) -> None:

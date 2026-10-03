@@ -34,7 +34,7 @@ class JanelaClientes(tk.Toplevel):
         self.bind("<F2>", lambda e: self.abas.select(0))
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
-        self.grab_set()
+        tema.modalizar(self)
         self.ent_busca.focus_set()
         self.wait_window(self)
 
@@ -227,7 +227,7 @@ class JanelaEntregas(tk.Toplevel):
         self.carregar()
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
-        self.grab_set()
+        tema.modalizar(self)
         t.focus_set()
         self.wait_window(self)
 

@@ -31,7 +31,7 @@ class JanelaPagamento(tk.Toplevel):
         self.atualizar()
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
-        self.grab_set()
+        tema.modalizar(self)
         self.grade_formas.tree.focus_set()
         self.grade_formas.selecionar_indice(0)
         self.wait_window(self)

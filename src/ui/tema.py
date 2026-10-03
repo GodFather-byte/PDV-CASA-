@@ -68,6 +68,15 @@ def centralizar(janela: tk.Toplevel, pai: tk.Misc | None = None) -> None:
     janela.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
 
+def modalizar(janela: tk.Toplevel) -> None:
+    """Torna a janela modal. `grab_set` falha se a janela ainda não estiver visível, então espera o mapeamento."""
+    try:
+        janela.wait_visibility()
+        janela.grab_set()
+    except tk.TclError:
+        pass
+
+
 # ---------------------------------------------------------------- Grade
 class Grade(ttk.Frame):
     """Treeview com barra de rolagem e linhas alternadas.
@@ -160,17 +169,16 @@ class Dialogo(tk.Toplevel):
         self.destroy()
 
     def mostrar(self, foco: tk.Misc | None = None):
+        topo = self._pai.winfo_toplevel()
         try:
-            self.transient(self._pai.winfo_toplevel())
+            if topo.winfo_viewable():      # transient de janela oculta também ficaria oculto
+                self.transient(topo)
         except tk.TclError:
             pass
-        centralizar(self, self._pai.winfo_toplevel())
+        centralizar(self, topo)
         self.deiconify()
         self.lift()
-        try:
-            self.grab_set()
-        except tk.TclError:
-            pass
+        modalizar(self)
         (foco or self).focus_set()
         self.wait_window(self)
         return self.resultado

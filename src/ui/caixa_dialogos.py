@@ -100,7 +100,7 @@ class PainelFechamento(tk.Toplevel):
         self.bind("<Escape>", lambda e: self.destroy())
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
-        self.grab_set()
+        tema.modalizar(self)
         b.focus_set()
         self.wait_window(self)
 
