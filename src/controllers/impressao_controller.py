@@ -30,11 +30,15 @@ _ESTILOS = {
     "cupom": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL",)},
     "pre_conta": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL",)},
     "entrega": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL", "LEVAR TROCO")},
-    "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado")},
+    "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado", "SOBROU", "FALTOU", "CAIXA CONFERIDO")},
     "pedido": {"negrito_linhas": 1},
     "comprovante": {"negrito_linhas": 1, "grande_prefixos": ("Valor",)},
+    "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "TOTAL A RECEBER")},
     "relatorio": {"negrito_linhas": 1},
 }
+
+LIMITE_VIA_COMISSAO = 15      # lançamentos que a via da garota lista (os mais recentes); o total sempre inclui todos
+LIMITE_MOVIMENTOS = 40        # sangrias/suprimentos listados no fechamento
 
 M, Q = fmt.fmt_num, fmt.fmt_qtd
 
@@ -213,11 +217,53 @@ class ImpressaoController:
         if resumo.get("fora_da_gaveta"):
             linhas.append(_lr("Fora da gaveta (cartão/Pix)", M(resumo["fora_da_gaveta"]), w))
         linhas.append(_lr("Valor esperado", M(resumo["esperado"]), w))
-        if "valor_final" in resumo:
+        encerrado = "valor_final" in resumo               # a Leitura X é parcial: sem declaração, resultado e assinatura
+        if encerrado:
             linhas += [_lr("Valor final (declarado)", M(resumo["valor_final"]), w),
                        _lr("RESULTADO (sobra/falta)", M(resumo["resultado"]), w)]
+            linhas += self._sobra_ou_falta(resumo["resultado"], w)
+        linhas += self._movimentos_do_turno(t["id"], w)
         linhas += conferencia_turno.linhas_fita(resumo, w)      # posições abertas, cancelamentos, transferências
+        if encerrado:
+            linhas += self._assinaturas(resumo, w)
         return "\n".join(linhas + ["=" * w])
+
+    @staticmethod
+    def _sobra_ou_falta(resultado: int, w: int) -> list[str]:
+        """O resultado em palavras e em letra grande: o gerente bate o olho e sabe se sobrou ou faltou dinheiro."""
+        if resultado > 0:
+            texto = f"SOBROU R$ {M(resultado)}"
+        elif resultado < 0:
+            texto = f"FALTOU R$ {M(-resultado)}"
+        else:
+            texto = "CAIXA CONFERIDO (sem diferença)"
+        return ["-" * w, texto.center(w)]
+
+    def _movimentos_do_turno(self, turno_id: int, w: int) -> list[str]:
+        """Cada sangria (saída) e suprimento (entrada) do turno, com a hora, o motivo e quem fez."""
+        movimentos = self.caixa.turnos.movimentos(turno_id)
+        if not movimentos:
+            return []
+        linhas = ["-" * w, f"SANGRIAS E SUPRIMENTOS ({len(movimentos)})"]
+        for m in movimentos[:LIMITE_MOVIMENTOS]:
+            tipo = "Saída" if m["tipo"] == "saida" else "Entrada"
+            linhas.append(_lr(f"  {fmt.fmt_datahora(m['criado_em'])[11:16]} {tipo}", M(m["valor_cent"]), w))
+            detalhe = " - ".join(x for x in ((m["descricao"] or "").strip(), m["operador"] or "") if x)
+            if detalhe:
+                linhas.append(f"        {detalhe}"[:w])
+        if len(movimentos) > LIMITE_MOVIMENTOS:
+            linhas.append(f"  ... e mais {len(movimentos) - LIMITE_MOVIMENTOS}")
+        return linhas
+
+    def _assinaturas(self, resumo: dict, w: int) -> list[str]:
+        """Rodapé da passagem de caixa: justificativa (se houve diferença) e as linhas de assinatura."""
+        t = resumo["turno"]
+        quem = self.banco.valor("SELECT nome FROM operadores WHERE id = ?", (t.get("fechado_por") or t.get("operador_id"),), "")
+        linhas = ["-" * w]
+        if resumo["resultado"] != 0:
+            linhas += ["Justificativa da diferença:", "", "_" * w, "", "_" * w]
+        linhas += ["", "", "_" * w, f"Caixa responsável: {quem}".strip()[:w], "", "", "_" * w, "Gerente / quem recebe o caixa"]
+        return linhas
 
     def comprovante_movimento(self, tipo: str, valor_cent: int, descricao: str, operador: str) -> str:
         w = self.largura()
@@ -225,6 +271,38 @@ class ImpressaoController:
         return "\n".join(self.cabecalho(w) + ["=" * w, titulo.center(w), fmt.fmt_datahora(fmt.agora()),
                                               _lr("Valor", M(valor_cent), w), f"Motivo: {descricao}"[:w * 2],
                                               f"Operador: {operador}", "", "_" * w, "Assinatura".center(w)])
+
+    def via_comissao(self, lancamento: dict, pendentes: list[dict], nome: str, operador: str) -> str:
+        """A via que a garota leva a cada comissão marcada para ela: o valor desta, o que ela tem a receber (todos os lançamentos
+        pendentes, os mais recentes) e o total, para acompanhar o próprio acerto (não fiscal)."""
+        w = self.largura()
+        quem = f"{lancamento['garota']} {nome}".strip()
+        linhas = self.cabecalho(w) + ["=" * w, "COMISSÃO LANÇADA".center(w), "VIA DA GAROTA".center(w),
+                                      fmt.fmt_datahora(lancamento["criado_em"]).center(w), f"Garota: {quem}"[:w], "-" * w,
+                                      _lr("Valor desta comissão", M(lancamento["valor_cent"]), w),
+                                      f"Lançamento nº {lancamento['id']}", "-" * w, "Suas comissões a receber:"]
+        recentes = pendentes[-LIMITE_VIA_COMISSAO:]
+        if len(pendentes) > len(recentes):
+            linhas.append(f"  (+ {len(pendentes) - len(recentes)} lançamentos anteriores)")
+        for i in recentes:
+            d = fmt.fmt_datahora(i["criado_em"])
+            linhas.append(_lr(f"  {d[:5]} {d[11:16]}  nº {i['id']}", M(i["valor_cent"]), w))
+        linhas += ["-" * w, _lr(f"TOTAL A RECEBER ({len(pendentes)})", M(sum(i["valor_cent"] for i in pendentes)), w),
+                   f"Operador: {operador}", "Guarde esta via para conferir o acerto.".center(w)]
+        return "\n".join(linhas)
+
+    def imprimir_via_comissao(self, lancamento_id: int, operador: str) -> str | None:
+        """Imprime a via da garota para o lançamento recém-marcado. Devolve o caminho do histórico, ou None se a impressão da
+        via está desligada. Sem impressora (modo tela) só grava o arquivo, sem abrir janela a cada lançamento."""
+        if not self.banco.cfg_bool("imprimir_via_comissao", True):
+            return None
+        from src.controllers.comissao_controller import ComissaoController
+        comissoes = ComissaoController(self.banco)
+        lanc = comissoes.lancamento(lancamento_id)
+        if lanc is None:
+            return None
+        texto = self.via_comissao(lanc, comissoes.lancamentos(lanc["garota"], "pendente"), comissoes.nome(lanc["garota"]), operador)
+        return self.enviar(texto, f"via_comissao_{lanc['garota']}_{lancamento_id}", tipo="via_comissao")
 
     def recibo_comissao(self, pag: dict, operador: str) -> str:
         """Recibo da comissão paga a uma garota (não fiscal): cada lançamento, o total e a linha da assinatura."""
@@ -328,7 +406,8 @@ class ImpressaoController:
                                **_ESTILOS.get(tipo or "", {"negrito_linhas": 1}))
             self.fila.enfileirar("caixa", nome, dados, tipo, venda_id)
         elif modo == "windows" and hasattr(os, "startfile"):
-            os.startfile(caminho, "print")  # type: ignore[attr-defined]
+            for _ in range(max(1, copias)):
+                os.startfile(caminho, "print")  # type: ignore[attr-defined]
         return caminho
 
     def enviar_remoto(self, texto: str, nome: str) -> str:

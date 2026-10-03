@@ -6,6 +6,7 @@ from tkinter import ttk
 
 from src.controllers import conferencia_turno
 from src.core import formatacao as fmt
+from src.hardware.impressora_termica import ErroImpressao
 from src.ui import tema
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
@@ -52,14 +53,31 @@ def trocar_turno(master, ctx) -> bool:
         return False
     ok, res = tema.tratar(master, ctx.turnos.fechar, turno["id"], ctx.operador_id, valor)
     if ok:
-        PainelFechamento(master, ctx, res)
+        PainelFechamento(master, ctx, res, vias_impressas=imprimir_fechamento(master, ctx, res))
     return ok
+
+
+def imprimir_fechamento(master, ctx, res: dict) -> int:
+    """Ao trocar o turno o fechamento sai sozinho (sobra/falta, sangrias e a assinatura do caixa e do gerente): quem recebe
+    o caixa já fica com a folha na mão. Devolve quantas vias foram para a impressora (0: desligado, modo 'tela' ou erro).
+
+    No modo 'tela' não abre nada aqui: o painel que vem a seguir tem o botão de imprimir."""
+    if not ctx.banco.cfg_bool("imprimir_fechamento_ao_trocar", True) or ctx.impressao.deve_mostrar_na_tela():
+        return 0
+    vias = max(1, min(ctx.banco.cfg_int("vias_fechamento", 1), 3))
+    try:
+        ctx.impressao.enviar(ctx.impressao.fechamento(res), f"fechamento_turno_{res['turno']['numero']}", tipo="fechamento",
+                             copias=vias)
+    except ErroImpressao as e:
+        tema.erro(master, f"O fechamento não foi impresso: {e}\nUse o botão Imprimir Fechamento.")
+        return 0
+    return vias
 
 
 class PainelFechamento(tk.Toplevel):
     """Resumo do turno (sobra/zero em verde, falta em vermelho) com Imprimir e Gerar arquivo texto."""
 
-    def __init__(self, master, ctx, res: dict):
+    def __init__(self, master, ctx, res: dict, vias_impressas: int = 0):
         super().__init__(master)
         self.ctx, self.res = ctx, res
         self.title("Fechamento do turno")
@@ -117,6 +135,11 @@ class PainelFechamento(tk.Toplevel):
         ttk.Button(barra, text="Conferência do turno", command=self.conferencia).pack(side="left")
         b = ttk.Button(barra, text="Concluir (Enter)", style="Ok.TButton", command=self.destroy)
         b.pack(side="right")
+        if vias_impressas:
+            self.lbl_impresso = ttk.Label(corpo, foreground=tema.COR["ok"], font=tema.FONTE_B, text=(
+                f"Fechamento enviado à impressora ({vias_impressas} via{'s' if vias_impressas > 1 else ''}): "
+                "o caixa responsável e o gerente assinam."))
+            self.lbl_impresso.grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.bind("<Return>", lambda e: self.destroy())
         self.bind("<Escape>", lambda e: self.destroy())
         tema.centralizar(self, master.winfo_toplevel())

@@ -1,8 +1,9 @@
 """Comissão das garotas (boate).
 
-No caixa, o código 50 (configurável) abre a janela da comissão: o número da garota é o da comanda dela (comanda 180 = garota
-180) e o operador digita o valor. Aqui a comissão é registrada no número da garota. Não é venda: nada disso entra no
-faturamento, no estoque nem na conferência do dinheiro até a comissão ser PAGA, quando sai dinheiro do caixa (uma sangria).
+No caixa, o código 50 (configurável) lança a comissão na própria linha de entrada (ou, com `comissao_na_linha` desligada, abre a
+janela): o número da garota é o da comanda dela (comanda 180 = garota 180) e o operador digita o valor. Aqui a comissão é
+registrada no número da garota. Não é venda: nada disso entra no faturamento, no estoque nem na conferência do dinheiro até a
+comissão ser PAGA, quando sai dinheiro do caixa (uma sangria).
 
 Situações: 'pendente' (a pagar), 'paga' e 'cancelada'. Nada é apagado: lançamento errado é cancelado, com quem e quando.
 O cadastro de garotas (número e nome) é opcional: serve para mostrar o nome na hora de lançar e nos relatórios.
@@ -103,6 +104,10 @@ class ComissaoController:
             sql += " AND c.status = ?"
             params.append(status)
         return [dict(r) for r in self.banco.todos(sql + " ORDER BY c.id", params)]
+
+    def lancamento(self, comissao_id: int) -> dict | None:
+        r = self.banco.um("SELECT * FROM comissoes_garotas WHERE id = ?", (comissao_id,))
+        return dict(r) if r else None
 
     def marcadas(self, garota, turno_id: int | None = None) -> list[dict]:
         """O que aparece quando se abre a comanda da garota: tudo o que está pendente (de qualquer turno) e o que foi pago neste

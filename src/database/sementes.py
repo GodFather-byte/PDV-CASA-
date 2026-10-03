@@ -64,6 +64,9 @@ CONFIG_PADRAO = {
     "exigir_senha_gaveta": "S", "exigir_senha_sangria": "S",
     "exigir_senha_cancelamento": "S", "exigir_senha_desconto": "N",
     "imprimir_cupom": "S", "terminal": "1", "codigo_comissao": "50", "exigir_senha_comissao": "N",
+    # Comissão na tela do caixa e documentos da boate (chaves novas: bancos existentes ganham o padrão na próxima abertura).
+    "comissao_na_linha": "S", "imprimir_via_comissao": "S", "painel_mostra_garotas": "S",
+    "imprimir_fechamento_ao_trocar": "S", "vias_fechamento": "1", "limite_gaveta": "0",
     "chave_loja": "", "licenca_ativa": "1",
     "api_url": "", "api_token": "", "sync_intervalo_seg": "60",
     "programa_comunicacao": "", "pasta_backup": "",

@@ -59,6 +59,7 @@ CAMPOS_CONFIG = [
     ("tempo_inatividade_min", "Alertar mesa parada após (minutos, 0 = desligado)", "int", "Mesas e serviço"),
     ("pergunta_pessoas", "Perguntar o nº de pessoas ao abrir a mesa", "sn", "Mesas e serviço"),
     ("painel_mesas_fixo", "Mostrar sempre os ícones das mesas e comandas abertas no rodapé do caixa", "sn", "Mesas e serviço"),
+    ("painel_mostra_garotas", "Mostrar no rodapé do caixa as garotas com comissão a pagar", "sn", "Mesas e serviço"),
     ("num_turnos", "Número de turnos por dia", "int", "Caixa"),
     ("exigir_senha_gaveta", "Exigir senha de supervisor para abrir a gaveta", "sn", "Caixa"),
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),
@@ -66,6 +67,11 @@ CAMPOS_CONFIG = [
     ("exigir_senha_desconto", "Exigir senha de supervisor para desconto", "sn", "Caixa"),
     ("exigir_senha_comissao", "Exigir senha de supervisor para lançar comissão das garotas", "sn", "Caixa"),
     ("codigo_comissao", "Código que lança a comissão das garotas no caixa (vazio = desligado)", "texto", "Caixa"),
+    ("comissao_na_linha", "Marcar, pagar e cancelar a comissão das garotas na própria tela do caixa (desligado: abre janelas)", "sn", "Caixa"),
+    ("imprimir_via_comissao", "Imprimir a via da garota a cada comissão lançada", "sn", "Caixa"),
+    ("imprimir_fechamento_ao_trocar", "Imprimir o fechamento ao trocar o turno (com a assinatura do caixa)", "sn", "Caixa"),
+    ("vias_fechamento", "Vias do fechamento do turno (1 a 3)", "int", "Caixa"),
+    ("limite_gaveta", "Avisar para fazer sangria quando o dinheiro da gaveta passar de (R$, 0 = não avisar)", "int", "Caixa"),
     ("imprimir_cupom", "Imprimir cupom ao fechar a venda", "sn", "Caixa"),
     ("taxa_entrega_padrao", "Taxa de entrega padrão (R$)", "texto", "Caixa"),
     ("programa_comunicacao", "Programa de comunicação (caminho do executável)", "texto", "Utilitários"),
@@ -186,4 +192,8 @@ class ConfigController:
                     raise ErroValidacao("O número de comandas deve ficar entre 0 e 10000.", {chave: "inválido"})
                 if chave == "num_turnos" and not 1 <= int(v) <= 9:
                     raise ErroValidacao("O número de turnos deve ficar entre 1 e 9.", {chave: "inválido"})
+                if chave == "vias_fechamento" and not 1 <= int(v) <= 3:
+                    raise ErroValidacao("As vias do fechamento vão de 1 a 3.", {chave: "inválido"})
+                if chave == "limite_gaveta" and int(v) > 1_000_000:
+                    raise ErroValidacao("O limite da gaveta deve ficar abaixo de R$ 1.000.000.", {chave: "inválido"})
                 self.banco.cfg_set(chave, v)
