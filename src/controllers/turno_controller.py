@@ -79,6 +79,20 @@ class TurnoController:
             "SELECT m.*, o.nome AS operador FROM movimentos_caixa m LEFT JOIN operadores o ON o.id = m.operador_id "
             "WHERE m.turno_id = ? ORDER BY m.id", (turno_id,))]
 
+    def dinheiro_esperado(self, turno_id: int) -> int:
+        """O dinheiro que deveria estar na gaveta agora: a mesma conta do 'Valor esperado' do fechamento (fundo + o recebido nas
+        formas que ficam na gaveta, já sem o troco, + suprimentos - sangrias), sem montar o resumo inteiro. Serve ao alerta de
+        sangria; o valor em si não é mostrado ao operador, para não derrubar a conferência cega do fechamento."""
+        b = self.banco
+        t = self.obter(turno_id)
+        na_gaveta = b.valor(
+            """SELECT COALESCE(SUM(p.valor_cent - p.troco_cent), 0) FROM pagamentos_venda p
+               JOIN vendas v ON v.id = p.venda_id JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id
+               WHERE v.turno_id = ? AND v.status = 'fechada' AND t.na_gaveta = 1""", (turno_id,), 0)
+        movimentos = {r["tipo"]: r["total"] for r in b.todos(
+            "SELECT tipo, COALESCE(SUM(valor_cent), 0) AS total FROM movimentos_caixa WHERE turno_id = ? GROUP BY tipo", (turno_id,))}
+        return t["valor_inicial_cent"] + na_gaveta + movimentos.get("entrada", 0) - movimentos.get("saida", 0)
+
     def repique(self, turno_id: int, operador_id: int, posicao: int, valor_cent: int, comanda: bool = False) -> int:
         """Caixinha deixada pelo cliente após pagar (não é o serviço). `posicao` é a mesa ou, com comanda=True, a comanda."""
         if valor_cent <= 0:

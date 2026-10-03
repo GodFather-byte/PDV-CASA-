@@ -170,7 +170,7 @@ class JanelaCaixa(tk.Toplevel):
                         ("Repique (F9)", self.repique), ("Sangria (F7)", self.sangria), ("Delivery (F6)", self.entrega),
                         ("Caderneta (F5)", self.caderneta), ("Impressora", self.impressora), ("Gaveta (F11)", self.gaveta),
                         ("Balança (F2)", self.balanca), ("Fecha Turno", self.fechar_turno), ("Leitor (F3)", self.alternar_leitor),
-                        ("Comissões", self.comissoes), ("Sair", self.sair)]
+                        ("Consulta Comanda", self.consultar_comanda), ("Comissões", self.comissoes), ("Sair", self.sair)]
         self.botoes_tarefa = []
         for i, (rotulo, fn) in enumerate(self.tarefas):
             b = ttk.Button(self.barra, text=rotulo, style="Barra.TButton", takefocus=False, command=lambda f=fn: self._exec_barra(f))
@@ -759,8 +759,19 @@ class JanelaCaixa(tk.Toplevel):
         self._limpar_entrada()
         self.recarregar()
         self.lbl_troco.configure(text=fmt.fmt_num(venda["troco_cent"]))
-        self.avisar(f"Venda {venda['cupom']} fechada. Troco {fmt.fmt_brl(venda['troco_cent'])}.", tema.COR["ok"])
+        texto = f"Venda {venda['cupom']} fechada. Troco {fmt.fmt_brl(venda['troco_cent'])}."
+        alerta = self._alerta_gaveta()
+        self.avisar(f"{texto}   {alerta}" if alerta else texto, tema.COR["aviso"] if alerta else tema.COR["ok"])
         self.ent_codigo.focus_set()
+
+    def _alerta_gaveta(self) -> str:
+        """Dinheiro demais na gaveta é risco: passando do limite configurado, lembra da sangria. Só diz que passou, não quanto
+        há: o operador conta a gaveta no fechamento sem ver o esperado."""
+        limite = self.ctx.banco.cfg_int("limite_gaveta", 0) * 100
+        turno = self.ctx.turnos.atual()
+        if limite <= 0 or turno is None or self.ctx.turnos.dinheiro_esperado(turno["id"]) <= limite:
+            return ""
+        return f"ATENÇÃO: a gaveta passou de {fmt.fmt_brl(limite)}. Faça uma sangria (F7)."
 
     # ========================================= caderneta / entrega / outros
     def _exigir_venda_vazia(self) -> bool:
@@ -867,6 +878,32 @@ class JanelaCaixa(tk.Toplevel):
     def comissoes(self) -> None:
         """Botão Comissões: o que há a pagar a cada garota, pagamento com recibo e cancelamento de lançamento."""
         JanelaComissoes(self, self.ctx, ao_mudar=self.recarregar)
+        self.ent_codigo.focus_set()
+
+    def consultar_comanda(self) -> None:
+        """Botão Consulta Comanda (a conferência da saída): a comanda ou mesa está paga? Ainda deve? Sem mexer na venda da tela."""
+        comum, outra = self._exemplos()
+        pos = self._pedir_posicao("Consulta de comanda", f"Número da comanda (ex.: {comum}) ou da mesa (ex.: {outra}):")
+        if pos is None:
+            return
+        comanda, numero = pos
+        s = self.ctx.caixa.situacao_posicao(comanda, numero)
+        nome, quando = nome_posicao(comanda, numero), fmt.fmt_datahora(s.get("quando"))[:16]
+        if s["situacao"] == "paga":
+            texto, tipo = f"{nome}: PAGA\nCupom {s['cupom']}  -  {fmt.fmt_brl(s['total_cent'])}\nem {quando}", "info"
+        elif s["situacao"] == "aberta":
+            texto, tipo = (f"{nome}: ABERTA - A PAGAR {fmt.fmt_brl(s['total_cent'])}\n{s['itens']} item(ns), desde {quando}"
+                           + ("\nA conta já foi enviada ao cliente." if s["conta_enviada"] else ""), "aviso")
+        elif s["situacao"] == "vazia":
+            texto, tipo = f"{nome}: aberta, sem nenhum consumo.", "info"
+        elif s["situacao"] == "cancelada":
+            texto, tipo = f"{nome}: a última venda foi CANCELADA ({fmt.fmt_brl(s['total_cent'])}) em {quando}.", "aviso"
+        else:
+            texto, tipo = f"{nome}: nenhum registro.", "info"
+        a_pagar = self.ctx.comissoes.pendente(numero) if comanda else 0
+        if a_pagar:
+            texto += f"\n\nComissão da garota {numero} a pagar: {fmt.fmt_brl(a_pagar)}."
+        tema.mensagem(self, texto, "Consulta de comanda", tipo)
         self.ent_codigo.focus_set()
 
     def repique(self) -> None:

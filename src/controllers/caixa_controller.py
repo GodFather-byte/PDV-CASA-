@@ -158,6 +158,24 @@ class CaixaController:
             m["inativa"] = bool(limite > 0 and m["status"] == "aberta" and m["minutos_parada"] >= limite)
         return linhas
 
+    def situacao_posicao(self, comanda: bool, numero: int) -> dict:
+        """A consulta da saída da casa: o que se sabe de uma mesa ou comanda agora. A venda mais recente daquele número manda
+        (a comanda de papel é reutilizada a noite toda): 'aberta' (consumo a pagar), 'paga' (com o cupom e a hora), 'cancelada',
+        'vazia' (aberta, sem consumo) ou 'sem_registro'."""
+        v = self.banco.um("SELECT * FROM vendas WHERE modalidade = 'mesa' AND comanda = ? AND posicao = ? ORDER BY id DESC LIMIT 1",
+                          (int(comanda), numero))
+        if v is None:
+            return {"situacao": "sem_registro"}
+        if v["status"] in ("aberta", "conta_enviada"):
+            itens = self.banco.valor("SELECT COUNT(*) FROM itens_venda WHERE venda_id = ? AND cancelado = 0", (v["id"],), 0)
+            if not itens:
+                return {"situacao": "vazia"}
+            return {"situacao": "aberta", "total_cent": v["total_cent"], "itens": itens, "quando": v["aberta_em"],
+                    "conta_enviada": v["status"] == "conta_enviada"}
+        if v["status"] == "fechada":
+            return {"situacao": "paga", "total_cent": v["total_cent"], "cupom": v["cupom"], "quando": v["fechada_em"]}
+        return {"situacao": "cancelada", "total_cent": v["total_cent"], "quando": v["fechada_em"] or v["aberta_em"]}
+
     def definir_pessoas(self, venda_id: int, pessoas: int) -> None:
         self._aberta(venda_id)
         self.banco.executar("UPDATE vendas SET pessoas = ? WHERE id = ?", (max(int(pessoas), 0), venda_id))
