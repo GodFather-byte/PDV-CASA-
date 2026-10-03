@@ -4,7 +4,8 @@ Gera os bytes ESC/POS (compatível com Epson TM, Bematech MP, Elgin i9, Tanca e 
 térmicas de 58mm/80mm) e envia por um de quatro transportes:
 
   * rede     — socket TCP (padrão porta 9100). Só biblioteca padrão; funciona sem instalar nada.
-  * serial   — porta COM (requer `pyserial`; instale com `pip install pyserial`).
+  * serial   — porta COM (requer `pyserial`; instale com `pip install pyserial`). O endereço é a porta,
+               com a velocidade opcional depois de dois-pontos: `COM3` (9600 bps) ou `COM3:19200`.
   * spooler  — impressora instalada no Windows, em modo RAW (requer `pywin32`).
   * arquivo  — grava os bytes num arquivo ou caminho de dispositivo (ex.: \\\\.\\COM3 ou um
                compartilhamento \\\\PC\\IMPRESSORA). Serve para testes e casos avançados.
@@ -68,7 +69,8 @@ def _estilo_prefixo(linha: str, prefixos) -> bool:
 
 def texto_para_escpos(texto: str, *, codepage: str = "cp850", cortar: bool = True,
                       abrir_gaveta: bool = False, pino_gaveta: int = 0,
-                      negrito_linhas: int = 0, negrito_prefixos=(), grande_prefixos=()) -> bytes:
+                      negrito_linhas: int = 0, negrito_prefixos=(), grande_prefixos=(),
+                      logotipo: bytes | None = None) -> bytes:
     """Converte um texto já formatado (colunas fixas) em bytes ESC/POS.
 
     A ênfase é por linha, sem mexer no layout em colunas: `negrito_linhas` deixa as N primeiras
@@ -79,6 +81,8 @@ def texto_para_escpos(texto: str, *, codepage: str = "cp850", cortar: bool = Tru
     out = bytearray()
     out += INICIALIZAR
     out += _selecionar_codepage(codepage)
+    if logotipo:
+        out += logotipo            # já vem centralizado e termina com o alinhamento à esquerda
     destacadas = 0
     for linha in texto.split("\n"):
         tem_texto = bool(linha.strip())
@@ -132,13 +136,29 @@ def enviar_rede(endereco: str, dados: bytes, timeout: float = 6.0) -> None:
         raise ErroImpressao(f"Não foi possível falar com a impressora em {host}:{porta} ({e}).") from e
 
 
+def _parse_serial(endereco: str, baud_padrao: int = 9600) -> tuple[str, int]:
+    """'COM3' -> ('COM3', 9600); 'COM3:115200' -> ('COM3', 115200). O 'COM3:' do Windows antigo também vale."""
+    endereco = (endereco or "").strip()
+    porta, dois_pontos, velocidade = endereco.rpartition(":")
+    if not dois_pontos:
+        return endereco, baud_padrao
+    velocidade = velocidade.strip()
+    if not velocidade:
+        return porta.strip(), baud_padrao
+    if velocidade.isdigit() and int(velocidade) > 0:
+        return porta.strip(), int(velocidade)
+    raise ErroImpressao(f"Velocidade inválida em '{endereco}' (use, por exemplo, COM3:19200).")
+
+
 def enviar_serial(porta: str, dados: bytes, baud: int = 9600, timeout: float = 5.0) -> None:
+    """`porta` é o nome da porta, com a velocidade opcional depois de dois-pontos (COM3 ou COM3:19200)."""
     try:
         import serial  # type: ignore
     except ImportError:
         raise ErroImpressao("Impressora serial precisa da biblioteca 'pyserial' (pip install pyserial).") from None
-    if not (porta or "").strip():
-        raise ErroImpressao("Informe a porta serial da impressora (ex.: COM1).")
+    porta, baud = _parse_serial(porta, baud)
+    if not porta:
+        raise ErroImpressao("Informe a porta serial da impressora (ex.: COM1 ou COM1:19200).")
     try:
         com = serial.Serial(porta, baudrate=baud, timeout=timeout, write_timeout=timeout)
     except Exception as e:  # serial.SerialException e afins
@@ -219,12 +239,23 @@ class ImpressoraTermica:
             raise ErroImpressao(f"Conexão de impressora desconhecida: {self.conexao}.")
         fn()
 
-    def imprimir(self, texto: str, *, cortar: bool | None = None, abrir_gaveta: bool = False, **estilo) -> None:
-        dados = texto_para_escpos(texto, codepage=self.codepage,
-                                  cortar=self.cortar if cortar is None else cortar,
-                                  abrir_gaveta=abrir_gaveta and self.tem_gaveta, pino_gaveta=self.pino_gaveta,
-                                  **estilo)
-        self.enviar_bytes(dados)
+    def montar(self, texto: str, *, cortar: bool | None = None, abrir_gaveta: bool = False, copias: int = 1,
+               logotipo: bytes | None = None, **estilo) -> bytes:
+        """Gera os bytes ESC/POS sem enviar (é o que vai para a fila de impressão).
+
+        `copias` repete o cupom inteiro, com corte entre as vias; a gaveta só abre na primeira."""
+        corte = self.cortar if cortar is None else cortar
+        base = dict(codepage=self.codepage, cortar=corte, pino_gaveta=self.pino_gaveta, logotipo=logotipo, **estilo)
+        primeira = texto_para_escpos(texto, abrir_gaveta=abrir_gaveta and self.tem_gaveta, **base)
+        copias = max(1, min(int(copias or 1), 5))
+        if copias == 1:
+            return primeira
+        return primeira + texto_para_escpos(texto, abrir_gaveta=False, **base) * (copias - 1)
+
+    def imprimir(self, texto: str, *, cortar: bool | None = None, abrir_gaveta: bool = False, copias: int = 1,
+                 logotipo: bytes | None = None, **estilo) -> None:
+        self.enviar_bytes(self.montar(texto, cortar=cortar, abrir_gaveta=abrir_gaveta, copias=copias,
+                                      logotipo=logotipo, **estilo))
 
     def abrir_gaveta(self) -> None:
         if not self.tem_gaveta:

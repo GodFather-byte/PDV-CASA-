@@ -14,6 +14,9 @@ def executar(master, ctx, chave: str) -> None:
         tema.tratar(master, ctx.utilitarios.abrir_programa_comunicacao)
     elif chave == "limpeza":
         limpeza(master, ctx)
+    elif chave == "fila_impressao":
+        from src.ui.fila_impressao_ui import JanelaFilaImpressao
+        JanelaFilaImpressao(master, ctx)
 
 
 def limpeza(master, ctx) -> None:

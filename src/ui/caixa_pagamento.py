@@ -268,10 +268,9 @@ class JanelaPagamento(tk.Toplevel):
         self.fechou = True
         if self.ctx.banco.cfg_bool("imprimir_cupom", True):
             texto = self.ctx.impressao.cupom(self.venda_id)
-            # abre a gaveta quando houve pagamento em dinheiro (forma que permite troco)
-            abrir_gaveta = any(p["permite_troco"] for p in self.caixa.pagamentos(self.venda_id))
+            op = self.ctx.impressao.opcoes_cupom(self.venda_id)    # vias e gaveta conforme as formas de pagamento
             self.destroy()
             enviar_ou_mostrar(self.master, self.ctx, f"Cupom {venda['cupom']}", texto, f"cupom_{venda['cupom']}",
-                              tipo="cupom", abrir_gaveta=abrir_gaveta)
+                              tipo="cupom", abrir_gaveta=op["abrir_gaveta"], copias=op["copias"], venda_id=self.venda_id)
             return
         self.destroy()

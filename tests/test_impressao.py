@@ -6,10 +6,12 @@ import contextlib
 import os
 import socket
 import sqlite3
+import sys
 import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from src.controllers.config_controller import ConfigController
 from src.controllers.impressao_controller import ImpressaoController
@@ -121,21 +123,49 @@ class TesteTransportes(unittest.TestCase):
             self.assertTrue(Path(arq).read_bytes().startswith(b"\x1b@"))
 
     def test_serial_e_spooler_sem_biblioteca(self):
-        # pyserial/pywin32 não estão instalados neste ambiente: mensagem clara, não crash.
-        if term.enviar_serial.__module__:  # sempre verdadeiro; só documenta a intenção
-            try:
-                import serial  # noqa: F401
-                self.skipTest("pyserial instalado")
-            except ImportError:
-                with self.assertRaises(ErroImpressao) as e:
-                    term.enviar_serial("COM9", b"x")
-                self.assertIn("pyserial", str(e.exception))
-        try:
-            import win32print  # noqa: F401
-        except ImportError:
+        # Módulo None em sys.modules faz o import falhar, tenham ou não pyserial/pywin32 instalados.
+        with mock.patch.dict(sys.modules, {"serial": None, "win32print": None}):
+            with self.assertRaises(ErroImpressao) as e:
+                term.enviar_serial("COM9", b"x")
+            self.assertIn("pyserial", str(e.exception))
             with self.assertRaises(ErroImpressao) as e:
                 term.enviar_spooler("Qualquer", b"x")
             self.assertIn("pywin32", str(e.exception))
+
+    def test_endereco_serial_aceita_velocidade(self):
+        self.assertEqual(term._parse_serial("COM3"), ("COM3", 9600))
+        self.assertEqual(term._parse_serial(" COM3:115200 "), ("COM3", 115200))
+        self.assertEqual(term._parse_serial("COM3:"), ("COM3", 9600))            # forma antiga do Windows
+        self.assertEqual(term._parse_serial("\\\\.\\COM12"), ("\\\\.\\COM12", 9600))   # caminho de dispositivo
+        for ruim in ("COM3:rapido", "COM3:0", "COM3:9600,n,8,1"):
+            with self.assertRaises(ErroImpressao, msg=ruim):
+                term._parse_serial(ruim)
+
+    def test_serial_abre_a_porta_na_velocidade_do_endereco(self):
+        aberto = {}
+
+        class SerialFalsa:
+            def __init__(self, porta, baudrate, timeout, write_timeout):
+                aberto.update(porta=porta, baud=baudrate)
+
+            def write(self, dados):
+                aberto["dados"] = dados
+
+            def flush(self):
+                pass
+
+            def close(self):
+                aberto["fechada"] = True
+        falso = type(sys)("serial")
+        falso.Serial = SerialFalsa
+        with mock.patch.dict(sys.modules, {"serial": falso}):
+            term.enviar_serial("COM3:19200", b"abc")
+            self.assertEqual(aberto, {"porta": "COM3", "baud": 19200, "dados": b"abc", "fechada": True})
+            aberto.clear()
+            ImpressoraTermica(conexao="serial", endereco="COM7").enviar_bytes(b"z")
+            self.assertEqual((aberto["porta"], aberto["baud"]), ("COM7", 9600))
+            with self.assertRaises(ErroImpressao):
+                term.enviar_serial("", b"x")
 
     def test_nenhuma_conexao(self):
         with self.assertRaises(ErroImpressao):
@@ -175,7 +205,8 @@ class TesteGaveta(unittest.TestCase):
 
 
 class TesteRoteamento(BaseCaixa):
-    """ImpressaoController escolhe a saída conforme o modo da máquina."""
+    """ImpressaoController escolhe a saída conforme o modo da máquina. Na térmica o documento vai para a
+    fila (`fila.processar()` faz o papel da thread nos testes)."""
 
     def setUp(self):
         super().setUp()
@@ -203,25 +234,45 @@ class TesteRoteamento(BaseCaixa):
         caminho = self.imp.enviar(self.imp.cupom(vid), "cupom", tipo="cupom")
         self.assertTrue(Path(caminho).exists())              # histórico gravado
         self.assertEqual(self.imp.modo(), "tela")
+        self.assertEqual(self.imp.fila.contagem()["pendentes"], 0)   # nada foi para a fila
 
-    def test_modo_termica_envia_escpos_com_total_grande_e_gaveta(self):
+    def test_modo_termica_enfileira_e_a_fila_imprime(self):
         arq = os.path.join(self.tmp.name, "cupom.prn")
         self._modo_termica(arq)
         vid = self._venda_fechada()
         self.imp.enviar(self.imp.cupom(vid), "cupom", tipo="cupom", abrir_gaveta=True)
+        self.assertEqual(self.imp.fila.contagem()["pendentes"], 1)
+        self.assertFalse(os.path.exists(arq))                # ainda não imprimiu: quem imprime é a fila
+        self.assertEqual(self.imp.fila.processar()["enviados"], 1)
         dados = Path(arq).read_bytes()
-        self.assertTrue(dados.startswith(b"\x1b@"))
-        self.assertIn(b"\x1bt\x02", dados)                    # CP850
-        self.assertIn(b"\x1d!\x01", dados)                    # TOTAL em destaque
-        self.assertIn(b"\x1bp", dados)                        # gaveta abriu (venda em dinheiro)
+        self.assertTrue(dados.startswith(b"@"))
+        self.assertIn(b"t", dados)                    # CP850
+        self.assertIn(b"!", dados)                    # TOTAL em destaque
+        self.assertIn(b"p", dados)                        # gaveta abriu (venda em dinheiro)
         self.assertIn("TOTAL".encode("cp850"), dados)
+        self.assertEqual(self.imp.fila.contagem()["pendentes"], 0)
 
-    def test_termica_offline_levanta_erro_de_negocio(self):
-        self._modo_termica("")  # endereço de arquivo vazio
+    def test_impressora_fora_do_ar_nao_trava_o_caixa_e_nada_se_perde(self):
+        import time
+        self._modo_termica("")
         self.banco.executar("UPDATE maquinas SET impressora_termica_conexao='rede', impressora_termica_endereco='127.0.0.1:1'")
+        vid = self._venda_fechada()
+        inicio = time.monotonic()
+        self.imp.enviar(self.imp.cupom(vid), "cupom", tipo="cupom")
+        self.assertLess(time.monotonic() - inicio, 0.5)      # voltou na hora, sem esperar a conexão
+        r = self.imp.fila.processar()
+        self.assertEqual((r["enviados"], r["falhas"]), (0, 1))
+        item = self.imp.fila.listar()[0]
+        self.assertEqual((item["status"], item["tentativas"]), ("pendente", 1))
+        self.assertIn("127.0.0.1", item["ultimo_erro"])
+        self.assertEqual(self.imp.fila.texto_indicador()[1], "aviso")
+
+    def test_termica_sem_impressora_configurada_levanta_erro_na_hora(self):
+        self.cfg.salvar_maquina({"modo_impressao": "termica", "impressora_termica_conexao": "nenhuma"})
         vid = self._venda_fechada()
         with self.assertRaises(ErroNegocio):
             self.imp.enviar(self.imp.cupom(vid), "cupom", tipo="cupom")
+        self.assertEqual(self.imp.fila.contagem()["pendentes"], 0)
 
     def test_reimpressao_marca_segunda_via(self):
         arq = os.path.join(self.tmp.name, "r.prn")
@@ -229,9 +280,10 @@ class TesteRoteamento(BaseCaixa):
         vid = self._venda_fechada()
         texto = self.imp.reimprimir_cupom(vid)
         self.assertIn("SEGUNDA VIA", texto)
+        self.imp.fila.processar()
         self.assertIn("SEGUNDA VIA".encode("cp850"), Path(arq).read_bytes())
 
-    def test_pedido_remoto_por_rede_nao_vai_para_a_impressora_do_caixa(self):
+    def test_pedido_remoto_por_rede_vai_pela_fila_e_nao_pela_impressora_do_caixa(self):
         with impressora_falsa() as (endereco, recebido):
             self.banco.executar("UPDATE maquinas SET impressora_remota_conexao='rede', impressora_remota_endereco=?", (endereco,))
             self.banco.executar("UPDATE subgrupos SET impressora_remota=1")
@@ -241,7 +293,9 @@ class TesteRoteamento(BaseCaixa):
             self.assertTrue(tickets)
             for sub, texto in tickets.items():
                 self.imp.enviar_remoto(texto, f"pedido_{sub}")
-        self.assertTrue(recebido["dados"].startswith(b"\x1b@"))
+            self.assertEqual(self.imp.fila.listar()[0]["destino"], "remota")
+            self.imp.fila.processar()
+        self.assertTrue(recebido["dados"].startswith(b"@"))
 
     def test_gaveta_do_contexto_abre_pela_termica(self):
         from src.ui.contexto import Contexto
@@ -251,7 +305,7 @@ class TesteRoteamento(BaseCaixa):
                 (endereco,))
             ctx = Contexto(self.banco)
             ctx.gaveta().abrir()
-        self.assertIn(b"\x1bp", recebido["dados"])
+        self.assertIn(b"p", recebido["dados"])
 
 
 class TesteMigracao(unittest.TestCase):

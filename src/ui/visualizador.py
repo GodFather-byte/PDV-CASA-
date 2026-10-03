@@ -58,7 +58,7 @@ class Visualizador(tk.Toplevel):
             return
         modo = self.ctx.impressao.modo()
         if modo == "termica":
-            tema.mensagem(self, "Enviado para a impressora térmica.", "Impressão")
+            tema.mensagem(self, "Enviado para a fila da impressora térmica.", "Impressão")
         elif modo == "windows":
             tema.mensagem(self, "Enviado para a impressora padrão do Windows.", "Impressão")
         else:
@@ -96,7 +96,7 @@ def mostrar_relatorio(master, ctx, rel: Relatorio, largura: int = 80, nome: str 
 
 
 def enviar_ou_mostrar(master, ctx, titulo: str, texto: str, nome: str = "documento", tipo: str | None = None,
-                      abrir_gaveta: bool = False, modal: bool = True) -> bool:
+                      abrir_gaveta: bool = False, modal: bool = True, copias: int = 1, venda_id: int | None = None) -> bool:
     """No modo 'tela' abre o Visualizador. Nos demais envia para a impressora configurada; se a
     impressora falhar, mostra o documento na tela com um aviso (nunca perde o cupom).
 
@@ -105,7 +105,7 @@ def enviar_ou_mostrar(master, ctx, titulo: str, texto: str, nome: str = "documen
         Visualizador(master, ctx, titulo, texto, nome, tipo=tipo, modal=modal)
         return False
     try:
-        ctx.impressao.enviar(texto, nome, tipo=tipo, abrir_gaveta=abrir_gaveta)
+        ctx.impressao.enviar(texto, nome, tipo=tipo, abrir_gaveta=abrir_gaveta, copias=copias, venda_id=venda_id)
         return True
     except ErroImpressao as e:
         tema.erro(master, f"Não foi possível imprimir: {e}\nMostrando o documento na tela.")

@@ -23,6 +23,7 @@ from src.hardware.impressora_termica import ErroImpressao
 from src.ui import caixa_dialogos, tema
 from src.ui.caixa_pagamento import JanelaPagamento
 from src.ui.clientes_ui import JanelaClientes, JanelaEntregas
+from src.ui.fila_impressao_ui import JanelaFilaImpressao
 from src.ui.painel_mesas import PainelMesas
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
@@ -71,6 +72,9 @@ class JanelaCaixa(tk.Toplevel):
         self.lbl_turno.pack(side="right")
         self.lbl_hora = tk.Label(topo, bg=tema.COR["marinho"], fg="white", font=tema.FONTE_B)
         self.lbl_hora.pack(side="right", padx=20)
+        self.lbl_fila = tk.Label(topo, bg=tema.COR["marinho"], fg="#7ee2a8", font=tema.FONTE_B, cursor="hand2")
+        self.lbl_fila.pack(side="right", padx=(0, 6))
+        self.lbl_fila.bind("<Button-1>", lambda e: self.abrir_fila())
 
         meio = ttk.Frame(self, padding=(12, 8, 12, 0))
         meio.pack(fill="x")
@@ -175,9 +179,24 @@ class JanelaCaixa(tk.Toplevel):
     def _relogio(self) -> None:
         try:
             self.lbl_hora.configure(text=fmt.agora_dt().strftime("%d/%m/%Y  %H:%M:%S"))
+            self._atualizar_fila()
             self._id_relogio = self.after(1000, self._relogio)
         except tk.TclError:      # janela já destruída
             pass
+
+    def _atualizar_fila(self) -> None:
+        """Indicador da impressora térmica: some quando não há nada a dizer; fica amarelo/vermelho quando há
+        documento esperando ou com erro (clique para abrir a fila)."""
+        try:
+            texto, nivel = self.ctx.impressao.fila.texto_indicador()
+            if nivel == "ok" and self.ctx.impressao.modo() != "termica":
+                texto = ""
+            self.lbl_fila.configure(text=texto, fg={"ok": "#7ee2a8", "aviso": "#ffd24d", "erro": "#ff8a8a"}[nivel])
+        except Exception:  # noqa: BLE001 - um indicador nunca pode derrubar o caixa
+            self.lbl_fila.configure(text="")
+
+    def abrir_fila(self) -> None:
+        JanelaFilaImpressao(self, self.ctx)
 
     def _atualizar_painel(self) -> None:
         """Com os ícones sempre à vista, a mesa parada precisa ganhar o relógio sozinha, sem o operador agir."""
@@ -583,7 +602,7 @@ class JanelaCaixa(tk.Toplevel):
         ok, _ = tema.tratar(self, self.ctx.caixa.enviar_conta, v["id"])
         if ok:
             arquivo = f"pre_conta_{'comanda' if v['comanda'] else 'mesa'}_{v['posicao']}"
-            Visualizador(self, self.ctx, "Pré-conta", self.ctx.impressao.pre_conta(v["id"]), arquivo)
+            enviar_ou_mostrar(self, self.ctx, "Pré-conta", self.ctx.impressao.pre_conta(v["id"]), arquivo, tipo="pre_conta")
             self.venda_id = None
             self.recarregar()
             self.ent_codigo.focus_set()
@@ -673,8 +692,10 @@ class JanelaCaixa(tk.Toplevel):
 
     def _pos_fechamento(self, venda: dict) -> None:
         if venda["modalidade"] == "caderneta" and self.ctx.banco.cfg_bool("imprimir_cupom", True):
+            op = self.ctx.impressao.opcoes_cupom(venda["id"])
             enviar_ou_mostrar(self, self.ctx, f"Cupom {venda['cupom']}", self.ctx.impressao.cupom(venda["id"]),
-                              f"cupom_{venda['cupom']}", tipo="cupom")
+                              f"cupom_{venda['cupom']}", tipo="cupom", abrir_gaveta=op["abrir_gaveta"], copias=op["copias"],
+                              venda_id=venda["id"])
         self.lbl_troco.configure(text=fmt.fmt_num(venda["troco_cent"]))
         self.venda_id = None
         self._limpar_entrada()
@@ -771,7 +792,8 @@ class JanelaCaixa(tk.Toplevel):
         v = self.venda()
         ok, _ = tema.tratar(self, self.ctx.entregas.emitir_pedido, v["id"])
         if ok:
-            Visualizador(self, self.ctx, "Pedido de entrega", self.ctx.impressao.pedido_entrega(v["id"]), f"entrega_{v['posicao']}")
+            enviar_ou_mostrar(self, self.ctx, "Pedido de entrega", self.ctx.impressao.pedido_entrega(v["id"]),
+                              f"entrega_{v['posicao']}", tipo="entrega")
             self.venda_id = None
             self.recarregar()
             self.ent_codigo.focus_set()
@@ -839,14 +861,17 @@ class JanelaCaixa(tk.Toplevel):
         op = tema.escolher(self, "Impressora", [
             ("2via_ult", "Reimprimir último cupom (2ª via)"),
             ("2via_num", "Reimprimir cupom por número (2ª via)"),
+            ("fila", "Fila de impressão (ver, reenviar, cancelar)"),
             ("x", "Leitura X (parcial do turno - gerencial)"),
             ("z", "Redução Z (fechamento do dia - gerencial)")],
-            "Escolha (nenhuma função emite documento fiscal):", altura=4)
+            "Escolha (nenhuma função emite documento fiscal):", altura=5)
         if op == "x":
             t = self.ctx.turnos.atual()
-            Visualizador(self, self.ctx, "Leitura X", self.ctx.impressao.leitura_x(t["id"]), "leitura_x")
+            enviar_ou_mostrar(self, self.ctx, "Leitura X", self.ctx.impressao.leitura_x(t["id"]), "leitura_x", tipo="fechamento")
         elif op == "z":
-            Visualizador(self, self.ctx, "Redução Z", self.ctx.impressao.reducao_z(), "reducao_z")
+            enviar_ou_mostrar(self, self.ctx, "Redução Z", self.ctx.impressao.reducao_z(), "reducao_z", tipo="relatorio")
+        elif op == "fila":
+            self.abrir_fila()
         elif op == "2via_ult":
             self._reimprimir(self._ultimo_cupom())
         elif op == "2via_num":
@@ -868,7 +893,7 @@ class JanelaCaixa(tk.Toplevel):
             return
         texto = self.ctx.impressao.cupom(venda_id, segunda_via=True)
         n = self.ctx.banco.valor("SELECT cupom FROM vendas WHERE id = ?", (venda_id,))
-        enviar_ou_mostrar(self, self.ctx, f"2ª via cupom {n}", texto, f"2via_cupom_{n}", tipo="cupom")
+        enviar_ou_mostrar(self, self.ctx, f"2ª via cupom {n}", texto, f"2via_cupom_{n}", tipo="cupom", venda_id=venda_id)
 
     def fechar_turno(self) -> None:
         v = self.venda()

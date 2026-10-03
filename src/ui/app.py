@@ -5,7 +5,9 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.controllers.acesso_controller import GRUPOS_MENU
+from src.controllers.fila_impressao_controller import ServicoFilaImpressao
 from src.core import formatacao as fmt
+from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
 from src.ui import tema
 from src.ui.contexto import Contexto
@@ -37,7 +39,7 @@ RELATORIOS = [
 ]
 
 UTILITARIOS = [("limpeza", "Limpeza do movimento", "util_limpeza"), ("comunicacao", "Programa de comunicação", "util_comunicacao"),
-               ("backup", "Backup de dados", "util_backup")]
+               ("backup", "Backup de dados", "util_backup"), ("fila_impressao", "Fila de impressão", "util_fila_impressao")]
 CONFIGURACOES = [("acessos", "Acessos", "cfg_acessos"), ("loja", "Loja", "cfg_loja"),
                  ("configuracoes", "Configurações", "cfg_configuracoes"), ("maquinas", "Máquinas", "cfg_maquinas")]
 
@@ -54,15 +56,27 @@ class App:
         tema.aplicar_tema(self.root)
         self.ctx = Contexto(self.banco)
         self.janelas: dict[str, tk.Toplevel] = {}
+        self.servico_impressao: ServicoFilaImpressao | None = None
         self.menu: tk.Frame | None = None
         self.root.protocol("WM_DELETE_WINDOW", self.sair)
         self._relogio_id = None
 
     # ---------------------------------------------------------------- fluxo
     def run(self) -> None:
+        self._iniciar_fila_impressao()
         self.root.after(80, self.entrar)
         self.root.mainloop()
+        if self.servico_impressao is not None:
+            self.servico_impressao.parar()
         self.banco.fechar()
+
+    def _iniciar_fila_impressao(self) -> None:
+        """Thread que esvazia a fila da impressora térmica/cozinha. Precisa de banco em arquivo (conexão própria)."""
+        try:
+            self.servico_impressao = ServicoFilaImpressao(self.banco.caminho)
+            self.servico_impressao.iniciar()
+        except ErroNegocio:
+            self.servico_impressao = None
 
     def entrar(self) -> None:
         self._destruir_menu()

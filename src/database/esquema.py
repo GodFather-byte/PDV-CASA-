@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 4
+VERSAO_ESQUEMA = 5
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -28,7 +28,8 @@ MAQUINAS_DDL = """CREATE TABLE IF NOT EXISTS maquinas (
     impressora_termica_gaveta INTEGER NOT NULL DEFAULT 0,
     impressora_termica_pino INTEGER NOT NULL DEFAULT 0,
     impressora_remota_conexao TEXT NOT NULL DEFAULT 'pasta',
-    impressora_remota_endereco TEXT
+    impressora_remota_endereco TEXT,
+    impressora_termica_logotipo INTEGER NOT NULL DEFAULT 0
 )"""
 
 TABELAS = [
@@ -391,6 +392,23 @@ TABELAS = [
         criado_em TEXT NOT NULL
     )""",
     "CREATE INDEX IF NOT EXISTS ix_caderneta_cli ON caderneta(cliente_id)",
+    # Fila de impressão (v5): o que vai para a impressora térmica/remota é gravado aqui e enviado por uma thread,
+    # então a impressora fora do ar não trava o caixa e nenhum cupom se perde. `dados` são os bytes ESC/POS prontos.
+    """CREATE TABLE IF NOT EXISTS fila_impressao (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        criado_em TEXT NOT NULL,
+        destino TEXT NOT NULL DEFAULT 'caixa' CHECK (destino IN ('caixa','remota')),
+        tipo TEXT,
+        nome TEXT NOT NULL,
+        dados BLOB NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','enviado','erro','cancelado')),
+        tentativas INTEGER NOT NULL DEFAULT 0,
+        proxima_tentativa TEXT,
+        ultimo_erro TEXT,
+        enviado_em TEXT,
+        venda_id INTEGER
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_fila_status ON fila_impressao(status, destino, id)",
     # Índices dos relatórios e do fechamento (v3). São criados também em bancos antigos, na próxima abertura.
     "CREATE INDEX IF NOT EXISTS ix_vendas_status_fechada ON vendas(status, fechada_em)",
     "CREATE INDEX IF NOT EXISTS ix_vendas_cliente ON vendas(cliente_id, status, fechada_em)",
@@ -446,5 +464,9 @@ MIGRACOES = {
     4: [
         ("coluna", "vendas", "comanda", "INTEGER NOT NULL DEFAULT 0"),
         "DROP INDEX IF EXISTS ix_mesa_aberta",
+    ],
+    # v5: logotipo da loja no cupom térmico. A tabela fila_impressao é criada por TABELAS (IF NOT EXISTS).
+    5: [
+        ("coluna", "maquinas", "impressora_termica_logotipo", "INTEGER NOT NULL DEFAULT 0"),
     ],
 }

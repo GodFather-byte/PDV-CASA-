@@ -16,8 +16,13 @@ from src.core import formatacao as fmt
 from src.core.posicao import nome as nome_posicao
 from src.core.relatorio import para_texto
 from src.database.conexao import RAIZ
+from src.controllers.fila_impressao_controller import FilaImpressao
 from src.hardware import impressora_termica as term
+from src.hardware.imagem_escpos import logotipo_escpos
 from src.hardware.impressora_termica import ErroImpressao, ImpressoraTermica
+
+# Documentos que levam o logotipo da loja no topo (os internos, como sangria e fechamento, não).
+TIPOS_COM_LOGOTIPO = {"cupom", "pre_conta", "entrega"}
 
 # Ênfase ESC/POS por tipo de documento (quais linhas saem em negrito/dobro de altura).
 _ESTILOS = {
@@ -26,6 +31,8 @@ _ESTILOS = {
     "entrega": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL", "LEVAR TROCO")},
     "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado")},
     "pedido": {"negrito_linhas": 1},
+    "comprovante": {"negrito_linhas": 1, "grande_prefixos": ("Valor",)},
+    "relatorio": {"negrito_linhas": 1},
 }
 
 M, Q = fmt.fmt_num, fmt.fmt_qtd
@@ -41,6 +48,7 @@ class ImpressaoController:
         self.banco = banco
         self.config = ConfigController(banco)
         self.caixa = CaixaController(banco)
+        self.fila = FilaImpressao(banco)
 
     # ------------------------------------------------------------- base
     def largura(self) -> int:
@@ -260,30 +268,65 @@ class ImpressaoController:
     def deve_mostrar_na_tela(self) -> bool:
         return self.modo() == "tela"
 
-    def enviar(self, texto: str, nome: str = "documento", tipo: str | None = None, abrir_gaveta: bool = False) -> str:
-        """Grava o histórico e envia para a saída configurada (térmica/Windows/arquivo).
+    def _logotipo(self, tipo: str | None) -> bytes | None:
+        """Logotipo em ESC/POS para o documento, ou None (desligado, sem arquivo ou arquivo inválido).
+        Um logotipo ruim nunca impede o cupom de sair: o erro vai para o log e o cupom sai sem ele."""
+        if tipo not in TIPOS_COM_LOGOTIPO:
+            return None
+        m = self.config.maquina()
+        caminho = (self.config.loja().get("logotipo") or "").strip()
+        if not m["impressora_termica_logotipo"] or not caminho:
+            return None
+        try:
+            return logotipo_escpos(caminho, int(m["colunas_fita"] or 48))
+        except ErroImpressao as e:
+            self.banco.log("logotipo_invalido", str(e)[:300])
+            return None
 
-        Levanta ErroImpressao se a impressora térmica falhar (quem chama decide se mostra na tela)."""
+    def opcoes_cupom(self, venda_id: int) -> dict:
+        """Vias e gaveta de um cupom, a partir das formas de pagamento usadas na venda.
+
+        vias  = maior 'nº de vias' entre as formas (cadastro de tipos de pagamento), de 1 a 3;
+        gaveta = alguma forma fica fisicamente na gaveta (dinheiro, cheque, ticket) ou houve troco."""
+        r = self.banco.um(
+            """SELECT COALESCE(MAX(t.vias), 1) AS vias, COALESCE(MAX(t.na_gaveta), 0) AS na_gaveta
+               FROM pagamentos_venda p JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id WHERE p.venda_id = ?""",
+            (venda_id,))
+        troco = self.banco.valor("SELECT troco_cent FROM vendas WHERE id = ?", (venda_id,), 0)
+        return {"copias": max(1, min(int(r["vias"] or 1), 3)), "abrir_gaveta": bool(r["na_gaveta"]) or troco > 0}
+
+    def enviar(self, texto: str, nome: str = "documento", tipo: str | None = None, abrir_gaveta: bool = False,
+               copias: int = 1, venda_id: int | None = None) -> str:
+        """Grava o histórico e entrega o documento à saída configurada.
+
+        Na térmica o documento vai para a FILA e este método volta na hora: a thread da fila imprime, tenta de novo
+        se a impressora estiver fora e o caixa não espera. Só levanta ErroImpressao para erro de configuração
+        (ex.: nenhuma impressora definida). No modo Windows manda o arquivo para a impressora padrão."""
         caminho = self._historico(texto, nome)
         modo = self.modo()
         if modo == "termica":
-            estilos = _ESTILOS.get(tipo or "", {"negrito_linhas": 1})
-            self.impressora_termica().imprimir(texto, abrir_gaveta=abrir_gaveta, **estilos)
+            imp = self.impressora_termica()
+            if not imp.configurada:
+                raise ErroImpressao("Nenhuma impressora térmica configurada (Configurações > Máquinas).")
+            dados = imp.montar(texto, abrir_gaveta=abrir_gaveta, copias=copias, logotipo=self._logotipo(tipo),
+                               **_ESTILOS.get(tipo or "", {"negrito_linhas": 1}))
+            self.fila.enfileirar("caixa", nome, dados, tipo, venda_id)
         elif modo == "windows" and hasattr(os, "startfile"):
             os.startfile(caminho, "print")  # type: ignore[attr-defined]
         return caminho
 
     def enviar_remoto(self, texto: str, nome: str) -> str:
-        """Pedido para a cozinha/bar: vai para a impressora remota (pasta ou rede), nunca para a
-        impressora do caixa. Também grava no histórico."""
+        """Pedido para a cozinha/bar: vai para a impressora remota (pasta ou rede), nunca para a do caixa.
+        Por rede entra na fila (a cozinha fora do ar não trava o caixa). Também grava no histórico."""
         caminho = self._historico(texto, nome)
         m = self.config.maquina()
         conexao = (m["impressora_remota_conexao"] or "pasta").strip()
         if conexao == "rede":
-            endereco = (m["impressora_remota_endereco"] or "").strip()
+            if not (m["impressora_remota_endereco"] or "").strip():
+                raise ErroImpressao("Informe o endereço da impressora remota (Configurações > Máquinas).")
             dados = term.texto_para_escpos(texto, codepage=m["impressora_termica_codepage"] or "cp850",
                                            cortar=True, negrito_linhas=1)
-            term.enviar_rede(endereco, dados)
+            self.fila.enfileirar("remota", nome, dados, "pedido")
         elif conexao == "pasta":
             pasta = (m["impressora_remota_pasta"] or "").strip()
             if pasta:
@@ -306,5 +349,6 @@ class ImpressaoController:
     def reimprimir_cupom(self, venda_id: int) -> str:
         """Segunda via de um cupom já fechado/cancelado. Envia para a saída e devolve o texto."""
         texto = self.cupom(venda_id, segunda_via=True)
-        self.enviar(texto, f"2via_cupom_{self.banco.valor('SELECT cupom FROM vendas WHERE id=?', (venda_id,)) or venda_id}", tipo="cupom")
+        self.enviar(texto, f"2via_cupom_{self.banco.valor('SELECT cupom FROM vendas WHERE id=?', (venda_id,)) or venda_id}",
+                    tipo="cupom", venda_id=venda_id)
         return texto

@@ -6,7 +6,7 @@ from tkinter import ttk
 
 from src.core import formatacao as fmt
 from src.ui import tema
-from src.ui.visualizador import Visualizador
+from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
 
 def abrir_turno(master, ctx) -> bool:
@@ -109,7 +109,8 @@ class PainelFechamento(tk.Toplevel):
         return self.ctx.impressao.fechamento(self.res)
 
     def imprimir(self) -> None:
-        Visualizador(self, self.ctx, "Fechamento de turno", self._texto(), f"fechamento_turno_{self.res['turno']['numero']}")
+        enviar_ou_mostrar(self, self.ctx, "Fechamento de turno", self._texto(), f"fechamento_turno_{self.res['turno']['numero']}",
+                          tipo="fechamento")
 
     def gerar_texto(self) -> None:
         """Grava o fechamento em arquivo sem imprimir a fita."""
@@ -154,7 +155,9 @@ def sangria(master, ctx, turno_id: int) -> bool:
     r = dlg.mostrar(ev)
     if r:
         t, cent, d = r
-        Visualizador(master, ctx, "Comprovante", ctx.impressao.comprovante_movimento(t, cent, d, ctx.operador.nome), "sangria")
+        # a gaveta abre junto: o operador vai pôr (ou tirar) o dinheiro do movimento
+        enviar_ou_mostrar(master, ctx, "Comprovante", ctx.impressao.comprovante_movimento(t, cent, d, ctx.operador.nome),
+                          "sangria", tipo="comprovante", abrir_gaveta=True)
         return True
     return False
 

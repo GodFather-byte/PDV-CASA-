@@ -814,3 +814,151 @@ class TesteLoginComLicenca(BaseUI):
         pedir.assert_not_called(); aviso.assert_not_called()
         self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "")
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM log_eventos WHERE evento LIKE 'licenca%'"), 0)
+
+
+class TesteImpressaoTermicaNoCaixa(BaseUI):
+    """O caixa em modo térmica: nada abre na tela, tudo vai para a fila e a fila imprime."""
+
+    def setUp(self):
+        super().setUp()
+        import os
+        import shutil
+        from pathlib import Path
+        from src.controllers.config_controller import ConfigController
+        from src.ui.caixa_ui import JanelaCaixa
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.saida = os.path.join(self.dir, "saida.prn")
+        self.ctx.impressao.pasta_saida = lambda: Path(self.dir)       # histórico fora do repositório
+        self.cfg = ConfigController(self.banco)
+        self.cfg.salvar_maquina({"modo_impressao": "termica", "impressora_termica_conexao": "arquivo",
+                                 "impressora_termica_endereco": self.saida, "impressora_termica_gaveta": "S"})
+        self.abrir_turno()
+        self.cx = JanelaCaixa(self.root, self.ctx)
+        self.cx.update()
+        self.fila = self.ctx.impressao.fila
+
+    def lancar(self, cod, qtd):
+        self.cx.var_cod.set(cod); self.cx._enter_codigo(); self.cx.update()
+        self.cx.var_qtd.set(str(qtd)); self.cx.confirmar_item(); self.cx.update()
+
+    def pagar(self, forma, valor):
+        def acao(j):
+            f = [i for i in j.grade_formas.tree.get_children() if j.grade_formas.valores(i)[0] == forma][0]
+            j.grade_formas.selecionar(f); j._forma_escolhida()
+            j.var_valor.set(valor); j._lancar_valor()
+            j.after(10, j.fechar_venda)
+        self.robo.quando("JanelaPagamento", acao)
+        self.cx.pagar(); self.cx.update()
+
+    def impresso(self) -> bytes:
+        from pathlib import Path
+        self.fila.processar()                       # faz o papel da thread
+        p = Path(self.saida)
+        return p.read_bytes() if p.exists() else b""
+
+    def test_fechar_venda_imprime_o_cupom_na_termica_sem_abrir_tela(self):
+        self.lancar("1", 1)
+        self.pagar("Dinheiro", "10,00")
+        self.assertEqual(self.fila.contagem()["pendentes"], 1)              # entrou na fila ao fechar
+        dados = self.impresso()
+        self.assertIn("TOTAL".encode("cp850"), dados)
+        self.assertIn(b"\x1bp", dados)                                       # dinheiro: a gaveta abriu
+        self.assertEqual(dados.count(b"\x1dV"), 1)
+        self.sem_travar()                                                    # nenhuma janela ficou pendurada
+
+    def test_cartao_de_duas_vias_imprime_duas_vezes_e_nao_abre_a_gaveta(self):
+        self.banco.executar("UPDATE tipos_pagamento SET vias = 2 WHERE tipo = 'Cartão Crédito'")
+        self.lancar("1", 1)
+        self.pagar("Cartão Crédito", "8,00")
+        dados = self.impresso()
+        self.assertEqual(dados.count(b"\x1dV"), 2)
+        self.assertNotIn(b"\x1bp", dados)
+        self.sem_travar()
+
+    def test_sangria_imprime_o_comprovante_e_abre_a_gaveta(self):
+        def sangria(w):
+            ents = entradas(w)
+            ents[0].insert(0, "20,00"); ents[1].insert(0, "gelo"); clicar(w, "Gravar")
+        self.robo.quando("Dialogo", sangria)
+        self.cx.sangria(); self.cx.update()
+        dados = self.impresso()
+        self.assertIn("SANGRIA".encode("cp850"), dados)
+        self.assertIn(b"\x1bp", dados)
+        self.sem_travar()
+
+    def test_pre_conta_da_mesa_sai_na_termica(self):
+        self.cx.var_pos.set("5"); self.cx.chamar_mesa(); self.cx.update()
+        self.lancar("1", 2)
+        self.cx.pre_conta(); self.cx.update()
+        self.assertIn("CONTA DA MESA".encode("cp850"), self.impresso())
+        self.sem_travar()
+
+    def test_segunda_via_pelo_menu_do_caixa(self):
+        from pathlib import Path
+        self.lancar("1", 1)
+        self.pagar("Dinheiro", "8,00")
+        self.impresso()
+        Path(self.saida).unlink()
+        self.cx._reimprimir(self.cx._ultimo_cupom())
+        self.assertIn("SEGUNDA VIA".encode("cp850"), self.impresso())
+        self.sem_travar()
+
+    def test_impressora_fora_do_ar_nao_segura_a_venda_e_o_indicador_avisa(self):
+        self.cfg.salvar_maquina({"impressora_termica_conexao": "rede", "impressora_termica_endereco": "127.0.0.1:1"})
+        self.lancar("1", 1)
+        self.pagar("Dinheiro", "8,00")
+        item = self.fila.listar()[0]
+        self.assertEqual((item["status"], item["tentativas"]), ("pendente", 0))   # a venda nem tentou imprimir
+        self.assertEqual(self.banco.valor("SELECT status FROM vendas"), "fechada")
+        self.fila.processar()                                                      # a thread tenta e falha
+        self.cx._atualizar_fila()
+        self.assertIn("fora", self.cx.lbl_fila.cget("text"))
+        self.sem_travar()
+
+    def test_janela_da_fila_reenvia_e_cancela(self):
+        from src.ui.fila_impressao_ui import JanelaFilaImpressao
+
+        def fechar_dialogo(w):
+            try:
+                clicar(w, "Sim")
+            except AssertionError:
+                clicar(w, "OK")
+        self.robo.quando("Dialogo", fechar_dialogo, vezes=5)
+        self.cfg.salvar_maquina({"impressora_termica_conexao": "rede", "impressora_termica_endereco": "127.0.0.1:1"})
+        a = self.fila.enfileirar("caixa", "cupom_a", b"\x1b@a")
+        self.fila.processar()                                                      # falha: fica esperando
+        j = JanelaFilaImpressao(self.cx, self.ctx); j.update()
+        self.assertEqual(j.grade.total(), 1)
+        self.assertIn("fora", j.lbl.cget("text"))
+        j.grade.selecionar(a); j.reenviar()
+        self.assertEqual(self.fila.listar()[0]["tentativas"], 0)                   # voltou a zero para tentar já
+        j.cancelar(); j.update()
+        self.assertEqual(self.fila.listar()[0]["status"], "cancelado")
+        j.limpar(); j.update()
+        self.assertEqual(j.grade.total(), 0)
+        j.destroy()
+        self.sem_travar()
+
+    def test_janela_da_fila_nao_deixa_temporizadores_para_tras(self):
+        import re
+        from tkinter import TclError
+        from src.ui.fila_impressao_ui import JanelaFilaImpressao
+
+        def agendados():                                     # só os temporizadores desta janela (o caixa tem os dele)
+            achados = set()
+            for i in self.cx.tk.splitlist(self.cx.tk.call("after", "info")):
+                try:
+                    if re.fullmatch(r"\d+atualizar", str(self.cx.tk.call("after", "info", i)[0])):
+                        achados.add(i)
+                except TclError:
+                    pass                                     # disparou entre a listagem e a consulta
+            return achados
+        antes = agendados()
+        j = JanelaFilaImpressao(self.cx, self.ctx); j.update()
+        for _ in range(3):                                   # os botões chamam atualizar() direto
+            j.atualizar()
+        self.assertEqual(len(agendados() - antes), 1)        # continua um único agendamento, não quatro
+        j.destroy()
+        self.assertEqual(agendados() - antes, set())         # e nada dispara depois de fechar a janela
+        self.sem_travar()

@@ -45,6 +45,7 @@ ACESSOS = [
     ("util_limpeza", "Limpeza do movimento", "Utilitários", 4),
     ("util_comunicacao", "Programa de comunicação", "Utilitários", 2),
     ("util_backup", "Backup de dados", "Utilitários", 2),
+    ("util_fila_impressao", "Fila de impressão", "Utilitários", 2),
     ("cfg_acessos", "Configurar níveis de acesso", "Configurações", 4),
     ("cfg_loja", "Dados da Loja", "Configurações", 3),
     ("cfg_configuracoes", "Configurações operacionais", "Configurações", 4),
