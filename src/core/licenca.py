@@ -7,8 +7,10 @@ licença. O código fica no banco e é revalidado a cada entrada, então editar 
 Para uma falha de licença nunca parar a loja no meio do serviço:
   * `AVISO_DIAS` antes do vencimento a entrada passa a avisar;
   * depois do vencimento há `CARENCIA_DIAS` de uso normal, com aviso;
-  * só depois disso a entrada é bloqueada, e nunca com o turno aberto (o operador consegue fechá-lo);
-  * voltar o relógio do Windows não reabre o prazo (vale a maior data já vista).
+  * só depois disso a entrada é bloqueada, e nunca com um turno aberto RECENTE (o operador consegue fechá-lo);
+    abrir um turno novo com a licença bloqueada é recusado pelo TurnoController;
+  * voltar o relógio do Windows não reabre o prazo (vale a maior data já vista); essa data avança no máximo
+    SALTO_MAXIMO_DIAS por uso, para uma data errada no futuro não travar a loja de vez.
 
 A exigência só vale no executável (PyInstaller) ou com `licenca_exigir = S` nas configurações;
 rodando do código-fonte, como no desenvolvimento e nos testes, o sistema não pede licença.
@@ -31,6 +33,7 @@ PREFIXO = "PDVL1"
 CHAVE_PUBLICA_HEX = "95ee45402bfe36a7ae45f548a29ebc9a5da8ac220dbfdfe4a0959084d08782eb"
 AVISO_DIAS = 7
 CARENCIA_DIAS = 5
+SALTO_MAXIMO_DIAS = 3   # a "última data vista" avança no máximo isto por uso (ver registrar_uso)
 
 
 class LicencaInvalida(ErroNegocio):
@@ -159,8 +162,31 @@ def estado(banco, hoje: date | None = None, chave_publica: bytes | None = None) 
 
 
 def registrar_uso(banco, hoje: date | None = None) -> None:
-    """Guarda a maior data vista, para detectar relógio voltado."""
-    banco.cfg_set("licenca_ultimo_uso", _hoje(banco, hoje).isoformat())
+    """Guarda a maior data vista (para detectar relógio voltado). Avança no máximo SALTO_MAXIMO_DIAS por vez:
+    uma data digitada no futuro por engano não trava a loja, porque ao corrigir o relógio a licença volta ao normal."""
+    atual = hoje or date.fromisoformat(fmt.hoje())
+    ultimo = _data(banco.cfg("licenca_ultimo_uso"))
+    novo = atual if ultimo is None else max(ultimo, min(atual, ultimo + timedelta(days=SALTO_MAXIMO_DIAS)))
+    banco.cfg_set("licenca_ultimo_uso", novo.isoformat())
+
+
+def turno_vale_como_isencao(banco, turno: dict | None, hoje: date | None = None) -> bool:
+    """Turno aberto que deixa a loja terminar o serviço com a licença bloqueada. Precisa ser recente (aberto no
+    máximo 1 dia antes da última data vista): um turno esquecido ou inserido à mão não desliga a licença."""
+    if not turno:
+        return False
+    aberto = _data(str(turno.get("aberto_em") or "")[:10])
+    return aberto is not None and aberto >= _hoje(banco, hoje) - timedelta(days=1)
+
+
+def _guardada(banco, chave_publica: bytes | None) -> dict | None:
+    """A licença guardada, só se ainda validar (assinatura e loja); senão None."""
+    try:
+        lic = ler_licenca(banco.cfg("licenca_token"), chave_publica)
+    except LicencaInvalida:
+        return None
+    loja = banco.cfg("chave_loja").strip()
+    return lic if not loja or lic["loja"] == loja else None
 
 
 def ativar(banco, codigo: str, hoje: date | None = None, chave_publica: bytes | None = None) -> dict:
@@ -170,16 +196,14 @@ def ativar(banco, codigo: str, hoje: date | None = None, chave_publica: bytes | 
     loja = banco.cfg("chave_loja").strip()
     if loja and lic["loja"] != loja:
         raise LicencaInvalida(f"Esta licença é da loja '{lic['loja']}', e este caixa está configurado como '{loja}'.")
-    agora = _hoje(banco, hoje)
-    if lic["expira_em"] < agora:
+    if lic["expira_em"] < _hoje(banco, hoje):
         raise LicencaExpirada(f"Esta licença já venceu em {_br(lic['expira_em'])}.")
-    atual = _data(banco.cfg("licenca_expira_em"))
-    if atual and lic["expira_em"] < atual:
-        raise LicencaInvalida(f"Esta licença é mais antiga que a atual (válida até {_br(atual)}).")
+    anterior = _guardada(banco, chave_publica)       # só vale como comparação se ainda validar (chave ou loja trocada, não)
+    if anterior and anterior["loja"] == lic["loja"] and lic["expira_em"] < anterior["expira_em"]:
+        raise LicencaInvalida(f"Esta licença é mais antiga que a atual (válida até {_br(anterior['expira_em'])}).")
     with banco.transacao():
-        banco.cfg_set("licenca_token", codigo)
-        banco.cfg_set("licenca_expira_em", lic["expira_em"].isoformat())  # só para exibir; o prazo vem do código
-        banco.cfg_set("licenca_ultimo_uso", agora.isoformat())
+        banco.cfg_set("licenca_token", codigo)         # o prazo vem sempre do código assinado, nunca de outra linha do banco
+        registrar_uso(banco, hoje)
         if not loja:
             banco.cfg_set("chave_loja", lic["loja"])
         banco.log("licenca_ativada", f"loja {lic['loja']} válida até {lic['expira_em'].isoformat()}")

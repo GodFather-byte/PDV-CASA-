@@ -11,7 +11,9 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
+from src.controllers.turno_controller import TurnoController
 from src.core import ed25519, licenca
+from src.core.erros import ErroNegocio
 from src.core.licenca import LicencaExpirada, LicencaInvalida
 from tests.base import BaseTeste
 
@@ -107,7 +109,7 @@ class TesteLicenca(BaseTeste):
         lic = self.ativar()
         self.assertEqual((lic["loja"], lic["expira_em"]), ("LOJA-1", date(2026, 11, 2)))
         self.assertEqual(self.banco.cfg("chave_loja"), "LOJA-1")
-        self.assertEqual(self.banco.cfg("licenca_expira_em"), "2026-11-02")
+        self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "2026-10-03")
         self.assertEqual(self.estado(self.HOJE).situacao, "ok")
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM log_eventos WHERE evento = 'licenca_ativada'"), 1)
 
@@ -165,7 +167,8 @@ class TesteLicenca(BaseTeste):
 
     def test_editar_o_banco_nao_estende_o_prazo(self):
         self.ativar(self.codigo(dias=7))
-        self.banco.cfg_set("licenca_expira_em", "2099-01-01")
+        self.banco.cfg_set("licenca_expira_em", "2099-01-01")       # chave que o PDV nem lê mais
+        self.banco.cfg_set("licenca_ultimo_uso", "2000-01-01")
         self.assertEqual(self.estado(date(2026, 12, 1)).situacao, "bloqueada")
         self.banco.cfg_set("licenca_token", self.codigo(dias=3650).replace("A", "B", 1))   # código adulterado
         self.assertEqual(self.estado(self.HOJE).situacao, "sem_licenca")
@@ -179,8 +182,45 @@ class TesteLicenca(BaseTeste):
 
     def test_relogio_voltado_nao_reabre_o_prazo(self):
         self.ativar(self.codigo(dias=7))
-        licenca.registrar_uso(self.banco, hoje=date(2026, 10, 20))
+        for dia in range(4, 21):                                    # uso diário até 20/10 (a licença venceu em 10/10)
+            licenca.registrar_uso(self.banco, hoje=date(2026, 10, dia))
+        self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "2026-10-20")
         self.assertEqual(self.estado(date(2026, 10, 1)).situacao, "bloqueada")
+
+    def test_data_errada_no_futuro_nao_trava_a_loja_de_vez(self):
+        self.ativar(self.codigo(dias=30))
+        licenca.registrar_uso(self.banco, hoje=date(2030, 1, 1))        # alguém digitou o ano errado e entrou
+        self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "2026-10-06")   # avança no máximo 3 dias por uso
+        self.assertEqual(self.estado(date(2026, 10, 4)).situacao, "ok")     # relógio corrigido: tudo normal
+        self.assertEqual(self.ativar(self.codigo(dias=60), hoje=date(2026, 10, 4))["expira_em"], date(2026, 12, 2))
+
+    def test_ultimo_uso_avanca_no_maximo_tres_dias_por_vez_e_nunca_recua(self):
+        for hoje, esperado in [(date(2026, 10, 3), "2026-10-03"), (date(2026, 10, 4), "2026-10-04"),
+                               (date(2026, 10, 20), "2026-10-07"), (date(2026, 10, 20), "2026-10-10"),
+                               (date(2026, 10, 1), "2026-10-10")]:
+            licenca.registrar_uso(self.banco, hoje=hoje)
+            self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), esperado)
+
+    def test_renovacao_menor_so_e_recusada_se_a_licenca_guardada_ainda_valida(self):
+        self.ativar(self.codigo(dias=365))
+        with self.assertRaisesRegex(LicencaInvalida, "mais antiga"):
+            self.ativar(self.codigo(dias=30))
+        outra = ed25519.chave_publica(bytes(range(1, 33)))           # chave do fornecedor trocada: o código guardado não valida mais
+        novo = licenca.gerar_licenca(bytes(range(1, 33)), "LOJA-1", 30, self.HOJE)
+        lic = licenca.ativar(self.banco, novo, hoje=self.HOJE, chave_publica=outra)
+        self.assertEqual(lic["expira_em"], date(2026, 11, 2))
+
+    def test_turno_so_isenta_se_for_recente(self):
+        isenta = lambda turno, hoje=self.HOJE: licenca.turno_vale_como_isencao(self.banco, turno, hoje=hoje)
+        self.assertTrue(isenta({"aberto_em": "2026-10-03 20:00:00"}))
+        self.assertTrue(isenta({"aberto_em": "2026-10-02 22:00:00"}))      # turno da noite anterior, ainda aberto
+        self.assertFalse(isenta({"aberto_em": "2026-10-01 22:00:00"}))     # esquecido há 2 dias
+        self.assertFalse(isenta({"aberto_em": "2026-01-01 08:00:00"}))     # linha antiga inserida à mão
+        self.assertFalse(isenta(None))
+        self.assertFalse(isenta({}))
+        self.assertFalse(isenta({"aberto_em": "lixo"}))
+        licenca.registrar_uso(self.banco, hoje=date(2026, 10, 5))           # a data vista avança junto
+        self.assertFalse(isenta({"aberto_em": "2026-10-03 20:00:00"}, hoje=self.HOJE))
 
     def test_usa_o_relogio_do_sistema_quando_nao_recebe_a_data(self):
         self.ativar(self.codigo(dias=7))                         # o relógio dos testes marca 03/10/2026
@@ -223,6 +263,52 @@ class TesteLicenca(BaseTeste):
                     ferramenta.emitir(arquivo, "LOJA-9", 30)
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(ferramenta.main(["ver", "lixo"]), 1)
+
+
+class TesteTurnoComLicenca(BaseTeste):
+    """TurnoController: com a licença bloqueada não abre turno novo (fechar continua liberado)."""
+    SEMENTE = bytes(range(32))
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(licenca, "CHAVE_PUBLICA_HEX", ed25519.chave_publica(self.SEMENTE).hex())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.adm = self.operador_adm()
+        self.turnos = TurnoController(self.banco)
+
+    def ativar(self, dias):
+        hoje = date(2026, 10, 3)                                     # o relógio do teste marca 03/10/2026 21:00
+        licenca.ativar(self.banco, licenca.gerar_licenca(self.SEMENTE, "LOJA-1", dias, hoje), hoje=hoje)
+
+    def test_sem_exigencia_abre_normalmente(self):
+        self.turnos.abrir(self.adm, 1, 0)
+        self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "")
+
+    def test_exigida_sem_licenca_recusa_abrir(self):
+        self.banco.cfg_set("licenca_exigir", "S")
+        with self.assertRaisesRegex(ErroNegocio, "Nenhuma licença.*abrir um turno"):
+            self.turnos.abrir(self.adm, 1, 0)
+        self.assertIsNone(self.turnos.atual())
+
+    def test_licenca_em_dia_ou_em_carencia_abre_e_registra_o_uso(self):
+        self.banco.cfg_set("licenca_exigir", "S")
+        self.ativar(10)
+        self.turnos.abrir(self.adm, 1, 0)
+        self.turnos.fechar(self.turnos.atual()["id"], self.adm, 0)
+        self.avancar(days=13)                                         # venceu em 13/10; 16/10 ainda está na carência
+        self.turnos.abrir(self.adm, 2, 0)
+        self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "2026-10-06")
+
+    def test_vencida_alem_da_carencia_nao_abre_turno_mas_deixa_fechar_o_aberto(self):
+        self.banco.cfg_set("licenca_exigir", "S")
+        self.ativar(10)
+        turno = self.turnos.abrir(self.adm, 1, 0)
+        self.avancar(days=20)                                         # 23/10: licença venceu em 13/10 e a carência acabou
+        self.assertTrue(licenca.estado(self.banco).bloqueia)
+        self.turnos.fechar(turno, self.adm, 0)                       # fechar o turno aberto continua liberado
+        with self.assertRaisesRegex(ErroNegocio, "Renove a licença"):
+            self.turnos.abrir(self.adm, 2, 0)
 
 
 if __name__ == "__main__":

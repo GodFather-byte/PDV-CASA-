@@ -53,8 +53,9 @@ class JanelaLogin(tk.Toplevel):
 
     def entrar(self) -> None:
         estado = licenca.estado(self.ctx.banco)
-        if estado.bloqueia and not TurnoController(self.ctx.banco).atual():
-            # Com o turno aberto a loja continua operando (só avisa); sem turno, exige a renovação.
+        turno = TurnoController(self.ctx.banco).atual()
+        if estado.bloqueia and not licenca.turno_vale_como_isencao(self.ctx.banco, turno):
+            # Com um turno recente aberto a loja continua operando (só avisa); sem ele, exige a renovação.
             self.ctx.banco.log("licenca_bloqueio", estado.mensagem)
             self.lbl_msg.configure(text=estado.mensagem)
             if not self.pedir_licenca(estado.mensagem):

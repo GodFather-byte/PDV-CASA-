@@ -553,12 +553,32 @@ class TesteLoginComLicenca(BaseUI):
         j2.destroy()
         pedir.assert_called_once(); pedir2.assert_called_once()
 
+    def abrir_turno_antes_da_exigencia(self, aberto_em=None):
+        """Abre o turno com a licença ainda desligada (como numa loja que já estava operando) e liga a exigência."""
+        self.banco.cfg_set("licenca_exigir", "N")
+        tid = self.abrir_turno()
+        if aberto_em:
+            self.banco.executar("UPDATE turnos SET aberto_em = ? WHERE id = ?", (aberto_em, tid))
+        self.banco.cfg_set("licenca_exigir", "S")
+
     def test_com_o_turno_aberto_entra_sem_pedir_codigo_e_avisa(self):
-        self.abrir_turno()
+        self.abrir_turno_antes_da_exigencia()
         j, pedir, aviso = self.entrar()
         pedir.assert_not_called()
         self.assertEqual(j.operador.nome, "ADM")
         self.assertIn("turno aberto", aviso.call_args.args[1])
+
+    def test_turno_antigo_ou_esquecido_nao_isenta_da_licenca(self):
+        self.abrir_turno_antes_da_exigencia(aberto_em="2026-09-20 08:00:00")
+        j, pedir, aviso = self.entrar(codigo=None)
+        pedir.assert_called_once()                              # não houve isenção: pediu o código
+        self.assertIsNone(j.operador)
+        j.destroy()
+
+    def test_sem_licenca_nao_abre_turno_novo_nem_pelo_menu(self):
+        from src.core.erros import ErroNegocio
+        with self.assertRaisesRegex(ErroNegocio, "Renove a licença"):
+            self.ctx.turnos.abrir(self.ctx.operador_id, 1, 0)
 
     def test_perto_do_vencimento_avisa_e_registra_o_uso(self):
         self.licenca.ativar(self.banco, self.codigo(dias=3))
