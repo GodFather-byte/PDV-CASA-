@@ -4,6 +4,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from src.core.licenca import verificar_bloqueio, LicencaExpirada
 from src.core.erros import ErroNegocio
 from src.ui import tema
 
@@ -47,6 +48,22 @@ class JanelaLogin(tk.Toplevel):
         (self.ent_senha if self.var_usuario.get() else self.ent_usuario).focus_set()
 
     def entrar(self) -> None:
+        try:
+            verificar_bloqueio()
+        except LicencaExpirada as e:
+            self.lbl_msg.configure(text=str(e))
+            self.lbl_msg.configure(fg="#ff4444")
+            from tkinter import simpledialog
+            from src.core.licenca import validar_e_salvar_licenca, LicencaInvalida
+            token = simpledialog.askstring("Licença Expirada", "Sua licença acabou. Digite o código de renovação:", parent=self)
+            if token:
+                try:
+                    validar_e_salvar_licenca(token)
+                    self.lbl_msg.configure(text="Licença renovada! Tente logar novamente.", fg="#5be39a")
+                except LicencaInvalida as err:
+                    self.lbl_msg.configure(text=str(err), fg="#ff4444")
+            return
+            
         try:
             self.operador = self.ctx.acesso.autenticar(self.var_usuario.get(), self.var_senha.get())
         except ErroNegocio as e:
