@@ -84,6 +84,20 @@ São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
 - Relatórios: "Mesas e comandas" mostra a posição como `5` ou `C2`; o filtro *Modalidade* separa `mesa` de `comanda`.
 - A **nuvem** ainda recebe a comanda como venda de mesa (o contrato de sincronização não mudou).
 
+## Fechamento do turno
+
+Além dos totais e da conferência do dinheiro, o fechamento (e a Leitura X) traz a **conferência do turno**, para auditar a
+noite:
+
+- **Posições em aberto:** mesas e comandas com consumo que ficaram abertas, com o total de cada uma e a soma. Ao trocar o
+  turno, o caixa avisa quais são (elas continuam abertas no turno seguinte).
+- **Cupons cancelados** (cupom, onde era, valor, motivo e quem cancelou) e **itens cancelados** (hora, onde, produto,
+  quantidade, valor e quem cancelou).
+- **Transferências** entre mesas e comandas (inteira, várias para uma ou parte dos itens): de onde para onde, valor e quem fez.
+
+No painel do fechamento aparecem as contagens e o botão **Conferência do turno** mostra o detalhe na tela; na fita
+impressa as seções só saem quando há ocorrências (a linha das posições abertas sai sempre, com "nenhuma" se não houver).
+
 ## Impressão térmica
 
 O caixa imprime em impressora térmica ESC/POS (Epson TM, Bematech, Elgin, Tanca e compatíveis; 58 mm ou 80 mm). Cupom,

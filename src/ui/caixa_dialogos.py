@@ -4,6 +4,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from src.controllers import conferencia_turno
 from src.core import formatacao as fmt
 from src.ui import tema
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
@@ -35,8 +36,14 @@ def trocar_turno(master, ctx) -> bool:
                                 0, permitir_zero=True)
     if valor is None:
         return False
+    abertas = ctx.turnos.posicoes_abertas()
+    aviso = ""
+    if abertas:                 # mesas e comandas esquecidas abertas: o caixa avisa, o dono decide
+        nomes = ", ".join(p["nome"] for p in abertas[:6]) + (", ..." if len(abertas) > 6 else "")
+        aviso = (f"\n\nATENÇÃO: {len(abertas)} mesa(s)/comanda(s) aberta(s), {fmt.fmt_brl(sum(p['total_cent'] for p in abertas))}:"
+                 f"\n{nomes}.\nElas continuam abertas no próximo turno.")
     if not tema.confirmar(master, f"Confirma {fmt.fmt_brl(valor)} como valor final?\n"
-                                  "Depois de confirmar o turno é encerrado e não pode ser acertado.", "Troca de turno"):
+                                  "Depois de confirmar o turno é encerrado e não pode ser acertado." + aviso, "Troca de turno"):
         return False
     ok, res = tema.tratar(master, ctx.turnos.fechar, turno["id"], ctx.operador_id, valor)
     if ok:
@@ -58,12 +65,17 @@ class PainelFechamento(tk.Toplevel):
         corpo.pack(fill="both", expand=True)
         esq = ttk.LabelFrame(corpo, text="Turno", padding=10)
         esq.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        abertas = res.get("posicoes_abertas") or []
         dados = [("Turno", t["numero"]), ("Abertura", fmt.fmt_datahora(t["aberto_em"])), ("Valor inicial (+)", M(res["valor_inicial"])),
                  ("Cupom inicial", res["cupom_inicial"]), ("Fechamento", fmt.fmt_datahora(fmt.agora())),
                  ("Valor final (-)", M(res["valor_final"])), ("Cupom final", res["cupom_final"]), ("Posições", res["posicoes"]),
                  ("Entregas", res["entregas"]), ("Perc. entrega", f"{res['perc_entrega']:.2f}".replace(".", ",")),
                  ("TC (cupons)", res["tc"]), ("TM", M(res["tm"])), ("Nº de pessoas", res["pessoas"]),
-                 ("Valor por pessoa", M(res["valor_por_pessoa"]))]
+                 ("Valor por pessoa", M(res["valor_por_pessoa"])),
+                 ("Posições em aberto", f"{len(abertas)} ({M(sum(p['total_cent'] for p in abertas))})" if abertas else "nenhuma"),
+                 ("Cupons cancelados", len(res.get("cupons_cancelados") or ())),
+                 ("Itens cancelados", len(res.get("itens_cancelados") or ())),
+                 ("Transferências", len(res.get("transferencias") or ()))]
         for i, (r, v) in enumerate(dados):
             ttk.Label(esq, text=r).grid(row=i, column=0, sticky="w")
             ttk.Label(esq, text=str(v), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(20, 0))
@@ -95,6 +107,7 @@ class PainelFechamento(tk.Toplevel):
         barra.grid(row=2, column=0, columnspan=2, sticky="ew")
         ttk.Button(barra, text="Imprimir Fechamento", command=self.imprimir).pack(side="left")
         ttk.Button(barra, text="Gera Arquivo Texto", command=self.gerar_texto).pack(side="left", padx=8)
+        ttk.Button(barra, text="Conferência do turno", command=self.conferencia).pack(side="left")
         b = ttk.Button(barra, text="Concluir (Enter)", style="Ok.TButton", command=self.destroy)
         b.pack(side="right")
         self.bind("<Return>", lambda e: self.destroy())
@@ -111,6 +124,12 @@ class PainelFechamento(tk.Toplevel):
     def imprimir(self) -> None:
         enviar_ou_mostrar(self, self.ctx, "Fechamento de turno", self._texto(), f"fechamento_turno_{self.res['turno']['numero']}",
                           tipo="fechamento")
+
+    def conferencia(self) -> None:
+        """Posições abertas, cancelamentos e transferências do turno, na tela (sem imprimir)."""
+        Visualizador(self, self.ctx, "Conferência do turno",
+                     conferencia_turno.texto_conferencia(self.res, self.ctx.impressao.largura()),
+                     f"conferencia_turno_{self.res['turno']['numero']}")
 
     def gerar_texto(self) -> None:
         """Grava o fechamento em arquivo sem imprimir a fita."""

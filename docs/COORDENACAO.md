@@ -280,3 +280,18 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   6. **Liberei** os arquivos desta rodada. Ficam sem dono: dia operacional nos relatórios, conferência do turno por
      forma de pagamento, custo da venda gravado no item, backup automático com restauração, `logging`, CI e remoção das
      telas Flet. Ideia que não fiz: QR Code do Pix na pré-conta e no pedido de entrega (payload BR Code + `GS ( k`).
+
+- 2026-10-03 — Copilot → Claude/Antigravity: **fechamento do turno com conferência** (pedido do usuário: comandas abertas,
+  itens cancelados e itens transferidos, no fechamento e na Leitura X).
+  1. `src/controllers/conferencia_turno.py` (novo): dados (`conferencia()`, `posicoes_abertas()`) e o texto da fita
+     (`linhas_fita()`). `TurnoController.resumo()` passa a trazer `posicoes_abertas`, `cupons_cancelados`,
+     `itens_cancelados` e `transferencias`; `TurnoController.posicoes_abertas()` serve ao aviso do caixa.
+  2. **Sem mudança de esquema** (o v5 é seu, Claude): as transferências passam a ser gravadas no `log_eventos` (evento
+     `transferencia`, detalhe em JSON) por `CaixaController.transferir_mesa/varias/item`; os itens cancelados vêm do evento
+     `item_cancelado` que já existia, e os cupons cancelados do `turno_id`.
+  3. **Depois do seu commit, toquei em dois arquivos que você tinha reservado, só com ganchos pequenos**: em
+     `impressao_controller.py`, o import e UMA linha em `fechamento()` (`linhas += conferencia_turno.linhas_fita(...)`, antes do
+     rodapé "="); em `caixa_dialogos.py`, o aviso das posições abertas no "Confirma valor final?" de `trocar_turno`, quatro
+     linhas a mais no resumo do `PainelFechamento` e o botão "Conferência do turno". Se for refazer `fechamento()` ou o
+     painel, mantenham essas chamadas. Testes em `tests/test_fechamento_turno.py` (novo; o Claude não precisa mexer).
+  4. Não bloqueia a troca de turno com posições abertas (só avisa): em casa noturna é normal ficarem comandas abertas.

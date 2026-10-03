@@ -9,6 +9,7 @@ import os
 import re
 from pathlib import Path
 
+from src.controllers import conferencia_turno
 from src.controllers.caixa_controller import CaixaController
 from src.controllers.config_controller import ConfigController
 from src.controllers.relatorio_controller import RelatorioController
@@ -215,6 +216,7 @@ class ImpressaoController:
         if "valor_final" in resumo:
             linhas += [_lr("Valor final (declarado)", M(resumo["valor_final"]), w),
                        _lr("RESULTADO (sobra/falta)", M(resumo["resultado"]), w)]
+        linhas += conferencia_turno.linhas_fita(resumo, w)      # posições abertas, cancelamentos, transferências
         return "\n".join(linhas + ["=" * w])
 
     def comprovante_movimento(self, tipo: str, valor_cent: int, descricao: str, operador: str) -> str:

@@ -45,7 +45,7 @@ Convenção: `C` = controlador (regra, em `src/controllers/`), `UI` = tela (em `
 | Repique (F9), sangria (F7), gaveta (F11), balança (F2), leitor óptico (F3) | UI `caixa_ui` · `hardware/dispositivos.py` (interfaces) |
 | Caderneta (F5): escolher/incluir/consultar cliente, débito, crédito, excedente vira crédito | C `caderneta_controller`, `caixa_controller` · UI `clientes_ui` |
 | Entrega (F6): taxa por bairro, troco para quanto, entregador (E), pendentes | C `entrega_controller` · UI `clientes_ui`, `caixa_ui` |
-| Troca de turno: valor declarado antes do esperado, sobra/falta verde ou vermelho, imprimir e gerar arquivo | C `turno_controller.fechar` · UI `caixa_dialogos.PainelFechamento` |
+| Troca de turno: valor declarado antes do esperado, sobra/falta verde ou vermelho, imprimir e gerar arquivo; conferência (posições abertas, cancelamentos, transferências) | C `turno_controller`, `conferencia_turno` · UI `caixa_dialogos.PainelFechamento` |
 | Leitura X e Redução Z | **Gerenciais, não fiscais** (ver seção 3) |
 
 ### Manual da versão web
@@ -77,6 +77,10 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   mesas abertas permanecem gravados. Os ícones seguem o manual (mesa consumindo, conta enviada com bandeja, relógio na
   parada) e foram desenhados do zero; o balcão é o primeiro ícone e cada um mostra o total (acréscimos nossos). O manual
   mostra o painel só depois do Esc; aqui ele fica sempre no rodapé (`painel_mesas_fixo = S`) e `N` volta ao do manual.
+- **Conferência do turno** (fechamento e Leitura X): posições abertas (só as com consumo; vale o momento do fechamento, não
+  só o turno), cupons cancelados (pelo `turno_id`) e itens cancelados e transferências (pela janela de tempo do turno, lidos
+  do `log_eventos`: eventos `item_cancelado` e `transferencia`, sem tabela nova). Um item cancelado aparece no local atual
+  da posição (se ela foi transferida depois, o nome novo). Só avisa: não bloqueia a troca de turno com posições abertas.
 - **Estoque baixa ao fechar a venda**, não ao lançar o item; cancelar o cupom estorna. Estoque negativo é permitido.
 - **Promoções** (período, dias da semana, horário) valem em conjunto; havendo mais de uma, vence a de menor
   preço. Faixas que viram a meia-noite funcionam (ex.: 22:00 às 02:00).

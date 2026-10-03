@@ -1,0 +1,179 @@
+"""Conferência do turno: o que o fechamento mostra além dos totais.
+
+  * posições (mesas e comandas) que ainda estão abertas, com o total de cada uma;
+  * cupons e itens cancelados durante o turno, e quem cancelou;
+  * transferências entre mesas e comandas: de onde para onde foi o consumo, quanto e quem fez.
+
+Serve para o dono auditar o turno: comanda esquecida aberta, item cancelado, consumo passado para a conta de outro cliente.
+As transferências ficam no `log_eventos` (evento 'transferencia', detalhe em JSON): não há tabela própria.
+"""
+from __future__ import annotations
+
+import json
+import re
+
+from src.core import formatacao as fmt
+from src.core.posicao import nome as nome_posicao
+from src.core.posicao import rotulo as rotulo_posicao
+
+LIMITE_FITA = 40      # linhas por seção na fita; o resto vira "e mais N"
+M, Q = fmt.fmt_num, fmt.fmt_qtd
+
+
+def registrar_transferencia(banco, operador_id: int | None, tipo: str, origem: str, destino: str, valor_cent: int,
+                            **extra) -> None:
+    """Grava no log uma transferência: tipo 'mesa' (posição inteira) ou 'item' (parte dos produtos).
+    `origem` e `destino` são os rótulos das posições ('5' para mesa, 'C2' para comanda)."""
+    detalhe = {"tipo": tipo, "origem": origem, "destino": destino, "valor_cent": valor_cent, **extra}
+    banco.log("transferencia", json.dumps(detalhe, ensure_ascii=False), operador_id)
+
+
+def _local(modalidade: str, comanda, posicao) -> str:
+    if modalidade == "mesa":
+        return nome_posicao(comanda, posicao)
+    return {"balcao": "Balcão", "caderneta": "Caderneta"}.get(modalidade, f"Entrega {posicao}")
+
+
+def posicoes_abertas(banco) -> list[dict]:
+    """Mesas e comandas com consumo que ainda estão abertas (as vazias, recém-abertas, não contam)."""
+    return [{"rotulo": rotulo_posicao(r["comanda"], r["posicao"]), "nome": nome_posicao(r["comanda"], r["posicao"]),
+             "status": r["status"], "total_cent": r["total_cent"], "itens": r["itens"]}
+            for r in banco.todos(
+                """SELECT v.comanda, v.posicao, v.status, v.total_cent,
+                          (SELECT COUNT(*) FROM itens_venda i WHERE i.venda_id = v.id AND i.cancelado = 0) AS itens
+                   FROM vendas v WHERE v.modalidade = 'mesa' AND v.status IN ('aberta','conta_enviada')
+                   ORDER BY v.comanda, v.posicao""") if r["itens"]]
+
+
+def _cupons_cancelados(banco, turno_id: int) -> list[dict]:
+    return [{"cupom": r["cupom"], "local": _local(r["modalidade"], r["comanda"], r["posicao"]),
+             "total_cent": r["total_cent"], "motivo": r["motivo_cancelamento"], "por": r["por"]}
+            for r in banco.todos(
+                """SELECT v.cupom, v.modalidade, v.comanda, v.posicao, v.total_cent, v.motivo_cancelamento, o.nome AS por
+                   FROM vendas v LEFT JOIN operadores o ON o.id = v.cancelada_por
+                   WHERE v.turno_id = ? AND v.status = 'cancelada' ORDER BY v.cupom""", (turno_id,))]
+
+
+def _eventos(banco, evento: str, inicio: str, fim: str):
+    return banco.todos(
+        """SELECT l.quando, l.detalhe, o.nome AS por FROM log_eventos l LEFT JOIN operadores o ON o.id = l.operador_id
+           WHERE l.evento = ? AND l.quando >= ? AND l.quando <= ? ORDER BY l.id""", (evento, inicio, fim))
+
+
+def _itens_cancelados(banco, inicio: str, fim: str) -> list[dict]:
+    """Parte do log (quem e quando) e só então vai ao item (por chave): não varre a tabela de itens inteira."""
+    saida = []
+    for e in _eventos(banco, "item_cancelado", inicio, fim):
+        achou = re.search(r"item (\d+)", e["detalhe"] or "")
+        r = banco.um(
+            """SELECT i.quantidade, i.total_cent, p.codigo, p.nome, v.modalidade, v.comanda, v.posicao, v.cupom
+               FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos p ON p.id = i.produto_id
+               WHERE i.id = ?""", (int(achou.group(1)),)) if achou else None
+        if r is None:                 # a venda já foi apagada (limpeza do movimento)
+            continue
+        saida.append({"quando": e["quando"], "local": _local(r["modalidade"], r["comanda"], r["posicao"]),
+                      "cupom": r["cupom"], "codigo": r["codigo"], "produto": r["nome"], "quantidade": r["quantidade"],
+                      "total_cent": r["total_cent"], "por": e["por"]})
+    return saida
+
+
+def _transferencias(banco, inicio: str, fim: str) -> list[dict]:
+    saida = []
+    for e in _eventos(banco, "transferencia", inicio, fim):
+        try:
+            d = json.loads(e["detalhe"])
+        except (TypeError, ValueError):
+            continue
+        saida.append({"quando": e["quando"], "por": e["por"],
+                      **{k: d.get(k) for k in ("tipo", "origem", "destino", "valor_cent", "produto", "quantidade")}})
+    return saida
+
+
+def conferencia(banco, turno: dict) -> dict:
+    """Tudo que a conferência traz, para o turno `turno` (aberto: até agora; fechado: até o fechamento)."""
+    inicio, fim = turno["aberto_em"], turno.get("fechado_em") or fmt.agora()
+    return {"posicoes_abertas": posicoes_abertas(banco),
+            "cupons_cancelados": _cupons_cancelados(banco, turno["id"]),
+            "itens_cancelados": _itens_cancelados(banco, inicio, fim),
+            "transferencias": _transferencias(banco, inicio, fim)}
+
+
+# ----------------------------------------------------------------- texto da fita
+def _lr(esq: str, dir_: str, w: int) -> str:
+    esq = esq[: max(w - len(dir_) - 1, 1)]
+    return esq.ljust(w - len(dir_)) + dir_
+
+
+def _hora(quando: str | None) -> str:
+    return (quando or "")[11:16]
+
+
+def _qtd(q) -> str:
+    """1 em vez de 1,000 quando a quantidade é inteira."""
+    q = q or 0
+    return Q(q, 0) if q == int(q) else Q(q)
+
+
+def _curto(rotulo: str | None) -> str:
+    """'C2' continua 'C2'; o '5' das mesas vira 'M5' para não ser confundido com número de comanda."""
+    rotulo = rotulo or "?"
+    return rotulo if rotulo[:1] in "Cc" else f"M{rotulo}"
+
+
+def _secao(titulo: str, itens: list, formata, w: int) -> list[str]:
+    linhas = ["-" * w, f"{titulo} ({len(itens)})"]
+    for it in itens[:LIMITE_FITA]:
+        linhas += formata(it)
+    if len(itens) > LIMITE_FITA:
+        linhas.append(f"  ... e mais {len(itens) - LIMITE_FITA}")
+    return linhas
+
+
+def linhas_fita(res: dict, w: int = 40) -> list[str]:
+    """As seções da conferência para a fita de `w` colunas. Só aparecem as que têm algo; a linha das posições abertas
+    aparece sempre (um 'nenhuma' mostra que foi conferido)."""
+    saida: list[str] = []
+    abertas = res.get("posicoes_abertas") or []
+    if abertas:
+        def posicao(p):
+            nome = p["nome"] + (" - conta enviada" if p["status"] == "conta_enviada" else "")
+            return [_lr(f"  {nome}", M(p["total_cent"]), w)]
+        saida += _secao("POSIÇÕES EM ABERTO", abertas, posicao, w)
+        saida.append(_lr("  Total em aberto", M(sum(p["total_cent"] for p in abertas)), w))
+    else:
+        saida += ["-" * w, _lr("Posições em aberto", "nenhuma", w)]
+
+    def cupom(c):
+        linhas = [_lr(f"  {c['cupom']} {c['local']}", M(c["total_cent"]), w)]
+        motivo = f"{c['por'] or '?'}: {c['motivo']}" if c["motivo"] else f"por {c['por'] or '?'}"
+        return linhas + [f"     {motivo}"[:w]]
+
+    def item(i):
+        return [_lr(f"  {_hora(i['quando'])} {_curto_local(i['local'])} {_qtd(i['quantidade'])}x {i['produto']}",
+                    M(i["total_cent"]), w), f"        por {i['por'] or '?'}"[:w]]
+
+    def transferencia(t):
+        o = "inteira" if t["tipo"] == "mesa" else f"{_qtd(t['quantidade'])}x {t['produto'] or '?'}"
+        return [_lr(f"  {_hora(t['quando'])} {_curto(t['origem'])}>{_curto(t['destino'])} {o}", M(t["valor_cent"] or 0), w),
+                f"        por {t['por'] or '?'}"[:w]]
+
+    if res.get("cupons_cancelados"):
+        saida += _secao("CUPONS CANCELADOS", res["cupons_cancelados"], cupom, w)
+    if res.get("itens_cancelados"):
+        saida += _secao("ITENS CANCELADOS", res["itens_cancelados"], item, w)
+    if res.get("transferencias"):
+        saida += _secao("TRANSFERÊNCIAS", res["transferencias"], transferencia, w)
+    return saida
+
+
+def _curto_local(local: str) -> str:
+    """'Comanda 2' -> 'C2', 'Mesa 5' -> 'M5'; Balcão, Caderneta e Entrega continuam por extenso."""
+    partes = local.split()
+    if len(partes) == 2 and partes[0] in ("Comanda", "Mesa"):
+        return f"{partes[0][0]}{partes[1]}"
+    return local
+
+
+def texto_conferencia(res: dict, w: int = 40) -> str:
+    """As mesmas seções como texto avulso (para ver na tela sem imprimir)."""
+    return "CONFERÊNCIA DO TURNO".center(w) + "\n" + "\n".join(linhas_fita(res, w)[1:])

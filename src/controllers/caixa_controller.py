@@ -15,6 +15,7 @@ from uuid import uuid4
 from src.controllers.estoque_controller import EstoqueController
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.turno_controller import TurnoController
+from src.controllers.conferencia_turno import registrar_transferencia
 from src.core import formatacao as fmt
 from src.core.posicao import interpretar as interpretar_posicao
 from src.core.posicao import nome as nome_posicao
@@ -501,6 +502,8 @@ class CaixaController:
                 destino_id = d["id"]
                 self._mover_itens(o["id"], destino_id)
             self.recalcular(destino_id)
+            registrar_transferencia(self.banco, self.operador_id, "mesa", rotulo_posicao(c_origem, n_origem),
+                                    rotulo_posicao(c_destino, n_destino), o["subtotal_cent"])
         return destino_id
 
     def transferir_varias(self, origens: list, destino) -> int:
@@ -515,7 +518,10 @@ class CaixaController:
                 self._mesa_aberta(n, c)
             destino_id, _ = self.abrir_mesa(n_destino, comanda=c_destino)
             for c, n in pares:
-                self._mover_itens(self._mesa_aberta(n, c)["id"], destino_id)
+                o = self._mesa_aberta(n, c)
+                self._mover_itens(o["id"], destino_id)
+                registrar_transferencia(self.banco, self.operador_id, "mesa", rotulo_posicao(c, n),
+                                        rotulo_posicao(c_destino, n_destino), o["subtotal_cent"])
             self.recalcular(destino_id)
         return destino_id
 
@@ -537,9 +543,11 @@ class CaixaController:
             destino_id, _ = self.abrir_mesa(n_destino, comanda=c_destino)
             if quantidade == item["quantidade"]:
                 self.banco.executar("UPDATE itens_venda SET venda_id = ? WHERE id = ?", (destino_id, item_id))
+                valor_movido = item["total_cent"]
             else:
                 resto = fmt.arred_qtd(item["quantidade"] - quantidade)
                 total_resto = fmt.mult_cent(item["preco_unit_cent"], resto)
+                valor_movido = item["total_cent"] - total_resto
                 comissao_resto = fmt.arredondar(
                     fmt._dec(item["comissao_cent"]) * fmt._dec(resto) / fmt._dec(item["quantidade"]))
                 # As duas partes somam exatamente o total e a comissão originais (sem duplicar nem perder centavo).
@@ -556,3 +564,7 @@ class CaixaController:
                                 (fmt.agora(), destino_id))
             self.recalcular(origem["id"])
             self.recalcular(destino_id)
+            registrar_transferencia(
+                self.banco, self.operador_id, "item", rotulo_posicao(origem["comanda"], origem["posicao"]),
+                rotulo_posicao(c_destino, n_destino), valor_movido, quantidade=quantidade,
+                produto=self.banco.valor("SELECT nome FROM produtos WHERE id = ?", (item["produto_id"],)))

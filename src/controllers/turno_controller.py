@@ -2,6 +2,7 @@
 troca de turno (fechamento) com sobra ou falta (manual do Caixa)."""
 from __future__ import annotations
 
+from src.controllers import conferencia_turno
 from src.core import formatacao as fmt
 from src.core import licenca
 from src.core.erros import ErroNegocio
@@ -156,7 +157,12 @@ class TurnoController:
         # já líquido de troco) + suprimentos - sangrias. Cartão e Pix não entram: são conferidos na maquininha.
         r["esperado"] = t["valor_inicial_cent"] + na_gaveta + entradas - saidas
         r["fora_da_gaveta"] = total_recebido - na_gaveta
+        r.update(conferencia_turno.conferencia(b, t))      # posições abertas, cancelamentos e transferências do turno
         return r
+
+    def posicoes_abertas(self) -> list[dict]:
+        """Mesas e comandas com consumo ainda abertas: o caixa avisa ao trocar o turno."""
+        return conferencia_turno.posicoes_abertas(self.banco)
 
     def fechar(self, turno_id: int, operador_id: int, valor_final_cent: int) -> dict:
         """Troca de turno. O operador declara o que entrega ANTES de ver o esperado
