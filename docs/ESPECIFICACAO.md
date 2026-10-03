@@ -41,7 +41,7 @@ Convenção: `C` = controlador (regra, em `src/controllers/`), `UI` = tela (em `
 | Lançar item: código, quantidade, Enter; lista por nome; Consultar; observação (tecla O) | UI `caixa_ui` · C `caixa_controller.adicionar_item` |
 | Cancelar item e venda inteira; senha de supervisor | UI `caixa_ui.menu_cancelar` · C `acesso_controller.validar_supervisor` |
 | Pagamento (F12): formas, múltiplos pagamentos, desconto % e valor, serviço editável, troco, contra-vale | UI `caixa_pagamento` · C `caixa_controller.liquidar/fechar` |
-| Mesas (F4), transferir inteira (F10), várias (T) e parte dos itens, pré-conta (F8), tempo de inatividade | C `caixa_controller` · UI `caixa_ui` |
+| Mesas e comandas (F4, `C2`), transferir inteira (F10), várias (T) e parte dos itens, pré-conta (F8), tempo de inatividade | C `caixa_controller`, `core/posicao` · UI `caixa_ui` |
 | Repique (F9), sangria (F7), gaveta (F11), balança (F2), leitor óptico (F3) | UI `caixa_ui` · `hardware/dispositivos.py` (interfaces) |
 | Caderneta (F5): escolher/incluir/consultar cliente, débito, crédito, excedente vira crédito | C `caderneta_controller`, `caixa_controller` · UI `clientes_ui` |
 | Entrega (F6): taxa por bairro, troco para quanto, entregador (E), pendentes | C `entrega_controller` · UI `clientes_ui`, `caixa_ui` |
@@ -64,8 +64,14 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   mostra o total "fora da gaveta". Cada forma de pagamento tem a marca "Fica na gaveta" (`tipos_pagamento.na_gaveta`;
   cartão, Pix, transferência e TEF saem de fábrica). Repique e contra-vale emitido são informativos e não entram.
   (O exemplo do manual não incluía as sangrias no esperado; aqui elas reduzem o esperado porque o dinheiro saiu.)
-- **Serviço** (10% configurável) só em mesa, calculado sobre os itens marcados "cobrar serviço", antes
+- **Serviço** (10% configurável) só em mesa e comanda (cada uma com sua chave: `cobra_servico_mesa` e
+  `cobra_servico_comanda`), calculado sobre os itens marcados "cobrar serviço", antes
   do desconto. O desconto incide só nos produtos. O operador pode digitar outro valor de serviço, até zero.
+- **Comanda = mesa com numeração própria.** É uma venda de modalidade `mesa` com `vendas.comanda = 1` (esquema v4):
+  assim herda serviço, pré-conta, transferência e fechamento sem duplicar regras, e a mesa 2 e a comanda 2 coexistem
+  (índice único `(comanda, posicao)` entre as abertas). Notação: `5` = mesa, `C2` = comanda. O limite é
+  `num_comandas` (padrão 200; 0 desliga). A nuvem recebe a comanda como `mesa` (sem campo novo no contrato);
+  se o dono quiser separar no painel, acrescentar `comanda` ao lote é compatível com a API atual.
 - **Estoque baixa ao fechar a venda**, não ao lançar o item; cancelar o cupom estorna. Estoque negativo é permitido.
 - **Promoções** (período, dias da semana, horário) valem em conjunto; havendo mais de uma, vence a de menor
   preço. Faixas que viram a meia-noite funcionam (ex.: 22:00 às 02:00).

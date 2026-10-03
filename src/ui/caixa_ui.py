@@ -58,6 +58,7 @@ class JanelaCaixa(tk.Toplevel):
         self.recarregar()
         self.ent_codigo.focus_set()
         self._relogio()
+        self._id_lista = self.after(30000, self._atualizar_lista)
 
     # ================================================================ layout
     def _montar(self) -> None:
@@ -121,15 +122,15 @@ class JanelaCaixa(tk.Toplevel):
         corpo = ttk.Frame(self, padding=12)
         corpo.pack(fill="both", expand=True)
         self.painel_mesas = ttk.LabelFrame(corpo, text="Mesas e comandas abertas", padding=8)
-        self.grade_mesas = tema.Grade(self.painel_mesas, [("pos", "Posição", 70, "center"), ("sit", "Situação", 130, "w"),
+        self.grade_mesas = tema.Grade(self.painel_mesas, [("pos", "Posição", 70, "center"), ("sit", "Situação", 120, "w"),
                                                            ("tot", "Total", 90, "e")], altura=14)
         self.grade_mesas.pack(fill="both", expand=True)
         ttk.Label(self.painel_mesas, text="Enter chama a mesa ou comanda (C2); T transfere outras para ela", wraplength=260, foreground=tema.COR["suave"]).pack(anchor="w", pady=(6, 0))
         self.grade_mesas.tag("enviada", foreground=tema.COR["aviso"])
         self.grade_mesas.tag("parada", foreground=tema.COR["perigo"])
-        self.grade = tema.Grade(corpo, [("cod", "Código", 120, "w"), ("prod", "Produto", 330, "w"), ("un", "Un", 50, "w"),
-                                        ("preco", "Preço", 90, "e"), ("qtd", "Quantidade", 90, "e"), ("tot", "Total", 100, "e"),
-                                        ("obs", "Observação", 200, "w")], altura=14)
+        self.grade = tema.Grade(corpo, [("cod", "Código", 100, "w"), ("prod", "Produto", 240, "w"), ("un", "Un", 40, "w"),
+                                        ("preco", "Preço", 80, "e"), ("qtd", "Quantidade", 85, "e"), ("tot", "Total", 90, "e"),
+                                        ("obs", "Observação", 120, "w")], altura=14)
         self.grade.pack(side="left", fill="both", expand=True)
         self.status = ttk.Label(self, text="", foreground=tema.COR["suave"], padding=(12, 3))
         self.status.pack(fill="x", side="bottom")
@@ -185,11 +186,21 @@ class JanelaCaixa(tk.Toplevel):
         except tk.TclError:      # janela já destruída
             pass
 
-    def destroy(self) -> None:
+    def _atualizar_lista(self) -> None:
+        """Com a lista de mesas sempre à vista, 'Parada X min' precisa envelhecer sozinha, sem o operador agir."""
         try:
-            self.after_cancel(self._id_relogio)
-        except (AttributeError, tk.TclError, ValueError):
+            if self.mesas_visiveis:
+                self.carregar_mesas()
+            self._id_lista = self.after(30000, self._atualizar_lista)
+        except tk.TclError:      # janela já destruída
             pass
+
+    def destroy(self) -> None:
+        for nome in ("_id_relogio", "_id_lista"):
+            try:
+                self.after_cancel(getattr(self, nome))
+            except (AttributeError, tk.TclError, ValueError):
+                pass
         super().destroy()
 
     def avisar(self, texto: str, cor: str | None = None) -> None:

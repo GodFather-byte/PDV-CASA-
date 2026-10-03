@@ -40,7 +40,7 @@ sistema novo**; o protótipo de console `src/main.py` também é legado.
 
 ## O que já existe
 
-- **Caixa e vendas:** balcão, mesas, itens, preços promocionais, descontos,
+- **Caixa e vendas:** balcão, mesas e comandas, itens, preços promocionais, descontos,
   serviço, pagamentos, troco/vale e cancelamento.
 - **Estoque:** compras e outros lançamentos, pedidos, contagem, composição de
   produtos e histórico de movimentos; a venda fechada baixa o estoque e o
@@ -54,6 +54,23 @@ sistema novo**; o protótipo de console `src/main.py` também é legado.
   registra apenas confirmações explícitas do servidor.
 - **Qualidade:** a suíte cobre regras de caixa, estoque, cadastro, formatação,
   segurança e banco local. Rode os testes antes de integrar alterações.
+
+## Mesas e comandas
+
+No caixa, o campo **Mesa ou comanda** (tecla **F4**) aceita `5` para a mesa 5 e `C2` para a comanda 2. Também dá para
+digitar `C2` direto no campo do código (ou bipar o cartão da comanda): se não existir produto com esse código/atalho, a
+comanda 2 é aberta e os itens seguintes caem nela. A lista **Mesas e comandas abertas** fica sempre à direita da tela
+(`C2` aparece com o total e a situação: consumindo, parada ou conta enviada); **Esc** leva o foco a ela, **Enter** chama
+a posição escolhida e **T** transfere outras para a selecionada.
+
+- A comanda funciona como uma mesa com **numeração própria**: a mesa 2 e a comanda 2 existem ao mesmo tempo.
+- Tudo o que vale para a mesa vale para a comanda: serviço, desconto, pré-conta (impressa como "CONTA DA COMANDA"),
+  F10 (transfere tudo), T (várias para uma) e a transferência de parte dos itens, inclusive entre mesa e comanda
+  (ex.: F10 e `C2` levam a mesa 5 para a comanda 2).
+- Em **Configurações > Mesas e serviço**: *Número de comandas* (padrão 200; **0 desliga as comandas**), *Cobrar serviço
+  nas comandas* e *Mostrar sempre a lista de mesas e comandas abertas no caixa* (desligado, a lista só aparece com Esc/F4).
+- Relatórios: "Mesas e comandas" mostra a posição como `5` ou `C2`; o filtro *Modalidade* separa `mesa` de `comanda`.
+- A **nuvem** ainda recebe a comanda como venda de mesa (o contrato de sincronização não mudou).
 
 ## Arquitetura
 

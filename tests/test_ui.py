@@ -247,6 +247,108 @@ class TesteFluxosCaixa(BaseUI):
         self.cx.var_pos.set("0"); self.cx.chamar_mesa(); self.cx.update()
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas"), 0)
 
+    def lista_de_mesas(self):
+        g = self.cx.grade_mesas
+        return [g.valores(i) for i in g.tree.get_children()]
+
+    def test_skol_na_comanda_2_aparece_na_lista_como_uma_mesa(self):
+        self.assertTrue(self.cx.mesas_visiveis)                       # a lista fica à vista, sem apertar Esc
+        self.cx.var_cod.set("C2"); self.cx._enter_codigo(); self.cx.update()   # "C2" no código abre a comanda 2
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Comanda 2")
+        self.assertEqual(self.cx.var_pos.get(), "C2")
+        self.lancar("1", 1)
+        self.assertEqual(self.cx.lbl_total.cget("text"), "8,80")      # 8,00 + 10% de serviço, como na mesa
+        self.assertEqual(self.lista_de_mesas(), [["C2", "Consumindo", "8,80"]])
+        v = self.banco.um("SELECT modalidade, comanda, posicao FROM vendas")
+        self.assertEqual((v["modalidade"], v["comanda"], v["posicao"]), ("mesa", 1, 2))
+        self.sem_travar()
+
+    def test_mesa_2_e_comanda_2_na_mesma_lista_e_troca_pela_lista(self):
+        self.cx.var_pos.set("2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 1)
+        self.cx.var_pos.set("c2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("2", 2)
+        self.assertEqual([l[0] for l in self.lista_de_mesas()], ["2", "C2"])
+        self.cx.alternar_mesas(True)                                  # Esc no código: foco na lista, com a atual marcada
+        self.assertEqual(self.cx.grade_mesas.selecionado(), "C2")
+        self.cx.grade_mesas.selecionar("2")
+        self.cx._mesa_escolhida(); self.cx.update()
+        self.assertEqual((self.cx.lbl_situacao.cget("text"), self.cx.lbl_total.cget("text")), ("Mesa 2", "8,80"))
+        self.assertTrue(self.cx.mesas_visiveis)
+        self.sem_travar()
+
+    def test_lista_envelhece_sozinha_e_marca_a_comanda_parada(self):
+        from datetime import timedelta
+        self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 1)
+        self.assertEqual(self.lista_de_mesas(), [["C2", "Consumindo", "8,80"]])
+        self.addCleanup(fmt.definir_relogio, None)
+        fmt.definir_relogio(lambda: datetime.now() + timedelta(minutes=45))      # passam 45 min sem lançar nada
+        self.cx._atualizar_lista(); self.cx.update()
+        self.assertEqual(self.lista_de_mesas(), [["C2", "Parada 45 min", "8,80"]])
+        self.sem_travar()
+
+    def test_comanda_desligada_avisa_e_nao_abre(self):
+        self.banco.cfg_set("num_comandas", 0)
+        self.robo.quando("Dialogo", lambda w: w.destroy())
+        self.cx.var_cod.set("C2"); self.cx._enter_codigo(); self.cx.update()
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas"), 0)
+        self.assertIsNone(self.cx.venda_id)
+        self.assertIn("Dialogo", self.robo.log)
+        self.sem_travar()
+
+    def test_produto_com_atalho_c2_vence_a_comanda(self):
+        self.banco.executar("UPDATE produtos SET atalho = 'C2' WHERE id = ?", (self.agua,))
+        self.cx.var_cod.set("C2"); self.cx._enter_codigo(); self.cx.update()
+        self.assertEqual(self.cx.produto["nome"], "AGUA")
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas"), 0)
+
+    def test_pre_conta_e_pagamento_da_comanda(self):
+        self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update()
+        self.lancar("1", 2)
+        textos = []
+        self.robo.quando("Visualizador", lambda w: (textos.append(w.texto), w.destroy()))
+        self.cx.pre_conta(); self.cx.update()
+        self.assertIn("CONTA DA COMANDA", textos[0])
+        self.assertEqual(self.banco.valor("SELECT status FROM vendas"), "conta_enviada")
+        self.assertEqual(self.lista_de_mesas(), [["C2", "Conta enviada", "17,60"]])
+        self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update()
+        self.pagar("Pix")
+        v = self.banco.um("SELECT status, comanda, servico_cent FROM vendas")
+        self.assertEqual((v["status"], v["comanda"], v["servico_cent"]), ("fechada", 1, 160))
+        self.assertEqual(self.lista_de_mesas(), [])
+        self.sem_travar()
+
+    def test_transferir_comanda_para_mesa_com_f10(self):
+        self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 1)
+
+        def digita(w):
+            entradas(w)[0].insert(0, "7"); clicar(w, "OK")
+        self.robo.quando("Dialogo", digita)
+        self.cx.transferir_mesa(); self.cx.update()
+        v = self.banco.um("SELECT comanda, posicao FROM vendas")
+        self.assertEqual((v["comanda"], v["posicao"]), (0, 7))
+        self.assertEqual((self.cx.lbl_situacao.cget("text"), self.cx.var_pos.get()), ("Mesa 7", "7"))
+        self.assertEqual(self.lista_de_mesas(), [["7", "Consumindo", "8,80"]])
+        self.sem_travar()
+
+    def test_posicao_invalida_e_avisada(self):
+        self.robo.quando("Dialogo", lambda w: w.destroy())
+        self.cx.var_pos.set("abc"); self.cx.chamar_mesa(); self.cx.update()
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas"), 0)
+        self.assertIn("Dialogo", self.robo.log)
+        self.sem_travar()
+
+    def test_lista_escondivel_quando_o_painel_fixo_esta_desligado(self):
+        self.cx.destroy()
+        self.banco.cfg_set("painel_mesas_fixo", "N")
+        from src.ui.caixa_ui import JanelaCaixa
+        self.cx = JanelaCaixa(self.root, self.ctx)
+        self.cx.update()
+        self.assertFalse(self.cx.mesas_visiveis)                      # comportamento original: Esc mostra e esconde
+        self.cx._esc_codigo(); self.cx.update()
+        self.assertTrue(self.cx.mesas_visiveis)
+        self.cx.alternar_mesas(False); self.cx.update()
+        self.assertFalse(self.cx.mesas_visiveis)
+        self.sem_travar()
+
     def test_cancelar_item_e_conta_inteira(self):
         self.lancar("1", 1); self.lancar("2", 1)
         self.cx._foco_grade(ultimo=True); self.cx.modo_cancelar = True

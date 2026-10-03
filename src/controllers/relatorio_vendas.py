@@ -42,11 +42,16 @@ class RelatoriosVendas:
             atual = TurnoController(self.banco).atual()
             add(f"{a}.turno_id = ?", atual["id"] if atual else 0)
         if f.get("turno"): add(f"{a}.turno_id IN (SELECT id FROM turnos WHERE numero = ?)", int(f["turno"]))
-        for chave, coluna in (("terminal", "terminal"), ("operador_id", "operador_id"), ("modalidade", "modalidade"),
+        for chave, coluna in (("terminal", "terminal"), ("operador_id", "operador_id"),
                               ("garcom_id", "garcom_id"), ("vendedor_id", "vendedor_id"),
                               ("entregador_id", "entregador_id"), ("cliente_id", "cliente_id")):
             if f.get(chave):
                 add(f"{a}.{coluna} = ?", f[chave])
+        modalidade = f.get("modalidade")
+        if modalidade in ("mesa", "comanda"):     # a comanda é uma venda 'mesa' com comanda = 1
+            onde.append(f"{a}.modalidade = 'mesa' AND {a}.comanda = {1 if modalidade == 'comanda' else 0}")
+        elif modalidade:
+            add(f"{a}.modalidade = ?", modalidade)
         return " AND ".join(onde), p
 
     def criterios(self, f: dict) -> list[str]:
@@ -75,7 +80,7 @@ class RelatoriosVendas:
         onde, p = self._onde_vendas(f, status)
         atual = TurnoController(self.banco).atual()
         linhas = [dict(r) for r in self.banco.todos(
-            f"""SELECT v.id, v.cupom, v.fechada_em, v.posicao, v.modalidade, v.status, v.total_cent, v.desconto_cent,
+            f"""SELECT v.id, v.cupom, v.fechada_em, v.posicao, v.comanda, v.modalidade, v.status, v.total_cent, v.desconto_cent,
                        v.turno_id, o.nome AS operador, t.numero AS turno
                 FROM vendas v LEFT JOIN operadores o ON o.id = v.operador_id
                 LEFT JOIN turnos t ON t.id = v.turno_id WHERE {onde} ORDER BY v.cupom""", p)]
@@ -154,7 +159,7 @@ class RelatoriosVendas:
                     JOIN unidades u ON u.id = pr.unidade_id WHERE i.cancelado = 0 AND {onde}
                     GROUP BY pr.id ORDER BY pr.nome""", p):
             rel.add(r["codigo"], r["nome"], r["un"], Q(r["qt"]), M(fmt.dividir_cent(r["tot"], r["qt"])), M(r["tot"]))
-        rel.rodape = [("Venda total", M(t["venda"])), ("  Mesa/Balcão", M(t["mesa"] + t["balcao"])),
+        rel.rodape = [("Venda total", M(t["venda"])), ("  Mesa/Comanda/Balcão", M(t["mesa"] + t["balcao"])),
                       ("  Caderneta", M(t["caderneta"])), ("  Entrega", M(t["entrega"])),
                       ("Desconto (-)", M(t["desconto"])), ("Serviço (+)", M(t["servico"])), ("Taxa (+)", M(t["taxa"])),
                       ("Total apurado", M(t["total"]))]

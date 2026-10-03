@@ -8,6 +8,7 @@ from tkinter import ttk
 from typing import Callable
 
 from src.core import formatacao as fmt
+from src.core.posicao import rotulo as rotulo_posicao
 from src.core.relatorio import Relatorio, para_csv, para_texto
 from src.ui import tema
 from src.ui.visualizador import Visualizador
@@ -23,7 +24,7 @@ FILTROS = {
     "operador_id": ("Operador", "lookup:operadores"), "garcom_id": ("Garçom", "lookup:operadores"),
     "vendedor_id": ("Vendedor", "lookup:operadores"), "entregador_id": ("Entregador", "lookup:operadores"),
     "cliente_id": ("Cliente", "lookup:clientes"),
-    "modalidade": ("Modalidade", "escolha:balcao|mesa|caderneta|entrega"),
+    "modalidade": ("Modalidade", "escolha:balcao|mesa|comanda|caderneta|entrega"),
     "tipo_caixa": ("Movimento", "escolha:entrada|saida"),
     "tipo_estoque": ("Tipo de movimento", "escolha:compra|entrada|saida|descarte|contagem|inicial|pedido|desc_acabados"),
     "fornecedor_id": ("Fornecedor", "lookup:fornecedores"),
@@ -304,7 +305,9 @@ class JanelaVendasPeriodo(_Base):
         self.f = f
         todos = self.ctx.relatorios.cupons(f)
         cupons = todos[-LIMITE_CUPONS:]
-        self.grade.preencher([[c["cupom"], fmt.fmt_datahora(c["fechada_em"]), c["operador"] or "", c["posicao"] or "", c["modalidade"],
+        self.grade.preencher([[c["cupom"], fmt.fmt_datahora(c["fechada_em"]), c["operador"] or "",
+                               rotulo_posicao(c["comanda"], c["posicao"]) if c["posicao"] else "",
+                               "comanda" if c["comanda"] else c["modalidade"],
                                c["turno"] or "", "S" if c["atual"] else "N", "S" if c["cancelado"] else "N", fmt.fmt_num(c["total_cent"]),
                                fmt.fmt_num(c["desconto_cent"])] for c in cupons], [c["id"] for c in cupons],
                              [("cancelado",) if c["cancelado"] else () for c in cupons])

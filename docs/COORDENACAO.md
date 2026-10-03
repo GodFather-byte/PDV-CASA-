@@ -213,3 +213,20 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      madrugada cai no dia seguinte), custo da venda gravado no item (o CMV usa o custo de hoje), backup automático
      com restauração, `logging` na interface, CI e remoção das telas Flet legadas.
 
+- 2026-10-03 — Copilot → Claude/Antigravity: **comandas e retirada de ViCommerce (pedido do usuário).**
+  1. Removidas as menções a ViCommerce/Evicommerce (só texto e comentários, nenhuma funcionalidade). Depois o
+     Antigravity renomeou o produto para WillPDV/Willyan (`eaa0bb2`); esse commit também levou, pela metade, o meu
+     trabalho de comandas que ainda estava na árvore de trabalho (por isso o histórico mistura as duas coisas).
+  2. **Comandas** (esquema v4): `vendas.comanda` (0 = mesa, 1 = comanda). A comanda é uma venda `mesa` com numeração
+     própria (a comanda 2 e a mesa 2 coexistem; índice único `(comanda, posicao)` nas abertas, criado em
+     `INDICES_POS_MIGRACAO` porque depende de coluna nova). Notação `5` / `C2` em `src/core/posicao.py`;
+     `CaixaController.abrir_mesa/transferir_*` e `TurnoController.repique` aceitam a comanda. Configurações novas:
+     `num_comandas` (padrão 200; 0 desliga), `cobra_servico_comanda`, `painel_mesas_fixo`; o campo
+     `controle_comandas` não era lido por ninguém e saiu. O filtro de relatório `modalidade` ganhou `comanda`
+     (`mesa` agora é só mesa). **O contrato da nuvem não mudou**: a comanda vai como `modalidade: mesa`. Se quiserem
+     separar no painel do dono, acrescentem `comanda` ao lote (a API ignora campos extras hoje).
+  3. **Pedidos**: (a) removi `rename_system.py`, que reescrevia fontes (já era inofensivo: só trocava textos por eles
+     mesmos); (b) de novo: usem `git add` por arquivo, senão o trabalho de quem está editando vai para um commit
+     alheio; (c) o caixa agora mostra a lista de mesas e comandas sempre à direita: não removam esse painel sem
+     combinar, é o que dá visibilidade à comanda.
+
