@@ -228,5 +228,41 @@ class TesteBuscaSemAcento(BaseRegras):
         self.assertEqual(len(contas.listar(texto="aluguel")), 0)
 
 
+class TesteFechamentoImpresso(BaseRegras):
+    def fechar_com(self, pagamentos):
+        skol = self.novo_produto("SKOL", 1000)
+        self.vender(skol, 3, pagamentos)
+        gaveta = sum(v for f, v in pagamentos if f == "Dinheiro")
+        return self.turnos.fechar(self.turno, self.adm, 10000 + gaveta)
+
+    def test_texto_mostra_o_que_ficou_fora_da_gaveta(self):
+        from src.controllers.impressao_controller import ImpressaoController
+        res = self.fechar_com([("Dinheiro", 1000), ("Pix", 2000)])
+        texto = ImpressaoController(self.banco).fechamento(res)
+        linhas = texto.splitlines()
+        self.assertTrue(all(len(l) <= 40 for l in linhas), [l for l in linhas if len(l) > 40])
+        self.assertTrue(any(l.startswith("  Pix *") and l.endswith("20,00") for l in linhas), texto)
+        self.assertTrue(any(l.startswith("  Dinheiro") and "*" not in l for l in linhas), texto)
+        self.assertIn("  * fora da gaveta", linhas)
+        self.assertTrue(any(l.startswith("Fora da gaveta (cartão/Pix)") and l.endswith("20,00") for l in linhas), texto)
+        esperado = next(l for l in linhas if l.startswith("Valor esperado"))
+        self.assertTrue(esperado.endswith("110,00"), esperado)                 # fundo 100,00 + dinheiro 10,00
+
+    def test_so_dinheiro_nao_mostra_aviso_de_fora_da_gaveta(self):
+        from src.controllers.impressao_controller import ImpressaoController
+        res = self.fechar_com([("Dinheiro", 3000)])
+        texto = ImpressaoController(self.banco).fechamento(res)
+        self.assertNotIn("fora da gaveta", texto.lower())
+        self.assertNotIn("*", texto)
+
+    def test_resumo_antigo_sem_o_campo_novo_ainda_imprime(self):
+        from src.controllers.impressao_controller import ImpressaoController
+        res = self.fechar_com([("Dinheiro", 3000)])
+        res.pop("fora_da_gaveta")
+        for r in res["recebimentos"]:
+            r.pop("na_gaveta")
+        self.assertIn("FECHAMENTO DE TURNO", ImpressaoController(self.banco).fechamento(res))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -187,7 +187,9 @@ class ImpressaoController:
                                       f"Abertura  : {fmt.fmt_datahora(t['aberto_em'])}",
                                       f"Fechamento: {fmt.fmt_datahora(t.get('fechado_em') or fmt.agora())}", "-" * w,
                                       _lr("Valor inicial (+)", M(resumo["valor_inicial"]), w), "Recebimentos:"]
-        linhas += [_lr(f"  {r['tipo']}", M(r["valor"]), w) for r in resumo["recebimentos"]]
+        linhas += [_lr(f"  {r['tipo']}{'' if r.get('na_gaveta', 1) else ' *'}", M(r["valor"]), w) for r in resumo["recebimentos"]]
+        if any(not r.get("na_gaveta", 1) for r in resumo["recebimentos"]):
+            linhas.append("  * fora da gaveta")
         for rotulo, chave in (("Troco", "troco"), ("C. Vale emitido", "vale_emitido"), ("Venda (+)", "venda"),
                               ("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa (+)", "taxa"),
                               ("Repique", "repique"), ("Venda caderneta", "venda_caderneta"),
@@ -196,7 +198,10 @@ class ImpressaoController:
             linhas.append(_lr(rotulo, M(resumo[chave]), w))
         linhas += ["-" * w, _lr("TC (cupons)", str(resumo["tc"]), w), _lr("TM", M(resumo["tm"]), w),
                    _lr("Pessoas", str(resumo["pessoas"]), w), _lr("Valor por pessoa", M(resumo["valor_por_pessoa"]), w),
-                   "-" * w, _lr("Valor esperado", M(resumo["esperado"]), w)]
+                   "-" * w]
+        if resumo.get("fora_da_gaveta"):
+            linhas.append(_lr("Fora da gaveta (cartão/Pix)", M(resumo["fora_da_gaveta"]), w))
+        linhas.append(_lr("Valor esperado", M(resumo["esperado"]), w))
         if "valor_final" in resumo:
             linhas += [_lr("Valor final (declarado)", M(resumo["valor_final"]), w),
                        _lr("RESULTADO (sobra/falta)", M(resumo["resultado"]), w)]

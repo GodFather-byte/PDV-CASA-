@@ -6,6 +6,7 @@ import tempfile
 import tkinter as tk
 import unittest
 from datetime import date, datetime
+from tkinter import ttk
 from unittest import mock
 
 from src.controllers.cadastro_controller import CadastroController
@@ -433,6 +434,77 @@ class TesteLancamentosUI(BaseUI):
             utilitarios_ui.executar(self.root, self.ctx, "backup")
             import os
             self.assertEqual(len([f for f in os.listdir(pasta) if f.endswith(".db")]), 1)
+        self.sem_travar()
+
+
+class TesteAvisosDeCorteNasTelas(BaseUI):
+    """Listas que mostram só os mais recentes avisam o operador em vez de cortar em silêncio."""
+
+    def vender(self, n):
+        self.abrir_turno()
+        for _ in range(n):
+            v = self.ctx.caixa.abrir_balcao()
+            self.ctx.caixa.adicionar_item(v, self.agua, 1)
+            self.ctx.caixa.adicionar_pagamento(v, self.banco.valor("SELECT id FROM tipos_pagamento WHERE tipo = 'Dinheiro'"), 350)
+            self.ctx.caixa.fechar(v)
+
+    def test_cupons_do_periodo_avisam_quando_a_grade_corta(self):
+        from src.ui import relatorios_ui
+        self.vender(3)
+        with mock.patch.object(relatorios_ui, "LIMITE_CUPONS", 2):
+            j = relatorios_ui.JanelaVendasPeriodo(self.root, self.ctx); j.update()
+            texto = j.resumo.cget("text")
+            self.assertEqual(j.grade.total(), 2)
+            self.assertIn("MOSTRANDO OS 2 ÚLTIMOS DE 3", texto)
+            self.assertIn("TC 3", texto)                       # os totais valem para o período inteiro
+            j.destroy()
+        j = relatorios_ui.JanelaVendasPeriodo(self.root, self.ctx); j.update()
+        self.assertEqual(j.grade.total(), 3)
+        self.assertNotIn("MOSTRANDO", j.resumo.cget("text"))
+        j.destroy()
+
+    def test_lancamentos_anteriores_avisam_quando_a_lista_corta(self):
+        from src.ui import lancamentos_ui
+        for _ in range(3):
+            self.ctx.estoque.criar_lancamento("entrada")
+        j = lancamentos_ui.JanelaEstoque(self.root, self.ctx); j.update()
+        with mock.patch.object(lancamentos_ui, "LIMITE_LANCAMENTOS", 2), \
+                mock.patch.object(tema, "escolher", return_value=None) as escolher:
+            j.abrir_anterior()
+        itens, rotulo = escolher.call_args.args[2], escolher.call_args.args[3]
+        self.assertEqual(len(itens), 2)
+        self.assertIn("2 lançamentos mais recentes de 3", rotulo)
+        with mock.patch.object(tema, "escolher", return_value=None) as escolher:
+            j.abrir_anterior()
+        self.assertEqual((len(escolher.call_args.args[2]), escolher.call_args.args[3]), (3, "Filtrar por texto:"))
+        j.destroy()
+
+    def test_painel_de_fechamento_mostra_o_total_fora_da_gaveta(self):
+        from src.ui.caixa_dialogos import PainelFechamento
+        self.abrir_turno()
+        v = self.ctx.caixa.abrir_balcao()
+        self.ctx.caixa.adicionar_item(v, self.skol, 2)
+        self.ctx.caixa.adicionar_pagamento(v, self.banco.valor("SELECT id FROM tipos_pagamento WHERE tipo = 'Pix'"), 1600)
+        self.ctx.caixa.fechar(v)
+        res = self.ctx.turnos.fechar(self.ctx.turnos.atual()["id"], self.ctx.operador_id, 10000)
+        pares = {}
+
+        def ler(janela):                          # rótulo (coluna 0) e valor (coluna 1) da mesma linha da grade
+            linhas, pilha = {}, [janela]
+            while pilha:
+                w = pilha.pop()
+                pilha.extend(w.winfo_children())
+                if isinstance(w, ttk.Label) and w.grid_info():
+                    info = w.grid_info()
+                    linhas.setdefault((str(w.master), int(info["row"])), {})[int(info["column"])] = w.cget("text")
+            pares.update({c[0]: c[1] for c in linhas.values() if 0 in c and 1 in c})
+            janela.destroy()
+        self.robo.quando("PainelFechamento", ler)
+        PainelFechamento(self.root, self.ctx, res)
+        self.assertEqual(pares["Fora da gaveta (cartão/Pix)"], "16,00")
+        self.assertEqual(pares["Valor esperado"], "100,00")
+        self.assertEqual(pares["Pix"], "16,00")
+        self.assertEqual(res["resultado"], 0)
         self.sem_travar()
 
 

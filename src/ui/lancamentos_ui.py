@@ -10,6 +10,8 @@ from src.core.erros import ErroNegocio
 from src.ui import tema
 from src.ui.visualizador import Visualizador
 
+LIMITE_LANCAMENTOS = 300   # a lista de lançamentos anteriores mostra os mais recentes; a tela avisa quando corta
+
 
 def _campo(pai, rotulo, widget_fn, linha, coluna, span=1):
     q = ttk.Frame(pai)
@@ -357,11 +359,15 @@ class JanelaEstoque(tk.Toplevel):
             self.atualizar()
 
     def abrir_anterior(self) -> None:
-        lancs = self.est.lancamentos()[:300]
+        todos = self.est.lancamentos()
+        lancs = todos[:LIMITE_LANCAMENTOS]
         itens = [(l["id"], (fmt.fmt_data(l["data"]), TIPOS[l["tipo"]], l["fornecedor"] or "", l["documento"] or "", fmt.fmt_num(l["total_itens"])))
                  for l in lancs]
         cols = [("d", "Data", 90, "w"), ("t", "Tipo", 190, "w"), ("f", "Fornecedor", 150, "w"), ("doc", "Documento", 100, "w"), ("v", "Total", 90, "e")]
-        lid = tema.escolher(self, "Lançamentos de estoque", itens, "Filtrar por texto:", colunas=cols, altura=14)
+        rotulo = "Filtrar por texto:"
+        if len(todos) > len(lancs):
+            rotulo = f"Mostrando os {len(lancs)} lançamentos mais recentes de {len(todos)}. Filtrar por texto:"
+        lid = tema.escolher(self, "Lançamentos de estoque", itens, rotulo, colunas=cols, altura=14)
         if lid:
             l = self.est.lancamento(lid)
             self.lanc_id = lid

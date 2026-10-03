@@ -79,7 +79,8 @@ class PainelFechamento(tk.Toplevel):
                               ("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa (+)", "taxa"),
                               ("Repique", "repique"), ("Entregas pend.", "entregas_pendentes"), ("Venda caderneta", "venda_caderneta"),
                               ("Pagtos caderneta (+)", "pagtos_caderneta"), ("Entradas financ. (+)", "entradas"),
-                              ("Saídas financ. (-)", "saidas"), ("Valor esperado", "esperado")):
+                              ("Saídas financ. (-)", "saidas"), ("Fora da gaveta (cartão/Pix)", "fora_da_gaveta"),
+                              ("Valor esperado", "esperado")):
             i += 1
             v = res[chave] if chave == "entregas_pendentes" else M(res[chave])
             ttk.Label(dir_, text=rotulo, font=tema.FONTE_B if chave == "esperado" else tema.FONTE).grid(row=i, column=0, sticky="w")

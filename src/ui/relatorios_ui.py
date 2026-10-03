@@ -12,6 +12,8 @@ from src.core.relatorio import Relatorio, para_csv, para_texto
 from src.ui import tema
 from src.ui.visualizador import Visualizador
 
+LIMITE_CUPONS = 1000       # a grade de cupons mostra os mais recentes; os totais abaixo valem para o período inteiro
+
 # chave -> (rótulo, tipo)   tipos: data, hora, int, sn, lookup:<nome>, escolha:<a|b|c>, texto
 FILTROS = {
     "de": ("Data inicial", "data"), "ate": ("Data final", "data"),
@@ -300,7 +302,8 @@ class JanelaVendasPeriodo(_Base):
         if f is None:
             return
         self.f = f
-        cupons = self.ctx.relatorios.cupons(f)[-1000:]
+        todos = self.ctx.relatorios.cupons(f)
+        cupons = todos[-LIMITE_CUPONS:]
         self.grade.preencher([[c["cupom"], fmt.fmt_datahora(c["fechada_em"]), c["operador"] or "", c["posicao"] or "", c["modalidade"],
                                c["turno"] or "", "S" if c["atual"] else "N", "S" if c["cancelado"] else "N", fmt.fmt_num(c["total_cent"]),
                                fmt.fmt_num(c["desconto_cent"])] for c in cupons], [c["id"] for c in cupons],
@@ -308,8 +311,10 @@ class JanelaVendasPeriodo(_Base):
         if cupons:
             self.grade.selecionar_indice(10 ** 9)
         t = self.ctx.relatorios._totais(f)
+        corte = (f"   |   MOSTRANDO OS {len(cupons)} ÚLTIMOS DE {len(todos)}: use os filtros para ver os demais"
+                 if len(todos) > len(cupons) else "")
         self.resumo.configure(text=f"TC {t['tc']}   TM {fmt.fmt_brl(t['tm'])}   Produtos {fmt.fmt_brl(t['venda'])}   "
-                                   f"Total apurado {fmt.fmt_brl(t['total'])}   ({len(cupons)} cupom(ns) listado(s))")
+                                   f"Total apurado {fmt.fmt_brl(t['total'])}   ({len(cupons)} cupom(ns) listado(s)){corte}")
 
     def _detalhe(self, _=None) -> None:
         s = self.grade.selecionado()
