@@ -45,6 +45,8 @@ CAMPOS_MAQUINA = [
 
 CAMPOS_CONFIG = [
     ("mensagem_rodape", "Mensagem de rodape do cupom", "texto", "Impressao"),
+    ("posicao_padrao", "Número digitado sem letra no caixa é", "escolha", "Mesas e serviço",
+     [("comanda", "Comanda (a mesa é M + número, ex.: M5)"), ("mesa", "Mesa (a comanda é C + número, ex.: C2)")]),
     ("num_mesas", "Número de mesas / posições de consumo", "int", "Mesas e serviço"),
     ("num_comandas", "Número de comandas (0 = não usar comandas)", "int", "Mesas e serviço"),
     ("cobra_servico_mesa", "Cobrar serviço nas mesas", "sn", "Mesas e serviço"),
@@ -70,6 +72,7 @@ CAMPOS_CONFIG = [
     ("api_token", "Token da API", "texto", "Nuvem"), ("sync_intervalo_seg", "Intervalo da sincronização (segundos)", "int", "Nuvem"),
 ]
 _TIPO_CONFIG = {c[0]: c[2] for c in CAMPOS_CONFIG}
+_OPCOES_CONFIG = {c[0]: [o[0] for o in c[4]] for c in CAMPOS_CONFIG if len(c) > 4}
 
 
 class ConfigController:
@@ -144,6 +147,9 @@ class ConfigController:
                         raise ErroValidacao(f"Valor inteiro inválido em '{chave}'.", {chave: "inválido"}) from None
                     if int(v) < 0:
                         raise ErroValidacao(f"'{chave}' não pode ser negativo.", {chave: "inválido"})
+                elif tipo == "escolha":
+                    if v not in _OPCOES_CONFIG[chave]:
+                        raise ErroValidacao(f"Escolha uma das opções de '{chave}'.", {chave: "inválido"})
                 elif tipo == "decimal":
                     try:
                         v = str(float(v.replace(",", ".") or 0))
@@ -153,8 +159,8 @@ class ConfigController:
                         raise ErroValidacao(f"'{chave}' deve estar entre 0 e 100.", {chave: "inválido"})
                 if chave == "num_mesas" and not 1 <= int(v) <= 999:
                     raise ErroValidacao("O número de mesas deve ficar entre 1 e 999.", {chave: "inválido"})
-                if chave == "num_comandas" and not 0 <= int(v) <= 9999:
-                    raise ErroValidacao("O número de comandas deve ficar entre 0 e 9999.", {chave: "inválido"})
+                if chave == "num_comandas" and not 0 <= int(v) <= 10000:
+                    raise ErroValidacao("O número de comandas deve ficar entre 0 e 10000.", {chave: "inválido"})
                 if chave == "num_turnos" and not 1 <= int(v) <= 9:
                     raise ErroValidacao("O número de turnos deve ficar entre 1 e 9.", {chave: "inválido"})
                 self.banco.cfg_set(chave, v)

@@ -19,11 +19,12 @@ from src.controllers.conferencia_turno import registrar_transferencia
 from src.core import formatacao as fmt
 from src.core.posicao import interpretar as interpretar_posicao
 from src.core.posicao import nome as nome_posicao
+from src.core.posicao import padrao_valido
 from src.core.posicao import rotulo as rotulo_posicao
 from src.core.erros import ErroNegocio
 
 ABERTAS = ("aberta", "conta_enviada")
-NUM_COMANDAS_PADRAO = 200
+NUM_COMANDAS_PADRAO = 10000
 # Teto de quantidade por item (config qtd_maxima_item; 0 = sem limite): barra o código de barras bipado
 # no campo Quantidade, que viraria uma venda de bilhões.
 QTD_MAXIMA_ITEM = 99_999
@@ -107,6 +108,19 @@ class CaixaController:
             (cliente_id,))
         return r or self._nova("caderneta", cliente_id=cliente_id)
 
+    # ------------------------------------------------------- notação das posições
+    def padrao_posicao(self) -> str:
+        """'comanda': o número sem letra é a comanda e a mesa é M5. 'mesa': o número sem letra é a mesa e a comanda é C2."""
+        return padrao_valido(self.banco.cfg("posicao_padrao", "comanda"))
+
+    def ler_posicao(self, texto) -> tuple[bool, int]:
+        """O que o operador digitou ('123', 'M5', 'C2') como (comanda, número), na notação da loja. 0 é o balcão."""
+        return interpretar_posicao(texto, self.padrao_posicao())
+
+    def rotular_posicao(self, comanda, posicao) -> str:
+        """Como a posição aparece nas telas e listas: na mesma notação em que se digita."""
+        return rotulo_posicao(comanda, posicao, self.padrao_posicao())
+
     def validar_mesa(self, posicao: int, comanda: bool = False) -> None:
         if comanda:
             maximo = self.banco.cfg_int("num_comandas", NUM_COMANDAS_PADRAO)
@@ -130,14 +144,16 @@ class CaixaController:
         return self._nova("mesa", posicao, pessoas=max(pessoas, 0), comanda=int(comanda)), True
 
     def mesas(self) -> list[dict]:
-        """Mesas e comandas abertas (mesas primeiro). `rotulo` é o que a tela mostra: '5' ou 'C2'."""
+        """Mesas e comandas abertas (mesas primeiro). `rotulo` é o que a tela mostra, na notação da loja: '123' e 'M5'
+        (ou '5' e 'C2', se o número sem letra for a mesa)."""
         limite = self.banco.cfg_int("tempo_inatividade_min", 30)
+        padrao = self.padrao_posicao()
         linhas = [dict(r) for r in self.banco.todos(
             """SELECT v.*, (SELECT COUNT(*) FROM itens_venda i WHERE i.venda_id = v.id AND i.cancelado = 0) AS n_itens
                FROM vendas v WHERE modalidade = 'mesa' AND status IN ('aberta','conta_enviada')
                ORDER BY comanda, posicao""")]
         for m in linhas:
-            m["rotulo"] = rotulo_posicao(m["comanda"], m["posicao"])
+            m["rotulo"] = rotulo_posicao(m["comanda"], m["posicao"], padrao)
             m["minutos_parada"] = fmt.minutos_entre(m["ultimo_lancamento_em"] or m["aberta_em"])
             m["inativa"] = bool(limite > 0 and m["status"] == "aberta" and m["minutos_parada"] >= limite)
         return linhas
@@ -465,13 +481,13 @@ class CaixaController:
                             "WHERE id = ?", (pessoas, fmt.agora(), destino_id))
         self.banco.executar("DELETE FROM vendas WHERE id = ?", (origem_id,))
 
-    @staticmethod
-    def _par(posicao_ou_par) -> tuple[bool, int]:
-        """Aceita 5 (mesa), (True, 2) (comanda) ou texto como 'C2'; devolve (comanda, número)."""
+    def _par(self, posicao_ou_par) -> tuple[bool, int]:
+        """Aceita 5 (número inteiro: mesa), (True, 2) (comanda) ou o texto digitado, na notação da loja ('123', 'M5', 'C2').
+        Devolve (comanda, número)."""
         if isinstance(posicao_ou_par, tuple):
             return bool(posicao_ou_par[0]), int(posicao_ou_par[1])
         if isinstance(posicao_ou_par, str):
-            return interpretar_posicao(posicao_ou_par)
+            return self.ler_posicao(posicao_ou_par)
         return False, int(posicao_ou_par)
 
     def _mesa_aberta(self, numero: int, comanda: bool = False) -> dict:

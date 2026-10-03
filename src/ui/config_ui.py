@@ -41,7 +41,7 @@ def abrir(master, ctx, chave: str):
                                        ("Imprimir página de teste", _testar), ("Abrir gaveta", _gaveta)],
                                 botoes_campo={"impressora_termica_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "termica")),
                                               "impressora_remota_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "remota"))})
-    return JanelaFormulario(master, ctx, "Configurações", [(c[0], c[1], c[2], c[3], None) for c in CAMPOS_CONFIG],
+    return JanelaFormulario(master, ctx, "Configurações", [(c[0], c[1], c[2], c[3], c[4] if len(c) > 4 else None) for c in CAMPOS_CONFIG],
                             ctx.config.todas, ctx.config.salvar_config)
 
 

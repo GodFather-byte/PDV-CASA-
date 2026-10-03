@@ -306,7 +306,7 @@ class JanelaVendasPeriodo(_Base):
         todos = self.ctx.relatorios.cupons(f)
         cupons = todos[-LIMITE_CUPONS:]
         self.grade.preencher([[c["cupom"], fmt.fmt_datahora(c["fechada_em"]), c["operador"] or "",
-                               rotulo_posicao(c["comanda"], c["posicao"]) if c["posicao"] else "",
+                               self.ctx.caixa.rotular_posicao(c["comanda"], c["posicao"]) if c["posicao"] else "",
                                "comanda" if c["comanda"] else c["modalidade"],
                                c["turno"] or "", "S" if c["atual"] else "N", "S" if c["cancelado"] else "N", fmt.fmt_num(c["total_cent"]),
                                fmt.fmt_num(c["desconto_cent"])] for c in cupons], [c["id"] for c in cupons],

@@ -26,7 +26,7 @@ class TesteNotacao(unittest.TestCase):
         self.assertEqual(interpretar("0"), (False, 0))          # a tela usa 0 para o balcão
 
     def test_recusa_o_que_nao_e_posicao(self):
-        for texto in ("", "abc", "C", "CC2", "2C", "C-2", "C2.5", "C0", None, "12345"):
+        for texto in ("", "abc", "C", "CC2", "2C", "C-2", "C2.5", "C0", None, "123456"):
             with self.assertRaises(ValueError, msg=repr(texto)):
                 interpretar(texto)
 
@@ -42,6 +42,10 @@ class TesteNotacao(unittest.TestCase):
 
 
 class TesteComandas(BaseCaixa):
+    def setUp(self):
+        super().setUp()
+        self.banco.cfg_set("posicao_padrao", "mesa")        # notação clássica destes testes: 5 é a mesa e C2 a comanda
+
     def comanda(self, numero, *itens):
         vid, _ = self.caixa.abrir_mesa(numero, comanda=True)
         for pid, qtd in itens:
@@ -85,7 +89,7 @@ class TesteComandas(BaseCaixa):
         self.assertNotEqual(novo, vid)
 
     def test_numero_da_comanda_respeita_a_configuracao(self):
-        for invalido in (0, 201):
+        for invalido in (0, 10001):
             with self.assertRaises(ErroNegocio):
                 self.caixa.abrir_mesa(invalido, comanda=True)
         self.banco.cfg_set("num_comandas", 5)
@@ -161,7 +165,7 @@ class TesteComandas(BaseCaixa):
         with self.assertRaises(ErroNegocio):
             self.caixa.transferir_mesa(2, 3)            # a mesa 2 não existe: só a comanda 2
         with self.assertRaises(ErroNegocio):
-            self.caixa.transferir_mesa("C2", "C999")    # fora do limite de comandas
+            self.caixa.transferir_mesa("C2", "C10001")  # fora do limite de comandas
         self.assertEqual(self.abertas(), [("C2", 800)])
 
     def test_transferir_varias_aceita_mesas_e_comandas(self):
@@ -237,6 +241,10 @@ class TesteComandas(BaseCaixa):
 class TesteIconesDoRodape(BaseCaixa):
     """O modelo dos ícones do caixa (sem Tk): balcão primeiro, depois mesas e comandas, cada uma no seu estado."""
 
+    def setUp(self):
+        super().setUp()
+        self.banco.cfg_set("posicao_padrao", "mesa")        # notação clássica destes testes: 5 é a mesa e C2 a comanda
+
     def test_estados_e_ordem_dos_icones(self):
         self.vender((self.skol, 1), mesa=5)                                   # fica parada: passam 40 min
         c2, _ = self.caixa.abrir_mesa(2, comanda=True)
@@ -267,7 +275,7 @@ class TesteConfigComandas(BaseCaixa):
         cfg.salvar_config({"num_comandas": "0", "cobra_servico_comanda": "N", "painel_mesas_fixo": "N"})
         self.assertEqual((self.banco.cfg_int("num_comandas", 200), self.banco.cfg_bool("cobra_servico_comanda", True),
                           self.banco.cfg_bool("painel_mesas_fixo", True)), (0, False, False))
-        for invalido in ("-1", "10000", "abc"):
+        for invalido in ("-1", "10001", "abc"):
             with self.assertRaises(ErroValidacao, msg=invalido):
                 cfg.salvar_config({"num_comandas": invalido})
         self.assertNotIn("controle_comandas", cfg.todas())      # campo antigo, sem efeito, trocado por num_comandas
@@ -298,6 +306,199 @@ class TesteMigracaoV4(unittest.TestCase):
                 b.inserir("vendas", {"uuid": "comanda-2", **comanda})      # convive com a mesa 2 já aberta
                 with self.assertRaises(Exception):
                     b.inserir("vendas", {"uuid": "comanda-2-de-novo", **comanda})
+            finally:
+                b.fechar()
+
+
+class TesteNotacaoPorPadrao(unittest.TestCase):
+    """As funções puras: o número sem letra segue o padrão da loja; C e M valem sempre."""
+
+    def test_numero_sem_letra_segue_o_padrao(self):
+        self.assertEqual(interpretar("123", "comanda"), (True, 123))
+        self.assertEqual(interpretar("123", "mesa"), (False, 123))
+        self.assertEqual(interpretar("10000", "comanda"), (True, 10000))
+
+    def test_letra_explicita_vale_nos_dois_padroes(self):
+        for padrao in ("comanda", "mesa"):
+            for texto, esperado in (("C2", (True, 2)), ("c 2", (True, 2)), ("M5", (False, 5)), ("m5", (False, 5)),
+                                    (" m 05 ", (False, 5)), ("0", (False, 0))):
+                self.assertEqual(interpretar(texto, padrao), esperado, (padrao, texto))
+
+    def test_zero_com_letra_nao_existe(self):
+        for texto in ("C0", "M0", "c 0"):
+            with self.assertRaises(ValueError, msg=texto):
+                interpretar(texto, "comanda")
+
+    def test_mensagem_de_erro_ensina_a_notacao_da_loja(self):
+        with self.assertRaises(ValueError) as e:
+            interpretar("abc", "comanda")
+        self.assertIn("M5", str(e.exception))
+        with self.assertRaises(ValueError) as e:
+            interpretar("abc", "mesa")
+        self.assertIn("C2", str(e.exception))
+
+    def test_rotulo_nos_dois_padroes(self):
+        self.assertEqual((rotulo(True, 123, "comanda"), rotulo(False, 5, "comanda")), ("123", "M5"))
+        self.assertEqual((rotulo(True, 123, "mesa"), rotulo(False, 5, "mesa")), ("C123", "5"))
+
+    def test_so_letra_mais_numero_troca_de_posicao_no_campo_do_codigo(self):
+        from src.core.posicao import parece_posicao
+        for texto in ("C2", "c 12", "M5", "m5"):
+            self.assertTrue(parece_posicao(texto), texto)
+        for texto in ("2", "123", "SKOL", "", None, "5M"):
+            self.assertFalse(parece_posicao(texto), repr(texto))
+        self.assertTrue(parece_comanda("C2"))
+        self.assertFalse(parece_comanda("M5"))
+
+    def test_padrao_estragado_volta_para_comanda(self):
+        from src.core.posicao import padrao_valido
+        self.assertEqual([padrao_valido(v) for v in ("mesa", "MESA", " comanda ", "", None, "garcom")],
+                         ["mesa", "mesa", "comanda", "comanda", "comanda", "comanda"])
+
+    def test_exemplos_e_titulo_do_campo(self):
+        from src.core.posicao import exemplos, rotulo_do_campo
+        self.assertEqual((exemplos("comanda"), exemplos("mesa")), (("123", "M5"), ("5", "C2")))
+        self.assertIn("Comanda", rotulo_do_campo("comanda"))
+        self.assertIn("Mesa ou comanda", rotulo_do_campo("mesa"))
+
+
+class TesteComandaPorNumero(BaseCaixa):
+    """O padrão da loja: o número digitado sem letra é a comanda (até 10 mil) e a mesa leva M (M5)."""
+
+    def comanda(self, numero, *itens):
+        vid, _ = self.caixa.abrir_mesa(numero, comanda=True)
+        for pid, qtd in itens:
+            self.caixa.adicionar_item(vid, pid, qtd)
+        return vid
+
+    def abertas(self):
+        return [(m["rotulo"], m["subtotal_cent"]) for m in self.caixa.mesas()]
+
+    def test_loja_nova_vem_com_comanda_por_numero_ate_10_mil(self):
+        self.assertEqual(self.caixa.padrao_posicao(), "comanda")
+        self.assertEqual(self.banco.cfg("posicao_padrao"), "comanda")
+        self.assertEqual(self.banco.cfg_int("num_comandas"), 10000)
+
+    def test_numero_sem_letra_e_comanda_e_a_mesa_leva_m(self):
+        for texto, esperado in (("123", (True, 123)), ("10000", (True, 10000)), ("C7", (True, 7)), ("c 7", (True, 7)),
+                                ("M5", (False, 5)), ("m5", (False, 5)), ("0", (False, 0))):
+            self.assertEqual(self.caixa.ler_posicao(texto), esperado, texto)
+        for ruim in ("", "abc", "M", "123456", "C0", "M0", "5M"):
+            with self.assertRaises(ValueError, msg=ruim):
+                self.caixa.ler_posicao(ruim)
+
+    def test_rotulo_e_leitura_sao_inversos_nos_dois_padroes(self):
+        for padrao in ("comanda", "mesa"):
+            self.banco.cfg_set("posicao_padrao", padrao)
+            for comanda in (True, False):
+                for numero in (1, 9, 123, 10000):
+                    rot = self.caixa.rotular_posicao(comanda, numero)
+                    self.assertEqual(self.caixa.ler_posicao(rot), (comanda, numero), (padrao, comanda, numero, rot))
+
+    def test_lista_de_abertas_usa_o_rotulo_que_se_digita(self):
+        self.comanda(2, (self.skol, 1))
+        self.comanda(123, (self.agua, 1))
+        self.vender((self.skol, 1), mesa=7)
+        self.assertEqual(self.abertas(), [("M7", 800), ("2", 800), ("123", 350)])         # mesas primeiro
+
+    def test_comanda_10000_abre_e_a_10001_nao(self):
+        self.assertTrue(self.caixa.abrir_mesa(10000, comanda=True)[1])
+        with self.assertRaises(ErroNegocio) as e:
+            self.caixa.abrir_mesa(10001, comanda=True)
+        self.assertIn("1 a 10000", str(e.exception))
+
+    def test_transferencias_aceitam_o_texto_digitado(self):
+        vid = self.vender((self.skol, 2), mesa=5)
+        self.assertEqual(self.caixa.transferir_mesa("M5", "123"), vid)               # mesa 5 -> comanda 123
+        v = self.caixa.obter(vid)
+        self.assertEqual((v["comanda"], v["posicao"]), (1, 123))
+        self.comanda(9, (self.agua, 1))
+        self.vender((self.skol, 1), mesa=3)
+        destino = self.caixa.transferir_varias(["123", "9", "M3"], "456")
+        self.assertEqual(self.abertas(), [("456", 1600 + 350 + 800)])
+        item = self.caixa.itens(destino)[0]["id"]
+        self.caixa.transferir_item(item, "M8", 1)                                     # parte para a mesa 8
+        self.assertEqual([r for r, _ in self.abertas()], ["M8", "456"])
+
+    def test_numero_inteiro_da_api_continua_sendo_mesa(self):
+        vid = self.vender((self.skol, 1), mesa=4)
+        self.assertEqual(self.caixa.transferir_mesa(4, 8), vid)
+        self.assertEqual(self.abertas(), [("M8", 800)])
+
+    def test_a_loja_pode_voltar_para_a_notacao_de_mesa(self):
+        self.banco.cfg_set("posicao_padrao", "mesa")
+        self.assertEqual(self.caixa.ler_posicao("5"), (False, 5))
+        self.assertEqual(self.caixa.rotular_posicao(True, 2), "C2")
+        self.banco.cfg_set("posicao_padrao", "qualquer coisa")
+        self.assertEqual(self.caixa.padrao_posicao(), "comanda")                      # valor estragado volta ao padrão
+
+    def test_relatorio_de_mesas_e_comandas_usa_a_mesma_notacao(self):
+        for vid in (self.vender((self.skol, 1), mesa=3), self.comanda(2, (self.agua, 1))):
+            self.pagar(vid, "Dinheiro", self.caixa.obter(vid)["total_cent"])
+            self.caixa.fechar(vid, garcom_id=self.adm)
+        r = RelatorioController(self.banco).comandas({"de": fmt.hoje(), "ate": fmt.hoje()})
+        self.assertEqual([(l[0], l[-1]) for l in r.linhas], [("M3", "8,80"), ("2", "3,85")])
+
+    def test_chave_do_icone_volta_igual_quando_digitada(self):
+        self.comanda(123, (self.skol, 1))
+        self.comanda(2, (self.agua, 1))
+        self.vender((self.skol, 1), mesa=5)
+        tiles = montar_tiles(self.caixa.mesas(), None)
+        self.assertEqual([t["chave"] for t in tiles], ["0", "M5", "2", "123"])
+        for t in tiles[1:]:
+            comanda, numero = self.caixa.ler_posicao(t["chave"])
+            self.assertEqual((comanda, numero), (t["tipo"] == "comanda", int(t["chave"].lstrip("M"))), t["chave"])
+
+    def test_comanda_vai_para_a_nuvem_como_mesa_com_o_mesmo_numero(self):
+        from src.controllers.sync_controller import SyncController
+        vid = self.comanda(123, (self.skol, 1))
+        self.pagar(vid, "Dinheiro", self.caixa.obter(vid)["total_cent"])
+        self.caixa.fechar(vid)
+        vendas = SyncController(self.banco).montar_lote()["vendas"]
+        self.assertEqual([(v["modalidade"], v["posicao"]) for v in vendas], [("mesa", 123)])
+
+
+class TesteConfigNotacao(BaseCaixa):
+    def test_posicao_padrao_grava_e_recusa_opcao_desconhecida(self):
+        cfg = ConfigController(self.banco)
+        cfg.salvar_config({"posicao_padrao": "mesa"})
+        self.assertEqual(self.caixa.padrao_posicao(), "mesa")
+        with self.assertRaises(ErroValidacao):
+            cfg.salvar_config({"posicao_padrao": "garcom"})
+        self.assertEqual(cfg.todas()["posicao_padrao"], "mesa")
+
+    def test_limite_de_comandas_vai_ate_10_mil(self):
+        cfg = ConfigController(self.banco)
+        cfg.salvar_config({"num_comandas": "10000"})
+        self.assertEqual(self.banco.cfg_int("num_comandas"), 10000)
+        with self.assertRaises(ErroValidacao):
+            cfg.salvar_config({"num_comandas": "10001"})
+
+
+class TesteMigracaoV6(unittest.TestCase):
+    def reabrir(self, pasta, limite_antigo):
+        caminho = os.path.join(pasta, "v5.db")
+        b = BancoDados(caminho)
+        b.cfg_set("num_comandas", limite_antigo)
+        b.executar("DELETE FROM config WHERE chave = 'posicao_padrao'")
+        b.executar("PRAGMA user_version = 5")
+        b.fechar()
+        return BancoDados(caminho)
+
+    def test_limite_antigo_de_200_sobe_para_10000_e_a_notacao_nasce_comanda(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            b = self.reabrir(pasta, "200")
+            try:
+                self.assertEqual(b.valor("PRAGMA user_version"), VERSAO_ESQUEMA)
+                self.assertEqual((b.cfg("num_comandas"), b.cfg("posicao_padrao")), ("10000", "comanda"))
+            finally:
+                b.fechar()
+
+    def test_limite_que_o_dono_escolheu_nao_e_mexido(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            b = self.reabrir(pasta, "350")
+            try:
+                self.assertEqual(b.cfg("num_comandas"), "350")
             finally:
                 b.fechar()
 

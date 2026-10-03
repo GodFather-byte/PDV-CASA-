@@ -183,6 +183,7 @@ class TesteMenu(BaseUI):
 class TesteFluxosCaixa(BaseUI):
     def setUp(self):
         super().setUp()
+        self.banco.cfg_set("posicao_padrao", "mesa")        # notação clássica: 5 é a mesa e C2 a comanda
         self.abrir_turno()
         from src.ui.caixa_ui import JanelaCaixa
         self.cx = JanelaCaixa(self.root, self.ctx)
@@ -888,7 +889,7 @@ class TesteImpressaoTermicaNoCaixa(BaseUI):
         self.sem_travar()
 
     def test_pre_conta_da_mesa_sai_na_termica(self):
-        self.cx.var_pos.set("5"); self.cx.chamar_mesa(); self.cx.update()
+        self.cx.var_pos.set("M5"); self.cx.chamar_mesa(); self.cx.update()
         self.lancar("1", 2)
         self.cx.pre_conta(); self.cx.update()
         self.assertIn("CONTA DA MESA".encode("cp850"), self.impresso())
@@ -1115,3 +1116,238 @@ class TesteSeletorDeImpressoras(BaseUI):
         self.form.definir("impressora_termica_endereco", "CAIXA")
         self.assertEqual([self.form.valor(c) for c in ("impressora_termica_cortar", "impressora_termica_codepage",
                                                         "colunas_fita", "impressora_termica_endereco")], ["N", "cp860", "32", "CAIXA"])
+
+
+class TesteComandaPorNumeroNoCaixa(BaseUI):
+    """O caixa com o padrão da loja: digita-se o número da comanda (sem C) e o código do produto à parte."""
+
+    def setUp(self):
+        super().setUp()
+        self.abrir_turno()
+        from src.ui.caixa_ui import JanelaCaixa
+        self.cx = JanelaCaixa(self.root, self.ctx)
+        self.cx.update()
+
+    def lancar(self, cod, qtd):
+        self.cx.var_cod.set(cod); self.cx._enter_codigo(); self.cx.update()
+        self.cx.var_qtd.set(str(qtd)); self.cx.confirmar_item(); self.cx.update()
+
+    def pagar(self, forma):
+        def acao(j):
+            f = [i for i in j.grade_formas.tree.get_children() if j.grade_formas.valores(i)[0] == forma][0]
+            j.grade_formas.selecionar(f); j._forma_escolhida()
+            j._lancar_valor()
+            j.after(10, j.fechar_venda)
+        self.robo.quando("JanelaPagamento", acao)
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.cx.pagar(); self.cx.update()
+
+    def posicao(self, texto):
+        self.cx.var_pos.set(texto); self.cx.chamar_mesa(); self.cx.update()
+
+    def situacao(self):
+        return self.cx.lbl_situacao.cget("text"), self.cx.var_pos.get()
+
+    def tiles(self):
+        return [(t["chave"], t["estado"], t["total"]) for t in self.cx.painel_mesas.tiles()]
+
+    def itens_do_icone(self, chave, marca):
+        return self.cx.painel_mesas.canvas.find_withtag(f"t:{chave}&&{marca}")
+
+    def clicar_no_icone(self, chave):
+        c = self.cx.painel_mesas.canvas
+        self.cx.update()
+        x1, y1, x2, y2 = c.bbox(f"t:{chave}&&fundo")
+        x, y = (x1 + x2) // 2, (y1 + y2) // 2
+        c.event_generate("<Motion>", x=x, y=y)
+        c.event_generate("<Button-1>", x=x, y=y)
+        self.cx.update()
+
+    def foco(self):
+        return str(self.cx.focus_lastfor())
+
+    @staticmethod
+    def textos(janela):
+        achados = []
+
+        def varre(w):
+            for f in w.winfo_children():
+                if isinstance(f, ttk.Label):
+                    achados.append(str(f.cget("text")))
+                varre(f)
+        varre(janela)
+        return achados
+
+    def test_campo_da_posicao_pergunta_a_comanda(self):
+        textos = self.textos(self.cx)
+        self.assertIn("Comanda (ou M + nº da mesa)", textos)
+        self.assertNotIn("Mesa ou comanda (ex.: 5 ou C2)", textos)
+
+    def test_numero_sem_letra_abre_a_comanda_e_o_produto_vai_pelo_codigo(self):
+        self.posicao("123")
+        self.assertEqual(self.situacao(), ("Comanda 123", "123"))
+        self.lancar("1", 2)                                                    # código 1 = SKOL
+        v = self.banco.um("SELECT modalidade, comanda, posicao FROM vendas")
+        self.assertEqual((v["modalidade"], v["comanda"], v["posicao"]), ("mesa", 1, 123))
+        self.assertEqual(self.cx.lbl_total.cget("text"), "17,60")              # 16,00 + 10% de serviço
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("123", "consumindo", "17,60")])
+        self.assertTrue(self.itens_do_icone("123", "icone:comanda"))
+        self.sem_travar()
+
+    def test_codigo_de_produto_igual_ao_numero_de_uma_comanda_nao_troca_de_comanda(self):
+        self.posicao("2"); self.lancar("1", 1)                                 # comanda 2 com uma SKOL
+        self.posicao("7")                                                      # comanda 7, vazia
+        self.cx.var_cod.set("2"); self.cx._enter_codigo(); self.cx.update()    # no código, 2 é a AGUA
+        self.assertEqual(self.cx.produto["nome"], "AGUA")
+        self.assertEqual(self.situacao(), ("Comanda 7", "7"))
+        self.sem_travar()
+
+    def test_c_ou_m_no_campo_do_codigo_troca_de_posicao(self):
+        self.cx.var_cod.set("C9"); self.cx._enter_codigo(); self.cx.update()
+        self.assertEqual(self.situacao(), ("Comanda 9", "9"))
+        self.lancar("1", 1)
+        self.cx.var_cod.set("M3"); self.cx._enter_codigo(); self.cx.update()
+        self.assertEqual(self.situacao(), ("Mesa 3", "M3"))
+        self.sem_travar()
+
+    def test_mesa_leva_m_e_aparece_como_m5_nos_icones(self):
+        self.posicao("M5"); self.lancar("1", 5)
+        self.assertEqual(self.situacao(), ("Mesa 5", "M5"))
+        self.assertEqual(self.cx.lbl_total.cget("text"), "44,00")             # 40,00 + 10% de serviço
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("M5", "consumindo", "44,00")])
+        self.assertTrue(self.itens_do_icone("M5", "icone:mesa"))
+        self.sem_travar()
+
+    def test_comanda_e_mesa_com_o_mesmo_numero_convivem_e_o_clique_troca(self):
+        self.posicao("2"); self.lancar("1", 1)
+        self.posicao("M2"); self.lancar("2", 2)
+        self.assertEqual([t[0] for t in self.tiles()], ["0", "M2", "2"])      # balcão, mesas e depois comandas
+        self.clicar_no_icone("M2")
+        self.assertEqual((self.situacao(), self.cx.lbl_total.cget("text")), (("Mesa 2", "M2"), "7,70"))
+        self.clicar_no_icone("2")
+        self.assertEqual((self.situacao(), self.cx.lbl_total.cget("text")), (("Comanda 2", "2"), "8,80"))
+        self.clicar_no_icone("0")
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Balcão")
+        self.sem_travar()
+
+    def test_comanda_10000_abre_e_a_10001_e_avisada(self):
+        self.posicao("10000")
+        self.assertEqual(self.situacao(), ("Comanda 10000", "10000"))
+        self.robo.quando("Dialogo", lambda w: w.destroy())
+        self.posicao("10001")
+        self.assertIn("Dialogo", self.robo.log)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas WHERE posicao = 10001"), 0)
+        self.sem_travar()
+
+    def test_pre_conta_e_pagamento_da_comanda_por_numero(self):
+        self.posicao("55"); self.lancar("1", 2)
+        textos = []
+        self.robo.quando("Visualizador", lambda w: (textos.append(w.texto), w.destroy()))
+        self.cx.pre_conta(); self.cx.update()
+        self.assertIn("CONTA DA COMANDA", textos[0])
+        self.assertIn("Comanda 55", textos[0])
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("55", "conta", "17,60")])
+        self.posicao("55")
+        self.pagar("Pix")
+        v = self.banco.um("SELECT status, comanda, posicao FROM vendas")
+        self.assertEqual((v["status"], v["comanda"], v["posicao"]), ("fechada", 1, 55))
+        self.assertEqual(self.tiles(), [("0", "balcao", "")])
+        self.sem_travar()
+
+    def test_esc_volta_ao_campo_da_posicao_com_o_numero_selecionado(self):
+        self.posicao("77"); self.lancar("1", 1)
+        self.cx.ent_codigo.focus_set()
+        self.cx._esc_codigo(); self.cx.update()
+        self.assertEqual(self.foco(), str(self.cx.ent_pos))
+        self.assertTrue(self.cx.ent_pos.selection_present())
+        self.assertEqual(self.cx.var_pos.get(), "77")
+        self.sem_travar()
+
+    def test_teclado_nos_icones_aceita_digitos_e_a_letra_m(self):
+        p = self.cx.painel_mesas
+        self.posicao("3"); self.lancar("1", 1)
+        p.focar("3")
+        p._tecla(SimpleNamespace(keysym="m", char="m"))
+        self.assertEqual((self.cx.var_pos.get(), self.foco()), ("M", str(self.cx.ent_pos)))
+        p.focar("3")
+        p._tecla(SimpleNamespace(keysym="5", char="5"))
+        self.assertEqual(self.cx.var_pos.get(), "5")
+        self.sem_travar()
+
+    def test_f10_transfere_pelo_numero_e_pelo_m(self):
+        self.posicao("2"); self.lancar("1", 1)
+        perguntas = []
+
+        def responde(destino):
+            def acao(w):
+                perguntas.append(self.textos(w))
+                entradas(w)[0].insert(0, destino); clicar(w, "OK")
+            return acao
+        self.robo.quando("Dialogo", responde("M7"))
+        self.cx.transferir_mesa(); self.cx.update()
+        v = self.banco.um("SELECT comanda, posicao FROM vendas")
+        self.assertEqual((v["comanda"], v["posicao"]), (0, 7))
+        self.assertEqual(self.situacao(), ("Mesa 7", "M7"))
+        self.assertTrue(any("ex.: 123 ou M5" in t for ts in perguntas for t in ts), perguntas)
+        self.robo.quando("Dialogo", responde("321"))
+        self.cx.transferir_mesa(); self.cx.update()
+        v = self.banco.um("SELECT comanda, posicao FROM vendas")
+        self.assertEqual((v["comanda"], v["posicao"]), (1, 321))
+        self.assertEqual(self.situacao(), ("Comanda 321", "321"))
+        self.sem_travar()
+
+    def test_t_nos_icones_junta_varias_posicoes_digitando_numeros(self):
+        p = self.cx.painel_mesas
+        self.posicao("3"); self.lancar("1", 1)
+        self.posicao("4"); self.lancar("2", 1)
+        self.posicao("9"); self.lancar("1", 2)
+
+        def digita(w):
+            entradas(w)[0].insert(0, "3, 4"); clicar(w, "OK")
+        self.robo.quando("Dialogo", digita)
+        p.focar("9")
+        p._tecla(SimpleNamespace(keysym="t", char="t")); self.cx.update()
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("9", "consumindo", "30,25")])
+        self.sem_travar()
+
+    def test_repique_pergunta_a_comanda_pelo_numero(self):
+        self.posicao("5"); self.lancar("1", 1)
+        self.posicao("0")                                                     # volta ao balcão: o repique pergunta a posição
+        respostas = ["5", "3,00"]
+        perguntas = []
+
+        def preenche(w):
+            perguntas.append(self.textos(w))
+            entradas(w)[0].insert(0, respostas.pop(0)); clicar(w, "OK")
+        self.robo.quando("Dialogo", preenche, vezes=2)
+        self.cx.repique(); self.cx.update()
+        r = self.banco.um("SELECT posicao, valor_cent, venda_id FROM repiques")
+        comanda_5 = self.banco.valor("SELECT id FROM vendas WHERE comanda = 1 AND posicao = 5")
+        self.assertEqual((r["posicao"], r["valor_cent"], r["venda_id"]), (5, 300, comanda_5))
+        self.assertTrue(any("ex.: 123 ou M5" in t for t in perguntas[0]), perguntas)
+        self.sem_travar()
+
+    def test_loja_na_notacao_de_mesa_pergunta_mesa_ou_comanda(self):
+        self.banco.cfg_set("posicao_padrao", "mesa")
+        self.cx.destroy()
+        from src.ui.caixa_ui import JanelaCaixa
+        self.cx = JanelaCaixa(self.root, self.ctx)
+        self.cx.update()
+        self.assertIn("Mesa ou comanda (ex.: 5 ou C2)", self.textos(self.cx))
+        self.posicao("5"); self.lancar("1", 1)
+        self.assertEqual(self.situacao(), ("Mesa 5", "5"))
+        self.posicao("C5"); self.lancar("1", 1)
+        self.assertEqual(self.situacao(), ("Comanda 5", "C5"))
+        self.assertEqual([t[0] for t in self.tiles()], ["0", "5", "C5"])
+        self.sem_travar()
+
+    def test_tela_de_configuracoes_oferece_a_escolha_da_notacao(self):
+        from src.ui import config_ui
+        form = config_ui.abrir(self.root, self.ctx, "configuracoes")
+        form.update()
+        self.assertEqual(form.valor("posicao_padrao"), "comanda")
+        form.definir("posicao_padrao", "mesa")
+        self.robo.quando("Dialogo", lambda w: clicar(w, "OK"))
+        form.gravar()
+        self.assertEqual(self.banco.cfg("posicao_padrao"), "mesa")
+        self.sem_travar()

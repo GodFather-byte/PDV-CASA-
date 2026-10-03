@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 5
+VERSAO_ESQUEMA = 6
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -468,5 +468,10 @@ MIGRACOES = {
     # v5: logotipo da loja no cupom térmico. A tabela fila_impressao é criada por TABELAS (IF NOT EXISTS).
     5: [
         ("coluna", "maquinas", "impressora_termica_logotipo", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    # v6: comanda por número (até 10 mil). Quem nunca mexeu no limite (ainda 200, o antigo padrão) passa a 10000;
+    # a chave posicao_padrao nasce em CONFIG_PADRAO, na abertura seguinte.
+    6: [
+        "UPDATE config SET valor = '10000' WHERE chave = 'num_comandas' AND valor = '200'",
     ],
 }

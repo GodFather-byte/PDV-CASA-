@@ -307,3 +307,18 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      valendo). Vou mexer em `core/posicao.py`, em `caixa_controller.py` (`_par` e `mesas()`), em `caixa_ui.py` e `painel_mesas.py`
      (só a leitura e o rótulo da posição), em `config_controller.py` e `sementes.py` (`posicao_padrao`, `num_comandas` 10000) e
      em `esquema.py` (v6, só um UPDATE de configuração). Peço que ninguém edite esses trechos até eu avisar que terminei.
+
+- 2026-10-03 — Claude → Copilot/Antigravity: **comanda por número: pronto, arquivos liberados.**
+  1. O número digitado sem letra é a **comanda** (`123`, até 10 mil); a mesa leva `M` (`M5`); `C123` e `M5` valem sempre. Quem
+     manda é a configuração `posicao_padrao` (`comanda`, o padrão, ou `mesa`, que volta à notação antiga). Para ler ou mostrar
+     uma posição digitada, usem `CaixaController.ler_posicao()` e `rotular_posicao()`, não as funções puras de `core/posicao.py`
+     (elas só sabem a notação se receberem o padrão). A chave do ícone do rodapé é o rótulo (`m["rotulo"]`), então o que se vê é
+     o que se digita. Fiz isso em `core/posicao.py`, `caixa_controller.py`, `caixa_ui.py`, `painel_mesas.py` (tecla M),
+     `relatorio_vendas.py`, `relatorios_ui.py` e na tela de Configurações (campo de escolha).
+  2. Os registros internos continuam canônicos (`5` e `C2`), como as transferências no `log_eventos`; por isso `conferencia_turno.py`
+     não mudou e mostra `M5` e `C2` na fita.
+  3. **Esquema v6**: só um UPDATE de configuração (`num_comandas` 200, o antigo padrão, vira 10000; quem escolheu outro valor
+     não é mexido). `posicao_padrao` nasce em `CONFIG_PADRAO`.
+  4. Testes: as classes antigas de comanda e a `TesteFluxosCaixa` declaram `posicao_padrao = mesa` no `setUp` e seguem testando a
+     notação clássica. O padrão novo tem `TesteNotacaoPorPadrao`, `TesteComandaPorNumero`, `TesteConfigNotacao`,
+     `TesteMigracaoV6` e `TesteComandaPorNumeroNoCaixa`.

@@ -5,7 +5,8 @@
   F2 balança  F3 leitor  F4 mesa/comanda  F5 caderneta  F6 entrega  F7 sangria  F8 pré-conta  F9 repique
   F10 transferir  F11 gaveta  F12 pagar
 
-Mesa e comanda: digite 5 para a mesa 5 ou C2 para a comanda 2 (no campo da posição ou direto no código).
+Comanda e mesa: no campo da posição digite o número da comanda (ex.: 123) ou M e o número da mesa (ex.: M5). Com
+`posicao_padrao = mesa` é o contrário: 5 é a mesa e C2 a comanda. C2 e M5 também valem direto no campo do código.
 """
 from __future__ import annotations
 
@@ -14,10 +15,8 @@ from tkinter import ttk
 
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
-from src.core.posicao import interpretar as interpretar_posicao
 from src.core.posicao import nome as nome_posicao
-from src.core.posicao import parece_comanda
-from src.core.posicao import rotulo as rotulo_posicao
+from src.core.posicao import exemplos, parece_posicao, rotulo_do_campo
 from src.hardware.dispositivos import DispositivoIndisponivel
 from src.hardware.impressora_termica import ErroImpressao
 from src.ui import caixa_dialogos, tema
@@ -80,7 +79,7 @@ class JanelaCaixa(tk.Toplevel):
         meio.pack(fill="x")
         esq = ttk.Frame(meio)
         esq.pack(side="left", fill="y")
-        ttk.Label(esq, text="Mesa ou comanda (ex.: 5 ou C2)", style="Rotulo.TLabel").pack(anchor="w")
+        ttk.Label(esq, text=rotulo_do_campo(self.ctx.caixa.padrao_posicao()), style="Rotulo.TLabel").pack(anchor="w")
         self.var_pos = tk.StringVar(value="0")
         self.ent_pos = ttk.Entry(esq, textvariable=self.var_pos, width=8, font=("Segoe UI", 16, "bold"), justify="center")
         self.ent_pos.pack(anchor="w")
@@ -251,7 +250,7 @@ class JanelaCaixa(tk.Toplevel):
         if mod == "mesa":
             self.lbl_situacao.configure(text=nome_posicao(v["comanda"], v["posicao"])
                                         + (" - CONTA ENVIADA" if v["status"] == "conta_enviada" else ""))
-            self.var_pos.set(rotulo_posicao(v["comanda"], v["posicao"]))
+            self.var_pos.set(self.ctx.caixa.rotular_posicao(v["comanda"], v["posicao"]))
         else:
             self.lbl_situacao.configure(text={"balcao": "Balcão", "caderneta": "Caderneta", "entrega": f"Entrega {v['posicao']}"}[mod])
             self.var_pos.set("0")
@@ -292,7 +291,7 @@ class JanelaCaixa(tk.Toplevel):
 
     def resolver_codigo(self, texto: str) -> None:
         p = self.ctx.produtos.buscar_codigo(texto)
-        if p is None and parece_comanda(texto):      # "C2" no campo do código abre a comanda 2 (produto de mesmo código vence)
+        if p is None and parece_posicao(texto):      # "C2" ou "M5" no campo do código troca de posição (produto de mesmo código vence)
             self.var_cod.set("")
             self.var_pos.set(texto.strip())
             self.chamar_mesa()
@@ -494,12 +493,12 @@ class JanelaCaixa(tk.Toplevel):
         self.painel_mesas.pack_forget()
 
     def _chave_atual(self) -> str | None:
-        """O ícone da venda que está na tela: '0' (balcão), '5' (mesa) ou 'C2' (comanda); None na caderneta e na entrega."""
+        """O ícone da venda que está na tela: '0' (balcão) ou a comanda/mesa na notação da loja; None na caderneta e na entrega."""
         v = self.venda()
         if v is None or v["modalidade"] == "balcao":
             return "0"
         if v["modalidade"] == "mesa":
-            return rotulo_posicao(v["comanda"], v["posicao"])
+            return self.ctx.caixa.rotular_posicao(v["comanda"], v["posicao"])
         return None
 
     def carregar_mesas(self) -> None:
@@ -555,7 +554,7 @@ class JanelaCaixa(tk.Toplevel):
 
     def chamar_mesa(self) -> None:
         try:
-            comanda, n = interpretar_posicao(self.var_pos.get().strip() or "0")
+            comanda, n = self.ctx.caixa.ler_posicao(self.var_pos.get().strip() or "0")
         except ValueError as e:
             tema.aviso(self, str(e))
             return
@@ -608,8 +607,12 @@ class JanelaCaixa(tk.Toplevel):
             self.ent_codigo.focus_set()
 
     def _pedir_posicao(self, titulo: str, rotulo: str) -> tuple[bool, int] | None:
-        """Pergunta uma mesa ('5') ou comanda ('C2'); devolve (comanda, número) ou None se cancelado."""
-        return tema.pedir_texto(self, titulo, rotulo, "", largura=14, validar=interpretar_posicao)
+        """Pergunta uma comanda ou mesa na notação da loja; devolve (comanda, número) ou None se cancelado."""
+        return tema.pedir_texto(self, titulo, rotulo, "", largura=14, validar=self.ctx.caixa.ler_posicao)
+
+    def _exemplos(self) -> tuple[str, str]:
+        """Como se digita a posição comum e a outra nesta loja: ('123', 'M5') ou ('5', 'C2')."""
+        return exemplos(self.ctx.caixa.padrao_posicao())
 
     def transferir_mesa(self) -> None:
         v = self.venda()
@@ -617,7 +620,9 @@ class JanelaCaixa(tk.Toplevel):
             tema.aviso(self, "Chame a mesa ou comanda que será transferida (F4) e tecle F10.")
             return
         origem = nome_posicao(v["comanda"], v["posicao"])
-        destino = self._pedir_posicao("Transfere mesa ou comanda", f"Transferir a {origem.lower()} para (mesa ou comanda, ex.: 5 ou C2):")
+        comum, outra = self._exemplos()
+        destino = self._pedir_posicao("Transfere mesa ou comanda",
+                                      f"Transferir a {origem.lower()} para (ex.: {comum} ou {outra}):")
         if destino is None:
             return
         ok, vid = tema.tratar(self, self.ctx.caixa.transferir_mesa, (bool(v["comanda"]), v["posicao"]), destino)
@@ -627,16 +632,17 @@ class JanelaCaixa(tk.Toplevel):
             self.avisar(f"{origem} transferida para {nome_posicao(*destino).lower()}.", tema.COR["ok"])
 
     def transferir_varias(self, destino_chave: str | None = None) -> None:
-        """T nos ícones: outras mesas e comandas vão para a escolhida (`destino_chave`, como '38' ou 'C2')."""
+        """T nos ícones: outras mesas e comandas vão para a escolhida (`destino_chave`, o rótulo do ícone)."""
         if destino_chave is None or destino_chave == "0":
             return
-        destino = interpretar_posicao(destino_chave)
+        destino = self.ctx.caixa.ler_posicao(destino_chave)
+        comum, outra = self._exemplos()
         txt = tema.pedir_texto(self, "Transfere várias mesas ou comandas",
-                               f"Origens (separe por vírgula, ex.: 3, C2) que irão para a {nome_posicao(*destino).lower()}:")
+                               f"Origens (separe por vírgula, ex.: {comum}, {outra}) que irão para a {nome_posicao(*destino).lower()}:")
         if not txt:
             return
         try:
-            origens = [interpretar_posicao(x) for x in txt.replace(" ", "").split(",") if x]
+            origens = [self.ctx.caixa.ler_posicao(x) for x in txt.replace(" ", "").split(",") if x]
         except ValueError as e:
             tema.aviso(self, str(e))
             return
@@ -652,7 +658,8 @@ class JanelaCaixa(tk.Toplevel):
         if s is None or v is None or v["modalidade"] != "mesa":
             return
         qtd_atual = self.ctx.banco.valor("SELECT quantidade FROM itens_venda WHERE id = ?", (int(s),))
-        destino = self._pedir_posicao("Transfere item", "Mesa ou comanda de destino (ex.: 5 ou C2):")
+        comum, outra = self._exemplos()
+        destino = self._pedir_posicao("Transfere item", f"Comanda ou mesa de destino (ex.: {comum} ou {outra}):")
         if destino is None:
             return
         qtd = tema.pedir_texto(self, "Transfere item", "Quantidade a transferir:", fmt.fmt_qtd(qtd_atual, 0) if qtd_atual == int(qtd_atual) else fmt.fmt_qtd(qtd_atual))
@@ -803,8 +810,9 @@ class JanelaCaixa(tk.Toplevel):
         if v and v["modalidade"] == "mesa":
             comanda, pos = bool(v["comanda"]), v["posicao"]
         else:
-            r = tema.pedir_texto(self, "Repique", "Mesa ou comanda (ex.: 5 ou C2) que deixou o repique:", "", largura=14,
-                                 validar=interpretar_posicao)
+            comum, outra = self._exemplos()
+            r = tema.pedir_texto(self, "Repique", f"Comanda ou mesa (ex.: {comum} ou {outra}) que deixou o repique:", "", largura=14,
+                                 validar=self.ctx.caixa.ler_posicao)
             if r is None:
                 return
             comanda, pos = r

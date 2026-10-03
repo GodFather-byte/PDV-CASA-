@@ -320,7 +320,7 @@ class PainelMesas(ttk.Frame):
         elif k in ("t", "T"):
             if self._cursor and self._cursor != "0":
                 self._ao_transferir(self._cursor)
-        elif ev.char and (ev.char.isdigit() or ev.char in "cC"):
+        elif ev.char and (ev.char.isdigit() or ev.char in "cCmM"):
             self._ao_digitar(ev.char)
         else:
             return None                        # as teclas F continuam valendo (são tratadas na janela)

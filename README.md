@@ -59,29 +59,35 @@ sistema novo**; o protótipo de console `src/main.py` também é legado.
 
 ## Mesas e comandas
 
-No caixa, o campo **Mesa ou comanda** (tecla **F4**) aceita `5` para a mesa 5 e `C2` para a comanda 2. Também dá para
-digitar `C2` direto no campo do código (ou bipar o cartão da comanda): se não existir produto com esse código/atalho, a
-comanda 2 é aberta e os itens seguintes caem nela.
+No caixa, o campo **Comanda** (tecla **F4**) recebe só o número: digite `123` e Enter para abrir a comanda 123 (vai até
+10 mil), e depois os **códigos dos produtos** no campo ao lado (ex.: `2` para a Skol). A **mesa** leva um `M`: `M5` é a
+mesa 5. `C123` também vale. O `0` é o balcão. O número sem letra nunca é lido no campo do código, porque lá ele é o código do
+produto; para trocar de comanda sem sair de lá, digite `C123` ou `M5` (ou bipe o cartão): se não existir produto com esse
+código/atalho, a posição é aberta e os itens seguintes caem nela.
+
+Quem prefere a notação de restaurante (o número sem letra é a mesa e a comanda leva `C`) muda em **Configurações > Mesas e
+serviço > Número digitado sem letra no caixa é**. As telas, as listas e os relatórios sempre mostram a posição do mesmo jeito
+que se digita.
 
 No **rodapé** do caixa ficam os ícones das posições abertas, cada um com o número e o total embaixo: o **Balcão** (primeiro
-ícone), a **mesa** (mesinha com garrafa e copo), a **comanda** (cartão, ex.: `C2`), a **conta enviada** (conta sobre a
+ícone), a **mesa** (mesinha com garrafa e copo), a **comanda** (cartão, ex.: `123`), a **conta enviada** (conta sobre a
 bandeja) e o **relógio** nas paradas além do tempo de inatividade. O ícone da venda que está na tela tem a borda grossa.
 São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
 
 - **Esc volta ao "marcar comanda":** com a venda em andamento, Esc leva ao campo da posição, com o número selecionado:
-  digite `7` ou `C7` e Enter. Com um produto escolhido (esperando a quantidade), o Esc só cancela o produto. Um segundo Esc
+  digite `7` (comanda 7) ou `M7` (mesa 7) e Enter. Com um produto escolhido (esperando a quantidade), o Esc só cancela o produto. Um segundo Esc
   volta ao balcão; as mesas e comandas abertas continuam gravadas.
 - **Escolher um ícone:** clique nele, ou seta para baixo no campo da posição e então setas, **Enter** (chama), **T**
-  (outras posições vêm para a escolhida) e **Esc** (volta ao campo). Digitar um número ou `C` com o foco nos ícones já
+  (outras posições vêm para a escolhida) e **Esc** (volta ao campo). Digitar um número, `C` ou `M` com o foco nos ícones já
   começa a marcar a posição; `0` é o balcão.
-- A comanda funciona como uma mesa com **numeração própria**: a mesa 2 e a comanda 2 existem ao mesmo tempo.
+- A comanda funciona como uma mesa com **numeração própria**: a comanda 2 e a mesa 2 (`M2`) existem ao mesmo tempo.
 - Tudo o que vale para a mesa vale para a comanda: serviço, desconto, pré-conta (impressa como "CONTA DA COMANDA"),
   F10 (transfere tudo), T (várias para uma) e a transferência de parte dos itens, inclusive entre mesa e comanda
-  (ex.: F10 e `C2` levam a mesa 5 para a comanda 2).
-- Em **Configurações > Mesas e serviço**: *Número de comandas* (padrão 200; **0 desliga as comandas**), *Cobrar serviço
+  (ex.: F10 e `2` levam a mesa 5 para a comanda 2; `M5` leva uma comanda para a mesa 5).
+- Em **Configurações > Mesas e serviço**: *Número digitado sem letra* (comanda ou mesa), *Número de comandas* (padrão 10000; **0 desliga as comandas**), *Cobrar serviço
   nas comandas* e *Mostrar sempre os ícones das mesas e comandas abertas no rodapé do caixa* (desligado, eles só aparecem
   com Esc/F4 e somem ao escolher uma posição).
-- Relatórios: "Mesas e comandas" mostra a posição como `5` ou `C2`; o filtro *Modalidade* separa `mesa` de `comanda`.
+- Relatórios: "Mesas e comandas" mostra a posição como `123` (comanda) ou `M5` (mesa); o filtro *Modalidade* separa `mesa` de `comanda`.
 - A **nuvem** ainda recebe a comanda como venda de mesa (o contrato de sincronização não mudou).
 
 ## Fechamento do turno

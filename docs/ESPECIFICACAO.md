@@ -41,7 +41,7 @@ Convenção: `C` = controlador (regra, em `src/controllers/`), `UI` = tela (em `
 | Lançar item: código, quantidade, Enter; lista por nome; Consultar; observação (tecla O) | UI `caixa_ui` · C `caixa_controller.adicionar_item` |
 | Cancelar item e venda inteira; senha de supervisor | UI `caixa_ui.menu_cancelar` · C `acesso_controller.validar_supervisor` |
 | Pagamento (F12): formas, múltiplos pagamentos, desconto % e valor, serviço editável, troco, contra-vale | UI `caixa_pagamento` · C `caixa_controller.liquidar/fechar` |
-| Mesas e comandas (F4, `C2`), transferir inteira (F10), várias (T) e parte dos itens, pré-conta (F8), tempo de inatividade | C `caixa_controller`, `core/posicao` · UI `caixa_ui` |
+| Mesas e comandas (F4, `123` e `M5`), transferir inteira (F10), várias (T) e parte dos itens, pré-conta (F8), tempo de inatividade | C `caixa_controller`, `core/posicao` · UI `caixa_ui` |
 | Repique (F9), sangria (F7), gaveta (F11), balança (F2), leitor óptico (F3) | UI `caixa_ui` · `hardware/dispositivos.py` (interfaces) |
 | Caderneta (F5): escolher/incluir/consultar cliente, débito, crédito, excedente vira crédito | C `caderneta_controller`, `caixa_controller` · UI `clientes_ui` |
 | Entrega (F6): taxa por bairro, troco para quanto, entregador (E), pendentes | C `entrega_controller` · UI `clientes_ui`, `caixa_ui` |
@@ -69,8 +69,12 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   do desconto. O desconto incide só nos produtos. O operador pode digitar outro valor de serviço, até zero.
 - **Comanda = mesa com numeração própria.** É uma venda de modalidade `mesa` com `vendas.comanda = 1` (esquema v4):
   assim herda serviço, pré-conta, transferência e fechamento sem duplicar regras, e a mesa 2 e a comanda 2 coexistem
-  (índice único `(comanda, posicao)` entre as abertas). Notação: `5` = mesa, `C2` = comanda. O limite é
-  `num_comandas` (padrão 200; 0 desliga). A nuvem recebe a comanda como `mesa` (sem campo novo no contrato);
+  (índice único `(comanda, posicao)` entre as abertas). Notação pedida pelo dono (boate: quase tudo é comanda): o
+  **número sem letra é a comanda** (`123`) e a mesa leva `M` (`M5`); `C123` também vale. A configuração `posicao_padrao`
+  (`comanda`, o padrão, ou `mesa`) escolhe o que o número sem letra significa, e a tela, as listas e os relatórios mostram a
+  posição na mesma notação em que se digita (os registros internos, como as transferências do `log_eventos`, guardam sempre
+  `5` e `C2`). No campo do código o número sem letra é produto; só `C123` e `M5` trocam de posição. O 0 é o balcão. O limite
+  é `num_comandas` (padrão 10000, esquema v6; 0 desliga). A nuvem recebe a comanda como `mesa` (sem campo novo no contrato);
   se o dono quiser separar no painel, acrescentar `comanda` ao lote é compatível com a API atual.
 - **Esc e o painel de ícones** (manual do Caixa, "Abrir e lançar itens em mesas"): Esc leva ao "marcar comanda", com o
   painel de ícones das posições abertas e o campo da posição habilitado; um segundo Esc volta ao balcão, e os dados das

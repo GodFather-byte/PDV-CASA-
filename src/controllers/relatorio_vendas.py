@@ -242,11 +242,12 @@ class RelatoriosVendas:
                                              Coluna("Operador", 12), Coluna("Garçom", 12), Coluna("Pessoas", 7, "d"),
                                              Coluna("Total", 11, "d")], criterios=self.criterios(f))
         total = 0
+        padrao = self.banco.cfg("posicao_padrao", "comanda")
         for r in self.banco.todos(
                 f"""SELECT v.*, o.nome AS operador, g.nome AS garcom FROM vendas v
                     LEFT JOIN operadores o ON o.id = v.operador_id LEFT JOIN operadores g ON g.id = v.garcom_id
                     WHERE {onde} AND v.modalidade = 'mesa' ORDER BY v.comanda, v.posicao, v.cupom""", p):
-            rel.add(rotulo_posicao(r["comanda"], r["posicao"]), r["cupom"], fmt.fmt_datahora(r["fechada_em"]),
+            rel.add(rotulo_posicao(r["comanda"], r["posicao"], padrao), r["cupom"], fmt.fmt_datahora(r["fechada_em"]),
                     r["operador"], r["garcom"], r["pessoas"], M(r["total_cent"]))
             total += r["total_cent"]
         rel.rodape = [("Total das mesas e comandas", M(total))]

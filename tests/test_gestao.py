@@ -255,7 +255,7 @@ class TesteRelatorios(BaseCaixa):
         g = self.rel.garcons(self.f)
         self.assertEqual(g.linhas[0][:3], ["ADM", "1", "1"])
         c = self.rel.comandas(self.f)
-        self.assertEqual((c.linhas[0][0], c.linhas[0][-1]), ("3", "7,80"))
+        self.assertEqual((c.linhas[0][0], c.linhas[0][-1]), ("M3", "7,80"))
 
     def test_estoque_atual_cores_e_filtros(self):
         self.banco.executar("UPDATE produtos SET estoque_minimo = 100 WHERE id = ?", (self.skol,))
