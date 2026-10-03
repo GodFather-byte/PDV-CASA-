@@ -1,0 +1,334 @@
+"""Nuvem: contrato PDV <-> API (FastAPI) e cliente de sincronização."""
+from __future__ import annotations
+
+import atexit
+import copy
+import logging
+import os
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from src.controllers.caixa_controller import CaixaController
+from src.controllers.sync_controller import SyncController
+from src.controllers.turno_controller import TurnoController
+from src.controllers.utilitario_controller import UtilitarioController
+from src.core.erros import ErroNegocio
+from src.sync import sincronizador
+from src.sync.sincronizador import Sincronizador, proxima_espera
+from tests.base import BaseTeste
+
+# O backend lê o banco e o token do ambiente quando é importado: aponta para uma pasta temporária.
+_PASTA = tempfile.mkdtemp(prefix="pdv_nuvem_")
+os.environ["PDV_NUVEM_DB_URL"] = "sqlite:///" + (Path(_PASTA) / "nuvem.db").as_posix()
+os.environ["PDV_API_TOKEN"] = "token-de-teste"
+try:
+    from fastapi.testclient import TestClient
+    from backend import main as nuvem
+except (ImportError, RuntimeError):      # o backend é opcional: sem fastapi/httpx só roda o cliente
+    TestClient = nuvem = None
+
+
+def _limpar():
+    if nuvem is not None:
+        nuvem.engine.dispose()
+    shutil.rmtree(_PASTA, ignore_errors=True)
+
+
+atexit.register(_limpar)
+
+
+class BasePDV(BaseTeste):
+    def setUp(self):
+        super().setUp()
+        registro = logging.getLogger("pdv")      # os erros provocados de propósito não poluem a saída
+        nivel = registro.level
+        registro.setLevel(logging.CRITICAL)
+        self.addCleanup(registro.setLevel, nivel)
+        self.op = self.operador_adm()
+        TurnoController(self.banco).abrir(self.op, 1, 0)
+        self.caixa = CaixaController(self.banco, self.op)
+        self.produto = self.novo_produto("SKOL", 1000)
+        self.banco.cfg_set("chave_loja", "LOJA-1")
+
+    def vender(self, mesa=None, qtd=1):
+        if mesa:
+            v, _ = self.caixa.abrir_mesa(mesa)
+        else:
+            v = self.caixa.abrir_balcao()
+        self.caixa.adicionar_item(v, self.produto, qtd)
+        total = self.banco.valor("SELECT total_cent FROM vendas WHERE id = ?", (v,))
+        self.caixa.adicionar_pagamento(v, self.tipo("Dinheiro"), total)
+        self.caixa.fechar(v)
+        return v
+
+    def uuid_de(self, venda_id):
+        return self.banco.valor("SELECT uuid FROM vendas WHERE id = ?", (venda_id,))
+
+    def sincronizado(self, venda_id):
+        return self.banco.valor("SELECT sincronizado FROM vendas WHERE id = ?", (venda_id,))
+
+
+@unittest.skipIf(TestClient is None, "fastapi/httpx não instalados")
+class TesteApi(BasePDV):
+    H = {"Authorization": "Bearer token-de-teste"}
+
+    def setUp(self):
+        super().setUp()
+        self.http = TestClient(nuvem.app)
+
+    def post(self, lote, headers=None):
+        return self.http.post("/v1/sincronizar", json=lote, headers=self.H if headers is None else headers)
+
+    def na_nuvem(self, uuid):
+        db = nuvem.SessionLocal()
+        try:
+            return (db.query(nuvem.Venda).filter_by(uuid=uuid).all(),
+                    db.query(nuvem.VendaItem).filter_by(venda_uuid=uuid).count(),
+                    db.query(nuvem.VendaPagamento).filter_by(venda_uuid=uuid).count())
+        finally:
+            db.close()
+
+    def test_lote_real_do_pdv_e_aceito_e_confirmado(self):
+        self.vender(), self.vender(mesa=7)
+        sync = SyncController(self.banco)
+        lote = sync.montar_lote()
+        r = self.post(lote)
+        self.assertEqual(r.status_code, 200, r.text)
+        enviados = {v["uuid"]: v["status"] for v in lote["vendas"]}
+        self.assertCountEqual(r.json()["aceitas"], enviados)
+        self.assertEqual(sync.confirmar(r.json()["aceitas"], enviados), 2)
+        self.assertEqual(sync.contagem_pendentes(), 0)
+        vendas, itens, pagamentos = self.na_nuvem(lote["vendas"][1]["uuid"])
+        self.assertEqual((vendas[0].posicao, vendas[0].total_cent, itens, pagamentos), (7, 1100, 1, 1))
+        self.assertEqual((vendas[0].chave_loja, vendas[0].status), ("LOJA-1", "fechada"))
+
+    def test_reenvio_do_mesmo_lote_nao_duplica(self):
+        self.vender()
+        lote = SyncController(self.banco).montar_lote()
+        uuid = lote["vendas"][0]["uuid"]
+        for _ in range(2):
+            self.assertEqual(self.post(lote).json()["aceitas"], [uuid])
+        vendas, itens, pagamentos = self.na_nuvem(uuid)
+        self.assertEqual((len(vendas), itens, pagamentos), (1, 1, 1))
+
+    def test_cancelamento_depois_do_envio_e_aplicado_na_nuvem(self):
+        v = self.vender()
+        sync = SyncController(self.banco)
+        lote = sync.montar_lote()
+        uuid = lote["vendas"][0]["uuid"]
+        sync.confirmar(self.post(lote).json()["aceitas"], {uuid: "fechada"})
+        self.caixa.cancelar_venda(v, "cliente desistiu")
+        self.assertEqual(sync.contagem_pendentes(), 1)
+        lote2 = sync.montar_lote()
+        self.assertEqual(lote2["vendas"][0]["status"], "cancelada")
+        self.assertEqual(self.post(lote2).json()["aceitas"], [uuid])
+        self.assertEqual(self.na_nuvem(uuid)[0][0].status, "cancelada")
+
+    def test_status_antigo_nao_desfaz_o_cancelamento(self):
+        v = self.vender()
+        self.caixa.cancelar_venda(v, "erro")
+        lote = SyncController(self.banco).montar_lote()
+        uuid = lote["vendas"][0]["uuid"]
+        self.assertEqual(self.post(lote).json()["aceitas"], [uuid])
+        antigo = copy.deepcopy(lote)
+        antigo["vendas"][0]["status"] = "fechada"
+        self.assertEqual(self.post(antigo).json()["aceitas"], [uuid])
+        self.assertEqual(self.na_nuvem(uuid)[0][0].status, "cancelada")
+
+    def test_token_obrigatorio_e_conferido_antes_do_corpo(self):
+        lote = SyncController(self.banco).montar_lote()
+        self.assertEqual(self.post(lote, headers={}).status_code, 401)
+        self.assertEqual(self.post(lote, headers={"Authorization": "Bearer errado"}).status_code, 401)
+        self.assertEqual(self.post(lote, headers={"Authorization": "token-de-teste"}).status_code, 401)
+        self.assertEqual(self.http.post("/v1/sincronizar", json={"lixo": 1}).status_code, 401)   # sem token nem valida o corpo
+        with mock.patch.dict(os.environ):
+            os.environ.pop("PDV_API_TOKEN")
+            self.assertEqual(self.post(lote).status_code, 503)
+
+    def test_payload_invalido_e_recusado(self):
+        self.vender()
+        lote = SyncController(self.banco).montar_lote()
+
+        def com(**mudancas):
+            c = copy.deepcopy(lote)
+            c["vendas"][0].update(mudancas)
+            return c
+        invalidos = {
+            "total negativo": com(total_cent=-1), "status invalido": com(status="qualquer-coisa"),
+            "modalidade invalida": com(modalidade="drive-thru"), "data malformada": com(fechada_em="ontem"),
+            "cupom zero": com(cupom=0),
+        }
+        for nome, corpo in invalidos.items():
+            with self.subTest(nome):
+                self.assertEqual(self.post(corpo).status_code, 422)
+        sem_loja = copy.deepcopy(lote)
+        sem_loja["chave_loja"] = ""
+        self.assertEqual(self.post(sem_loja).status_code, 422)
+        grande = copy.deepcopy(lote)
+        grande["vendas"] = grande["vendas"] * 501
+        self.assertEqual(self.post(grande).status_code, 422)
+
+    def test_operador_e_posicao_nulos_sao_aceitos(self):
+        self.vender()
+        lote = SyncController(self.banco).montar_lote()
+        lote["vendas"][0].update(operador=None, posicao=None, turno=None)
+        self.assertEqual(self.post(lote).status_code, 200)
+
+    def test_uuid_de_outra_loja_nao_e_confirmado(self):
+        self.vender()
+        lote = SyncController(self.banco).montar_lote()
+        self.assertEqual(len(self.post(lote).json()["aceitas"]), 1)
+        outra = copy.deepcopy(lote)
+        outra["chave_loja"] = "LOJA-2"
+        self.assertEqual(self.post(outra).json()["aceitas"], [])
+
+    def test_saude_nao_exige_token(self):
+        self.assertEqual(self.http.get("/v1/saude").json(), {"status": "ok"})
+
+
+class RespostaFalsa:
+    def __init__(self, status=200, corpo=None, texto=""):
+        self.status_code, self._corpo, self.text = status, corpo, texto
+
+    def json(self):
+        if self._corpo is None:
+            raise ValueError("sem json")
+        return self._corpo
+
+
+class HttpFalso:
+    def __init__(self, responder):
+        self.responder, self.chamadas = responder, []
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        self.chamadas.append({"url": url, "json": copy.deepcopy(json), "headers": headers, "timeout": timeout})
+        return self.responder(json)
+
+
+def aceitar_tudo(lote):
+    return RespostaFalsa(200, {"aceitas": [v["uuid"] for v in lote["vendas"]]})
+
+
+class TesteSincronizador(BasePDV):
+    URL = "http://nuvem.local/v1/sincronizar"
+
+    def setUp(self):
+        super().setUp()
+        self.banco.cfg_set("api_url", self.URL)
+        self.banco.cfg_set("api_token", "segredo")
+
+    def cliente(self, responder=aceitar_tudo):
+        self.http = HttpFalso(responder)
+        return Sincronizador(self.banco, http=self.http)
+
+    def test_desligada_sem_endereco_e_pede_chave_e_token(self):
+        self.vender()
+        self.banco.cfg_set("api_url", "")
+        s = self.cliente()
+        self.assertEqual(s.enviar_pendentes()["estado"], "desligada")
+        self.banco.cfg_set("api_url", self.URL)
+        self.banco.cfg_set("api_token", "")
+        self.assertEqual(s.enviar_pendentes()["estado"], "erro")
+        self.assertEqual(self.http.chamadas, [])
+
+    def test_usa_endereco_token_e_chave_configurados(self):
+        v = self.vender()
+        r = self.cliente().enviar_pendentes()
+        self.assertEqual((r["estado"], r["enviadas"], r["restantes"]), ("ok", 1, 0))
+        c = self.http.chamadas[0]
+        self.assertEqual((c["url"], c["headers"]), (self.URL, {"Authorization": "Bearer segredo"}))
+        self.assertEqual((c["json"]["chave_loja"], c["json"]["vendas"][0]["uuid"]), ("LOJA-1", self.uuid_de(v)))
+        self.assertEqual(self.sincronizado(v), 1)
+        self.assertEqual(self.cliente().enviar_pendentes()["estado"], "sem_pendentes")
+
+    def test_confirma_so_o_que_a_nuvem_aceitou(self):
+        v1, v2, v3 = self.vender(), self.vender(), self.vender()
+        r = self.cliente(lambda lote: RespostaFalsa(200, {"aceitas": [self.uuid_de(v1), "uuid-desconhecido"]})).enviar_pendentes()
+        self.assertEqual((r["enviadas"], r["restantes"]), (1, 2))
+        self.assertEqual([self.sincronizado(v) for v in (v1, v2, v3)], [1, 0, 0])
+
+    def test_cancelamento_durante_o_envio_continua_pendente_e_segue_no_proximo_lote(self):
+        v = self.vender()
+
+        def cancelar_no_meio(lote):
+            self.caixa.cancelar_venda(v, "cancelada enquanto o lote estava a caminho")
+            return aceitar_tudo(lote)
+        r = self.cliente(cancelar_no_meio).enviar_pendentes()
+        self.assertEqual((r["enviadas"], r["restantes"]), (0, 1))
+        self.assertEqual((self.sincronizado(v), self.banco.valor("SELECT status FROM vendas WHERE id = ?", (v,))), (0, "cancelada"))
+        r = self.cliente().enviar_pendentes()
+        self.assertEqual(self.http.chamadas[0]["json"]["vendas"][0]["status"], "cancelada")
+        self.assertEqual((r["enviadas"], self.sincronizado(v)), (1, 1))
+
+    def test_token_recusado_nao_confirma_nem_poe_em_quarentena(self):
+        v = self.vender()
+        r = self.cliente(lambda lote: RespostaFalsa(401, {"detail": "Token invalido"})).enviar_pendentes()
+        self.assertEqual(r["estado"], "erro")
+        self.assertIn("token", r["mensagem"])
+        self.assertEqual((self.sincronizado(v), SyncController(self.banco).contagem_rejeitadas()), (0, 0))
+
+    def test_422_poe_so_a_venda_invalida_em_quarentena(self):
+        v1, v2, v3 = self.vender(), self.vender(), self.vender()
+        detalhe = {"detail": [{"type": "string_type", "loc": ["body", "vendas", 1, "posicao"], "msg": "Input should be a valid string"}]}
+        sync = SyncController(self.banco)
+        r = self.cliente(lambda lote: RespostaFalsa(422, detalhe)).enviar_pendentes()
+        self.assertEqual((r["estado"], r["rejeitadas"], r["restantes"]), ("rejeitadas", 1, 2))
+        self.assertEqual([self.sincronizado(v) for v in (v1, v2, v3)], [0, 2, 0])
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM log_eventos WHERE evento = 'sync_rejeitada'"), 1)
+        r = self.cliente().enviar_pendentes()              # as outras seguem; a recusada fica de fora
+        self.assertEqual((r["enviadas"], sync.contagem_pendentes(), sync.contagem_rejeitadas()), (2, 0, 1))
+        self.assertEqual(sync.reenviar_rejeitadas(), 1)
+        self.assertEqual((sync.contagem_pendentes(), sync.contagem_rejeitadas()), (1, 0))
+
+    def test_422_sem_apontar_a_venda_nao_poe_nada_em_quarentena(self):
+        v = self.vender()
+        detalhe = {"detail": [{"loc": ["body", "chave_loja"], "msg": "String should have at least 1 character"}]}
+        r = self.cliente(lambda lote: RespostaFalsa(422, detalhe)).enviar_pendentes()
+        self.assertEqual(r["estado"], "erro")
+        self.assertEqual(self.sincronizado(v), 0)
+
+    def test_venda_em_quarentena_bloqueia_a_limpeza_do_movimento(self):
+        self.vender()
+        SyncController(self.banco).rejeitar([self.uuid_de(1)], "teste")
+        self.avancar(days=2)
+        with self.assertRaisesRegex(ErroNegocio, "não enviadas"):
+            UtilitarioController(self.banco).limpar_movimento("2026-10-04")
+
+    def test_falhas_de_rede_e_respostas_quebradas_mantem_tudo_pendente(self):
+        v = self.vender()
+
+        def sem_rede(lote):
+            raise ConnectionError("rede fora")
+        for responder in (sem_rede, lambda l: RespostaFalsa(200, {"aceitas": "x"}), lambda l: RespostaFalsa(200),
+                          lambda l: RespostaFalsa(500, None, "erro interno")):
+            self.assertEqual(self.cliente(responder).enviar_pendentes()["estado"], "erro")
+            self.assertEqual(self.sincronizado(v), 0)
+
+    def test_laco_continua_sem_dormir_enquanto_ha_lotes_e_depois_espera_o_intervalo(self):
+        for _ in range(3):
+            self.vender()
+        esperas = []
+        with mock.patch.object(sincronizador, "LIMITE_LOTE", 2):
+            self.cliente().iniciar_loop(rodadas=3, dormir=esperas.append)
+        self.assertEqual(esperas, [0, 60, 60])          # 2 + 1 vendas, depois nada a enviar
+        self.assertEqual(SyncController(self.banco).contagem_pendentes(), 0)
+
+    def test_laco_sobrevive_a_excecao_e_aumenta_a_espera(self):
+        self.vender()
+
+        def quebrar(lote):
+            raise RuntimeError("bug")
+        esperas = []
+        self.cliente(quebrar).iniciar_loop(rodadas=3, dormir=esperas.append)
+        self.assertEqual(esperas, [120, 240, 480])
+
+    def test_espera_dobra_a_cada_falha_ate_o_limite(self):
+        self.assertEqual([proxima_espera(60, n) for n in range(6)], [60, 120, 240, 480, 600, 600])
+        self.assertEqual(proxima_espera(1, 0), 5)
+
+
+if __name__ == "__main__":
+    unittest.main()

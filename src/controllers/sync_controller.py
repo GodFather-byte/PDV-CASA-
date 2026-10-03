@@ -50,10 +50,36 @@ class SyncController:
                            for p in pagamentos],
         }
 
-    def confirmar(self, uuids: list[str]) -> int:
-        """Marca como sincronizadas SOMENTE as vendas que o servidor confirmou."""
+    def confirmar(self, uuids: list[str], enviados: dict[str, str] | None = None) -> int:
+        """Marca como sincronizadas SOMENTE as vendas que o servidor confirmou.
+
+        `enviados` ({uuid: status que foi no lote}) protege da corrida em que a venda é cancelada
+        enquanto o lote está a caminho: se o status mudou depois do envio, a venda continua pendente
+        e o cancelamento segue no próximo lote (sem isso o aceite do lote antigo o apagaria)."""
         n = 0
         with self.banco.transacao():
             for u in uuids:
-                n += self.banco.executar("UPDATE vendas SET sincronizado = 1 WHERE uuid = ?", (u,)).rowcount
+                if enviados is None:
+                    n += self.banco.executar("UPDATE vendas SET sincronizado = 1 WHERE uuid = ?", (u,)).rowcount
+                elif u in enviados:
+                    n += self.banco.executar(
+                        "UPDATE vendas SET sincronizado = 1 WHERE uuid = ? AND status = ?", (u, enviados[u])).rowcount
         return n
+
+    def contagem_rejeitadas(self) -> int:
+        return self.banco.valor("SELECT COUNT(*) FROM vendas WHERE sincronizado = 2", (), 0)
+
+    def rejeitar(self, uuids: list[str], motivo: str = "") -> int:
+        """Quarentena (sincronizado = 2): a nuvem recusou a venda por dado inválido (HTTP 422). Ela sai da
+        fila, para uma venda ruim não travar todas as outras, mas continua guardada e visível no painel."""
+        n = 0
+        with self.banco.transacao():
+            for u in uuids:
+                n += self.banco.executar("UPDATE vendas SET sincronizado = 2 WHERE uuid = ? AND sincronizado = 0", (u,)).rowcount
+            if n:
+                self.banco.log("sync_rejeitada", f"{n} venda(s) recusada(s) pela nuvem: {motivo}"[:500])
+        return n
+
+    def reenviar_rejeitadas(self) -> int:
+        """Devolve as vendas em quarentena para a fila (depois de corrigir a causa)."""
+        return self.banco.executar("UPDATE vendas SET sincronizado = 0 WHERE sincronizado = 2").rowcount

@@ -56,7 +56,7 @@ class UtilitarioController:
                               "menos 1 dia para preservar o movimento atual.")
         alvo = ("status IN ('fechada','cancelada') AND date(COALESCE(fechada_em, aberta_em)) < ?")
         if self.banco.cfg("api_url").strip():
-            pendentes = self.banco.valor(f"SELECT COUNT(*) FROM vendas WHERE sincronizado = 0 AND {alvo}", (data,), 0)
+            pendentes = self.banco.valor(f"SELECT COUNT(*) FROM vendas WHERE sincronizado <> 1 AND {alvo}", (data,), 0)
             if pendentes:
                 raise ErroNegocio(f"Existem {pendentes} venda(s) do período ainda não enviadas à nuvem. "
                                   "Sincronize antes de limpar.")

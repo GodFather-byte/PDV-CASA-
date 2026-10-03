@@ -1,25 +1,49 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
-from pydantic import BaseModel
-from typing import List, Optional
-import sqlalchemy
-from sqlalchemy.orm import Session
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime
-from backend.database import SessionLocal, engine, Base
+"""API de nuvem do PDV (FastAPI): recebe lotes de vendas do PDV, de forma idempotente por UUID.
 
-# Extending Base to add Venda, ItemVenda, Pagamento for Nuvem
+Como rodar, na raiz do repositório:
+    $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"
+    python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+
+O PDV usa o mesmo valor em Configurações > Nuvem (Token da API) e envia `Authorization: Bearer <token>`.
+Sem PDV_API_TOKEN o servidor recusa os lotes (503): não existe token padrão.
+Contrato completo em docs/COORDENACAO.md.
+"""
+from __future__ import annotations
+
+import hmac
+import logging
+import os
+from datetime import datetime
+from typing import List, Literal, Optional
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import Boolean, Column, Float, Integer, String
+from sqlalchemy.orm import Session
+
+from backend.database import Base, SessionLocal, engine
+
+log = logging.getLogger("pdv.nuvem")
+
+DATA_HORA = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
+# Uma venda só avança no tempo: fechada -> cancelada. Reenvio com estado igual ou anterior não muda nada.
+ORDEM_STATUS = {"fechada": 1, "cancelada": 2}
+
+
 class Venda(Base):
     __tablename__ = "vendas"
     id = Column(Integer, primary_key=True, index=True)
     uuid = Column(String, unique=True, index=True)
+    chave_loja = Column(String, index=True)
     cupom = Column(Integer)
-    turno = Column(Integer)
+    turno = Column(Integer, nullable=True)
     terminal = Column(Integer)
     modalidade = Column(String)
-    posicao = Column(String, nullable=True)
+    posicao = Column(Integer, nullable=True)
     status = Column(String)
     aberta_em = Column(String)
     fechada_em = Column(String)
-    operador = Column(String)
+    operador = Column(String, nullable=True)
     subtotal_cent = Column(Integer)
     desconto_cent = Column(Integer)
     servico_cent = Column(Integer)
@@ -28,17 +52,21 @@ class Venda(Base):
     troco_cent = Column(Integer)
     vale_cent = Column(Integer)
     pessoas = Column(Integer)
+    recebida_em = Column(String)
+    atualizada_em = Column(String)
+
 
 class VendaItem(Base):
     __tablename__ = "vendas_itens"
     id = Column(Integer, primary_key=True, index=True)
-    venda_uuid = Column(String, index=True) # Ligação com UUID
+    venda_uuid = Column(String, index=True)  # Ligação com UUID
     codigo = Column(String)
     nome = Column(String)
     quantidade = Column(Float)
     preco_unit_cent = Column(Integer)
     total_cent = Column(Integer)
     cancelado = Column(Boolean)
+
 
 class VendaPagamento(Base):
     __tablename__ = "vendas_pagamentos"
@@ -48,11 +76,12 @@ class VendaPagamento(Base):
     valor_cent = Column(Integer)
     troco_cent = Column(Integer)
 
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Evicommerce API - Sync")
 
-# Dependency
+
 def get_db():
     db = SessionLocal()
     try:
@@ -60,106 +89,108 @@ def get_db():
     finally:
         db.close()
 
-# Pydantic Schemas
+
+def exigir_token(authorization: Optional[str] = Header(None)) -> None:
+    esperado = os.environ.get("PDV_API_TOKEN", "")
+    if not esperado:
+        raise HTTPException(status_code=503, detail="Servidor sem PDV_API_TOKEN configurado.")
+    if not authorization or not hmac.compare_digest(authorization.encode(), f"Bearer {esperado}".encode()):
+        raise HTTPException(status_code=401, detail="Token invalido")
+
+
+# ---------------------------------------------------------------- esquemas
 class ItemSync(BaseModel):
     codigo: str
     nome: str
-    quantidade: float
-    preco_unit_cent: int
-    total_cent: int
+    quantidade: float = Field(gt=0)
+    preco_unit_cent: int = Field(ge=0)
+    total_cent: int = Field(ge=0)
     cancelado: bool
+
 
 class PagamentoSync(BaseModel):
     tipo: str
-    valor_cent: int
-    troco_cent: int
+    valor_cent: int = Field(gt=0)
+    troco_cent: int = Field(ge=0)
+
 
 class VendaSync(BaseModel):
-    uuid: str
-    cupom: int
-    turno: Optional[int]
-    terminal: int
-    modalidade: str
-    posicao: Optional[str] = None
-    status: str
-    aberta_em: str
-    fechada_em: str
-    operador: str
-    subtotal_cent: int
-    desconto_cent: int
-    servico_cent: int
-    taxa_cent: int
-    total_cent: int
-    troco_cent: int
-    vale_cent: int
-    pessoas: int
+    uuid: str = Field(min_length=1, max_length=64)
+    cupom: int = Field(ge=1)
+    turno: Optional[int] = None
+    terminal: int = Field(ge=1)
+    modalidade: Literal["balcao", "mesa", "caderneta", "entrega"]
+    posicao: Optional[int] = None
+    status: Literal["fechada", "cancelada"]
+    aberta_em: str = Field(pattern=DATA_HORA)
+    fechada_em: str = Field(pattern=DATA_HORA)
+    operador: Optional[str] = None
+    subtotal_cent: int = Field(ge=0)
+    desconto_cent: int = Field(ge=0)
+    servico_cent: int = Field(ge=0)
+    taxa_cent: int = Field(ge=0)
+    total_cent: int = Field(ge=0)
+    troco_cent: int = Field(ge=0)
+    vale_cent: int = Field(ge=0)
+    pessoas: int = Field(ge=0)
     itens: List[ItemSync]
     pagamentos: List[PagamentoSync]
 
+
 class LoteSync(BaseModel):
-    chave_loja: str
-    terminal: int
+    chave_loja: str = Field(min_length=1, max_length=64)
+    terminal: int = Field(ge=1)
     enviado_em: str
-    vendas: List[VendaSync]
+    vendas: List[VendaSync] = Field(max_length=500)
+
 
 class ResponseSync(BaseModel):
     aceitas: List[str]
 
-@app.post("/v1/sincronizar", response_model=ResponseSync)
-def sincronizar_vendas(
-    lote: LoteSync, 
-    db: Session = Depends(get_db), 
-    authorization: str = Header(None)
-):
-    if authorization != "Bearer MeuTokenSuperSeguro":
-        raise HTTPException(status_code=401, detail="Token invalido")
-        
-    if lote.chave_loja == "":
-        raise HTTPException(status_code=400, detail="Chave da loja ausente")
 
-    aceitas = []
-    
-    for venda_req in lote.vendas:
-        # Check idempotency
-        venda_existente = db.query(Venda).filter(Venda.uuid == venda_req.uuid).first()
-        if venda_existente:
-            aceitas.append(venda_req.uuid)
-            continue
-            
+# ------------------------------------------------------------------- rotas
+@app.get("/v1/saude")
+def saude():
+    return {"status": "ok"}
+
+
+@app.post("/v1/sincronizar", response_model=ResponseSync, dependencies=[Depends(exigir_token)])
+def sincronizar_vendas(lote: LoteSync, db: Session = Depends(get_db)):
+    """Grava cada venda do lote por UUID. `aceitas` traz só os UUIDs que a nuvem já tem (novos ou repetidos)."""
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    uuids = [v.uuid for v in lote.vendas]
+    existentes = {v.uuid: v for v in db.query(Venda).filter(Venda.uuid.in_(uuids)).all()} if uuids else {}
+    aceitas: list[str] = []
+
+    for req in lote.vendas:
         try:
-            nova_venda = Venda(
-                uuid=venda_req.uuid,
-                cupom=venda_req.cupom,
-                turno=venda_req.turno,
-                terminal=venda_req.terminal,
-                modalidade=venda_req.modalidade,
-                posicao=venda_req.posicao,
-                status=venda_req.status,
-                aberta_em=venda_req.aberta_em,
-                fechada_em=venda_req.fechada_em,
-                operador=venda_req.operador,
-                subtotal_cent=venda_req.subtotal_cent,
-                desconto_cent=venda_req.desconto_cent,
-                servico_cent=venda_req.servico_cent,
-                taxa_cent=venda_req.taxa_cent,
-                total_cent=venda_req.total_cent,
-                troco_cent=venda_req.troco_cent,
-                vale_cent=venda_req.vale_cent,
-                pessoas=venda_req.pessoas
-            )
-            db.add(nova_venda)
-            
-            for item_req in venda_req.itens:
-                db.add(VendaItem(venda_uuid=venda_req.uuid, **item_req.model_dump()))
-                
-            for pag_req in venda_req.pagamentos:
-                db.add(VendaPagamento(venda_uuid=venda_req.uuid, **pag_req.model_dump()))
-                
+            atual = existentes.get(req.uuid)
+            if atual is not None:
+                if atual.chave_loja and atual.chave_loja != lote.chave_loja:
+                    log.warning("UUID %s já pertence a outra loja; não confirmado.", req.uuid)
+                    continue
+                if ORDEM_STATUS[req.status] > ORDEM_STATUS.get(atual.status, 0):  # cancelamento depois do envio
+                    atual.status = req.status
+                    atual.atualizada_em = agora
+                    db.commit()
+                aceitas.append(req.uuid)
+                continue
+
+            nova = Venda(
+                uuid=req.uuid, chave_loja=lote.chave_loja, cupom=req.cupom, turno=req.turno, terminal=req.terminal,
+                modalidade=req.modalidade, posicao=req.posicao, status=req.status, aberta_em=req.aberta_em,
+                fechada_em=req.fechada_em, operador=req.operador, subtotal_cent=req.subtotal_cent,
+                desconto_cent=req.desconto_cent, servico_cent=req.servico_cent, taxa_cent=req.taxa_cent,
+                total_cent=req.total_cent, troco_cent=req.troco_cent, vale_cent=req.vale_cent, pessoas=req.pessoas,
+                recebida_em=agora, atualizada_em=agora)
+            db.add(nova)
+            db.add_all(VendaItem(venda_uuid=req.uuid, **i.model_dump()) for i in req.itens)
+            db.add_all(VendaPagamento(venda_uuid=req.uuid, **p.model_dump()) for p in req.pagamentos)
             db.commit()
-            aceitas.append(venda_req.uuid)
-        except Exception as e:
+            existentes[req.uuid] = nova
+            aceitas.append(req.uuid)
+        except Exception:
             db.rollback()
-            print(f"Erro processando venda {venda_req.uuid}: {e}")
-            # we skip appending to 'aceitas', so client will retry it
+            log.exception("Erro processando a venda %s; o PDV vai reenviar.", req.uuid)  # sem aceite = o PDV tenta de novo
 
     return {"aceitas": aceitas}

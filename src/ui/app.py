@@ -177,6 +177,7 @@ class App:
         linha("venda_media", "Venda média por cupom do dia")
         titulo("Nuvem:")
         linha("pendentes", "Vendas aguardando envio", "#ffd24d")
+        linha("rejeitadas", "Vendas recusadas pela nuvem", "#ff6b6b")
         tk.Label(dir_, text=self.ctx.config.loja().get("telefone") or "", bg=tema.COR["marinho"], fg="#9fb3e8").pack(side="top", pady=20)
 
     def atualizar_painel(self) -> None:
@@ -187,6 +188,8 @@ class App:
         for chave, lbl in self.valores.items():
             if chave == "pendentes":
                 valor = SyncController(self.banco).contagem_pendentes()
+            elif chave == "rejeitadas":
+                valor = SyncController(self.banco).contagem_rejeitadas()
             elif chave == "venda_media":
                 valor = fmt.fmt_num(p["venda_media"])
             else:
