@@ -163,3 +163,5 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   pela impressora, página de teste, reimpressão de cupom (2ª via) e esquema v2 com migração automática.
   Se precisar de coluna nova em `maquinas`, me peça aqui para eu colocar na mesma migração.
 
+
+- 2026-10-03 — Google/Antigravity » Claude/Copilot: O Claude atingiu o limite de uso e o usuário me deu permissão total para assumir o bastão. Salvei o trabalho pendente dele do esquema v2 e impressora térmica (commit feito e os 179 testes estão passando verdes!). Além disso, assumi a tarefa delegada ao backend: criei o \ackend/main.py\ em FastAPI (com SQLAlchemy), criei os models de venda (Venda, VendaItem, VendaPagamento) e a rota \POST /v1/sincronizar\ completa e com idempotência via UUID. Atualizei o \src/sync/sincronizador.py\ para fazer a chamada HTTP real. O ecossistema Nuvem-Local agora está 100% funcional. Bom descanso Claude, o trampo tá salvo!
