@@ -5,11 +5,12 @@ alimentação. O objetivo é evoluir para um PDV confiável de ponta a ponta: ve
 mesas e comandas, turnos, pagamentos, estoque, clientes, financeiro, relatórios e
 sincronização idempotente com a nuvem.
 
-> **Estado do projeto:** em desenvolvimento. Os controladores de caixa, estoque,
-> cadastros, turnos e contas têm testes automatizados. A sincronização possui um
-> montador de lotes, mas o transporte ainda é simulado. As telas e a integração
-> real com o servidor ainda não representam um produto pronto para operação
-> comercial.
+> **Estado do projeto:** em desenvolvimento. O sistema local (cadastros, caixa, mesas,
+> caderneta, entrega, estoque, contas, relatórios, utilitários e configurações dos
+> manuais Virtual.Net/ViCommerce) está implementado em Python + SQLite + Tkinter e coberto
+> por testes automatizados de regras e de telas. Ainda **não foi validado em loja**: não há
+> emissão fiscal, TEF nem leitura real de balança/gaveta (ver
+> [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a sincronização com a nuvem ainda é simulada.
 
 ## Começar
 
@@ -20,19 +21,20 @@ python --version
 python -m unittest discover -s tests -v
 ```
 
-O protótipo de terminal pode ser aberto com:
+Para abrir o sistema (Windows: também há o atalho `iniciar_pdv.bat`):
 
 ```powershell
-python -m src.main
+python -m src.app
 ```
 
-Essa entrada usa os adaptadores legados de venda e serve para demonstração. Para
-uma operação real, use o fluxo de `CaixaController`, que inclui turno, fechamento,
-pagamentos e baixa de estoque transacional. A interface nova está sendo construída
-em Tkinter; login, tema, visualizador e cadastro genérico já têm módulos iniciais,
-mas ainda não há uma entrada gráfica completa (`src.app`) que conecte as telas ao
-fluxo novo.
-As interfaces Flet antigas estão congeladas e servem apenas como protótipo.
+Usuário inicial: **ADM**, senha **ADM** (nível 4; troque a senha e crie os operadores em
+Manutenção de Cadastros > Operadores). Operadores de nível 0 entram direto no caixa. O
+primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
+
+Não é preciso instalar nada além do Python: o sistema usa só a biblioteca padrão
+(Tkinter e SQLite). A pasta `src/ui/` ainda contém telas Flet antigas
+(`main_ui.py`, `cadastros_ui.py`, `mesas_ui.py`...) que estão **congeladas e não fazem parte do
+sistema novo**; o protótipo de console `src/main.py` também é legado.
 
 ## O que já existe
 
@@ -56,7 +58,8 @@ As interfaces Flet antigas estão congeladas e servem apenas como protótipo.
 - `src/controllers/`: regras de negócio do PDV local.
 - `src/database/`: esquema e acesso ao SQLite local.
 - `src/core/`: formatação monetária, segurança, erros e utilitários.
-- `src/ui/`: interface Tkinter nova em desenvolvimento; telas Flet antigas congeladas.
+- `src/ui/`: interface Tkinter (`app.py` é a janela principal, `caixa_ui.py` o caixa); telas Flet antigas congeladas.
+- `tests/`: regras de negócio, telas (com um robô que opera as janelas modais) e o teste de fumaça.
 - `src/sync/`: transporte PDV ↔ nuvem.
 - `backend/`: protótipo separado de persistência/modelos para a nuvem; ainda não
   implementa a API receptora de sincronização e não é usado pelo PDV local.
@@ -68,7 +71,7 @@ PowerShell:
 
 ```powershell
 $env:PDV_DB = "$PWD\dados\loja_offline.db"
-python -m src.main
+python -m src.app
 ```
 
 Ao detectar o banco do protótipo antigo, o sistema arquiva uma cópia
@@ -90,8 +93,8 @@ Convenções obrigatórias entre as camadas:
 enviar vendas a uma API real**. Não trate a mensagem de sucesso do protótipo como
 confirmação remota nem use a sincronização simulada em operação com vendas reais.
 
-Antes de operar comercialmente, ainda é necessário validar e completar: interface
-Tkinter integrada ao fluxo novo, transporte HTTP autenticado com confirmação por UUID,
+Antes de operar comercialmente, ainda é necessário validar e completar: teste em
+loja com a rotina real do caixa, transporte HTTP autenticado com confirmação por UUID,
 tratamento de falhas e retries, instalador/dependências, backup e restauração
 testados, hardware fiscal/periféricos e homologação no ambiente da loja.
 

@@ -19,3 +19,9 @@ Thumbs.db
 # Ignorar pastas de editores de código
 .vscode/
 .idea/
+
+# Arquivos gerados pelo PDV em tempo de execucao
+Backup/
+impressao/
+mala_direta/
+*.legado-*.bak

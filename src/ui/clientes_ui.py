@@ -14,7 +14,7 @@ from src.ui.visualizador import Visualizador
 class JanelaClientes(tk.Toplevel):
     """Modal. Ao fechar, `self.cliente_id` tem o cliente escolhido (ou None)."""
 
-    def __init__(self, master, ctx, modo: str = "caderneta"):
+    def __init__(self, master, ctx, modo: str = "caderneta", modal: bool = True):
         super().__init__(master)
         self.ctx, self.modo, self.cliente_id = ctx, modo, None
         self.cad = ctx.caderneta
@@ -34,9 +34,10 @@ class JanelaClientes(tk.Toplevel):
         self.bind("<F2>", lambda e: self.abas.select(0))
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
-        tema.modalizar(self)
         self.ent_busca.focus_set()
-        self.wait_window(self)
+        if modal:        # modal=False é para testes e telas que não devem bloquear
+            tema.modalizar(self)
+            self.wait_window(self)
 
     # ---------------------------------------------------------- escolher
     def _aba_escolher(self) -> None:
@@ -202,7 +203,7 @@ class JanelaClientes(tk.Toplevel):
 class JanelaEntregas(tk.Toplevel):
     """Entregas pendentes. Tecla E escolhe o entregador; Enter leva o pedido ao caixa para receber."""
 
-    def __init__(self, master, ctx):
+    def __init__(self, master, ctx, modal: bool = True):
         super().__init__(master)
         self.ctx, self.venda_id = ctx, None
         self.title("Entregas pendentes")
@@ -227,9 +228,10 @@ class JanelaEntregas(tk.Toplevel):
         self.carregar()
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
-        tema.modalizar(self)
         t.focus_set()
-        self.wait_window(self)
+        if modal:
+            tema.modalizar(self)
+            self.wait_window(self)
 
     def carregar(self, manter: str | None = None) -> None:
         pend = self.ctx.entregas.pendentes()

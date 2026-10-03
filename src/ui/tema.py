@@ -92,9 +92,11 @@ class Grade(ttk.Frame):
             self.tree.heading(cid, text=titulo)
             self.tree.column(cid, width=largura, anchor=anchor, stretch=anchor == "w")
         barra = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=barra.set)
-        self.tree.pack(side="left", fill="both", expand=True)
+        horiz = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=barra.set, xscrollcommand=horiz.set)
+        horiz.pack(side="bottom", fill="x")
         barra.pack(side="right", fill="y")
+        self.tree.pack(side="left", fill="both", expand=True)
         self.tree.tag_configure("par", background=COR["linha_par"])
         self._n = 0
 
@@ -103,7 +105,9 @@ class Grade(ttk.Frame):
         self._n = 0
 
     def adicionar(self, valores, iid: str | int | None = None, tags=()) -> str:
-        tags = tuple(tags) + (("par",) if self._n % 2 else ())
+        tags = tuple(tags)
+        if not tags and self._n % 2:      # listra só onde não há cor de situação (a listra venceria a cor)
+            tags = ("par",)
         self._n += 1
         kw = {"iid": str(iid)} if iid is not None else {}
         return self.tree.insert("", "end", values=list(valores), tags=tags, **kw)
@@ -179,7 +183,7 @@ class Dialogo(tk.Toplevel):
         self.deiconify()
         self.lift()
         modalizar(self)
-        (foco or self).focus_set()
+        (foco or self).focus_force()   # modal: o teclado precisa cair aqui mesmo que o app esteja em segundo plano
         self.wait_window(self)
         return self.resultado
 

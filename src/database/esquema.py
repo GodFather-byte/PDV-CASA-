@@ -8,6 +8,16 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 VERSAO_ESQUEMA = 1
 
 TABELAS = [
+    """CREATE TABLE IF NOT EXISTS mesas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero INTEGER NOT NULL UNIQUE,
+        status TEXT DEFAULT 'fechada',
+        venda_id INTEGER,
+        garcom_id INTEGER,
+        total_cent INTEGER DEFAULT 0,
+        servico_cent INTEGER DEFAULT 0
+    )""",
+
     # ------------------------------------------------------------ infraestrutura
     """CREATE TABLE IF NOT EXISTS config (
         chave TEXT PRIMARY KEY,

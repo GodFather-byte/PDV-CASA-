@@ -108,10 +108,12 @@ class JanelaCadastro(tk.Toplevel):
             ttk.Button(barra, text=b[0], style="Barra.TButton", command=b[1], width=len(b[0]) + 2 if len(b[0]) > 2 else 4
                        ).pack(side="left", padx=1)
         ttk.Button(barra, text="Sair", style="Barra.TButton", command=self.destroy).pack(side="right")
-        self.extras = tk.Frame(barra, bg=tema.COR["marinho"])
-        self.extras.pack(side="right", padx=14)
-        for rotulo, comando in self._botoes_extras():
-            ttk.Button(self.extras, text=rotulo, style="Barra.TButton", command=comando).pack(side="left", padx=2)
+        extras = self._botoes_extras()
+        if extras:     # segunda linha, para não espremer a barra principal
+            self.extras = tk.Frame(self, bg=tema.COR["marinho2"], padx=6, pady=4)
+            self.extras.pack(fill="x")
+            for rotulo, comando in extras:
+                ttk.Button(self.extras, text=rotulo, style="Barra.TButton", command=comando).pack(side="left", padx=2)
 
     def _formulario(self) -> None:
         secoes: dict[str, list] = {}
@@ -147,7 +149,7 @@ class JanelaCadastro(tk.Toplevel):
 
     def _grade(self) -> None:
         self.cols = [c for c in self.ent.campos if c.na_grade]
-        colunas = [(c.nome, c.rotulo, min(max(c.largura * 8, 60), 260), "e" if c.tipo in ("dinheiro", "decimal", "int") else "w")
+        colunas = [(c.nome, c.rotulo, min(max(c.largura * 7, 60), 220), "e" if c.tipo in ("dinheiro", "decimal", "int") else "w")
                    for c in self.cols]
         quadro = ttk.Frame(self, padding=10)
         quadro.pack(fill="both", expand=True)
