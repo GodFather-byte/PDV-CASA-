@@ -1,0 +1,198 @@
+"""Diálogos do caixa: abertura/troca de turno, sangria, garçom, observação e divisão de produto."""
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from src.core import formatacao as fmt
+from src.ui import tema
+from src.ui.visualizador import Visualizador
+
+
+def abrir_turno(master, ctx) -> bool:
+    """Abertura do turno: número do turno e valor encontrado no caixa (fundo de caixa)."""
+    max_turnos = max(ctx.banco.cfg_int("num_turnos", 3), 1)
+    numero = tema.pedir_numero(master, "Abertura do turno", "Turno:", ctx.turnos.numero_sugerido(), 1, max(max_turnos, 9))
+    if numero is None:
+        return False
+    valor = tema.pedir_dinheiro(master, "Abertura do turno", "Valor inicial (+) - dinheiro encontrado no caixa:",
+                                0, permitir_zero=True)
+    if valor is None:
+        return False
+    if not tema.confirmar(master, f"Confirma valor inicial de {fmt.fmt_brl(valor)}?", "Confirm"):
+        return abrir_turno(master, ctx)
+    ok, _ = tema.tratar(master, ctx.turnos.abrir, ctx.operador_id, numero, valor)
+    return ok
+
+
+def trocar_turno(master, ctx) -> bool:
+    """Troca de turno: o operador declara o valor da gaveta ANTES de ver o esperado."""
+    turno = ctx.turnos.atual()
+    if turno is None:
+        tema.aviso(master, "Não há turno aberto.")
+        return False
+    valor = tema.pedir_dinheiro(master, "Troca de turno", "Digite o valor encontrado na gaveta (+ cheques/tickets):",
+                                0, permitir_zero=True)
+    if valor is None:
+        return False
+    if not tema.confirmar(master, f"Confirma {fmt.fmt_brl(valor)} como valor final?\n"
+                                  "Depois de confirmar o turno é encerrado e não pode ser acertado.", "Troca de turno"):
+        return False
+    ok, res = tema.tratar(master, ctx.turnos.fechar, turno["id"], ctx.operador_id, valor)
+    if ok:
+        PainelFechamento(master, ctx, res)
+    return ok
+
+
+class PainelFechamento(tk.Toplevel):
+    """Resumo do turno (sobra/zero em verde, falta em vermelho) com Imprimir e Gerar arquivo texto."""
+
+    def __init__(self, master, ctx, res: dict):
+        super().__init__(master)
+        self.ctx, self.res = ctx, res
+        self.title("Fechamento do turno")
+        self.configure(bg=tema.COR["fundo"])
+        t = res["turno"]
+        M = fmt.fmt_num
+        corpo = ttk.Frame(self, padding=14)
+        corpo.pack(fill="both", expand=True)
+        esq = ttk.LabelFrame(corpo, text="Turno", padding=10)
+        esq.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        dados = [("Turno", t["numero"]), ("Abertura", fmt.fmt_datahora(t["aberto_em"])), ("Valor inicial (+)", M(res["valor_inicial"])),
+                 ("Cupom inicial", res["cupom_inicial"]), ("Fechamento", fmt.fmt_datahora(fmt.agora())),
+                 ("Valor final (-)", M(res["valor_final"])), ("Cupom final", res["cupom_final"]), ("Posições", res["posicoes"]),
+                 ("Entregas", res["entregas"]), ("Perc. entrega", f"{res['perc_entrega']:.2f}".replace(".", ",")),
+                 ("TC (cupons)", res["tc"]), ("TM", M(res["tm"])), ("Nº de pessoas", res["pessoas"]),
+                 ("Valor por pessoa", M(res["valor_por_pessoa"]))]
+        for i, (r, v) in enumerate(dados):
+            ttk.Label(esq, text=r).grid(row=i, column=0, sticky="w")
+            ttk.Label(esq, text=str(v), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(20, 0))
+        dir_ = ttk.LabelFrame(corpo, text="Recebimentos financeiros", padding=10)
+        dir_.grid(row=0, column=1, sticky="nsew")
+        i = 0
+        for r in res["recebimentos"] or [{"tipo": "(nenhum)", "valor": 0}]:
+            ttk.Label(dir_, text=r["tipo"]).grid(row=i, column=0, sticky="w")
+            ttk.Label(dir_, text=M(r["valor"]), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(30, 0))
+            i += 1
+        ttk.Separator(dir_).grid(row=i, column=0, columnspan=2, sticky="ew", pady=6)
+        for rotulo, chave in (("Troco", "troco"), ("C. Vale emitido (+)", "vale_emitido"), ("Venda (+)", "venda"),
+                              ("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa (+)", "taxa"),
+                              ("Repique", "repique"), ("Entregas pend.", "entregas_pendentes"), ("Venda caderneta", "venda_caderneta"),
+                              ("Pagtos caderneta (+)", "pagtos_caderneta"), ("Entradas financ. (+)", "entradas"),
+                              ("Saídas financ. (-)", "saidas"), ("Valor esperado", "esperado")):
+            i += 1
+            v = res[chave] if chave == "entregas_pendentes" else M(res[chave])
+            ttk.Label(dir_, text=rotulo, font=tema.FONTE_B if chave == "esperado" else tema.FONTE).grid(row=i, column=0, sticky="w")
+            ttk.Label(dir_, text=str(v), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(30, 0))
+        resultado = res["resultado"]
+        cor = tema.COR["ok"] if resultado >= 0 else tema.COR["perigo"]
+        rotulo = "SOBRA" if resultado > 0 else ("FALTA" if resultado < 0 else "CAIXA CONFERIDO")
+        faixa = tk.Frame(corpo, bg=cor, padx=10, pady=8)
+        faixa.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(12, 8))
+        tk.Label(faixa, text=f"Resultado: {fmt.fmt_brl(resultado)}  -  {rotulo}", bg=cor, fg="white", font=("Segoe UI", 20, "bold")).pack()
+        barra = ttk.Frame(corpo)
+        barra.grid(row=2, column=0, columnspan=2, sticky="ew")
+        ttk.Button(barra, text="Imprimir Fechamento", command=self.imprimir).pack(side="left")
+        ttk.Button(barra, text="Gera Arquivo Texto", command=self.gerar_texto).pack(side="left", padx=8)
+        b = ttk.Button(barra, text="Concluir (Enter)", style="Ok.TButton", command=self.destroy)
+        b.pack(side="right")
+        self.bind("<Return>", lambda e: self.destroy())
+        self.bind("<Escape>", lambda e: self.destroy())
+        tema.centralizar(self, master.winfo_toplevel())
+        self.transient(master.winfo_toplevel())
+        self.grab_set()
+        b.focus_set()
+        self.wait_window(self)
+
+    def _texto(self) -> str:
+        return self.ctx.impressao.fechamento(self.res)
+
+    def imprimir(self) -> None:
+        Visualizador(self, self.ctx, "Fechamento de turno", self._texto(), f"fechamento_turno_{self.res['turno']['numero']}")
+
+    def gerar_texto(self) -> None:
+        """Grava o fechamento em arquivo sem imprimir a fita."""
+        caminho = self.ctx.impressao.enviar(self._texto(), f"fechamento_turno_{self.res['turno']['numero']}")
+        tema.mensagem(self, f"Arquivo gerado:\n{caminho}", "Gera Arquivo Texto")
+
+
+def sangria(master, ctx, turno_id: int) -> bool:
+    """Saída (sangria) ou entrada de dinheiro no caixa, com comprovante."""
+    dlg = tema.Dialogo(master, "Entradas e saídas financeiras")
+    tipo = tk.StringVar(value="saida")
+    quadro = ttk.Frame(dlg.corpo)
+    quadro.pack(fill="x")
+    ttk.Radiobutton(quadro, text="Saída (sangria)", variable=tipo, value="saida").pack(side="left", padx=(0, 16))
+    ttk.Radiobutton(quadro, text="Entrada (suprimento)", variable=tipo, value="entrada").pack(side="left")
+    ttk.Label(dlg.corpo, text="Valor", style="Rotulo.TLabel").pack(anchor="w", pady=(10, 0))
+    valor = tk.StringVar()
+    ev = ttk.Entry(dlg.corpo, textvariable=valor, width=16)
+    ev.pack(anchor="w")
+    ttk.Label(dlg.corpo, text="Descrição / motivo", style="Rotulo.TLabel").pack(anchor="w", pady=(8, 0))
+    desc = tk.StringVar()
+    ed = ttk.Entry(dlg.corpo, textvariable=desc, width=40)
+    ed.pack(fill="x")
+    msg = ttk.Label(dlg.corpo, text="", foreground=tema.COR["perigo"])
+    msg.pack(anchor="w")
+
+    def gravar(_=None):
+        try:
+            cent = fmt.para_centavos(valor.get())
+        except ValueError:
+            msg.configure(text="Valor inválido.")
+            return
+        try:
+            ctx.turnos.movimentar(turno_id, ctx.operador_id, tipo.get(), cent, desc.get())
+        except Exception as e:  # noqa: BLE001
+            msg.configure(text=str(e))
+            return
+        dlg.ok((tipo.get(), cent, desc.get()))
+    tema._botoes(dlg, "Gravar", comando_ok=gravar)
+    ev.bind("<Return>", lambda e: ed.focus_set())
+    ed.bind("<Return>", gravar)
+    r = dlg.mostrar(ev)
+    if r:
+        t, cent, d = r
+        Visualizador(master, ctx, "Comprovante", ctx.impressao.comprovante_movimento(t, cent, d, ctx.operador.nome), "sangria")
+        return True
+    return False
+
+
+def escolher_garcom(master, ctx) -> int | None:
+    garcons = [(r["id"], r["nome"]) for r in ctx.cadastros.listar("operadores", apenas_ativos=True) if r["garcom"]]
+    if not garcons:
+        garcons = [(r["id"], r["nome"]) for r in ctx.cadastros.listar("operadores", apenas_ativos=True)]
+    return tema.escolher(master, "Garçom", garcons, "Garçom que atendeu (digite as iniciais):")
+
+
+def escolher_observacao(master, ctx) -> str | None:
+    obs = [(r["texto"], f"{r['codigo']} - {r['texto']}") for r in ctx.cadastros.listar("observacoes")]
+    if not obs:
+        livre = tema.pedir_texto(master, "Observação", "Não há observações cadastradas. Digite a observação do item:")
+        return livre or None
+    return tema.escolher(master, "Observações", obs, "Escolha a observação do item (ou Esc):")
+
+
+def dialogo_partes(master, ctx, produto: dict) -> list[int] | None:
+    """Produto dividido/combo: pergunta em quantas partes e qual produto em cada parte."""
+    n_max = produto["partes"]
+    n = tema.pedir_numero(master, produto["nome"], f"Dividir em quantas partes? (1 a {n_max}, 1 = sem divisão)", 2 if n_max >= 2 else 1, 1, n_max)
+    if n is None:
+        return None
+    if n == 1:
+        return []
+    if produto["composto"]:
+        candidatos = [r for r in ctx.cadastros.listar("produtos", apenas_ativos=True) if r["compoe"] and r["id"] != produto["id"]]
+    else:
+        candidatos = [r for r in ctx.cadastros.listar("produtos", apenas_ativos=True) if r["montagem"]]
+    if not candidatos:
+        tema.aviso(master, "Não há produtos cadastrados para montar esta divisão (marque 'Montagem' nos produtos).")
+        return None
+    itens = [(r["id"], r["nome"]) for r in candidatos]
+    partes = []
+    for i in range(1, n + 1):
+        escolhido = tema.escolher(master, f"{produto['nome']} - parte {i} de {n}", itens, "Digite para filtrar:")
+        if escolhido is None:
+            return None
+        partes.append(escolhido)
+    return partes

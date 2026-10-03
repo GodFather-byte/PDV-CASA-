@@ -1,5 +1,7 @@
 import time
-import requests # Você vai precisar instalar: pip install requests
+from urllib.error import URLError
+from urllib.request import urlopen
+
 from src.database.conexao import BancoDados
 
 class Sincronizador:
@@ -13,9 +15,10 @@ class Sincronizador:
         Testa se tem internet tentando acessar o Google rapidinho.
         """
         try:
-            requests.get("https://www.google.com", timeout=3)
+            with urlopen("https://www.google.com", timeout=3):
+                pass
             return True
-        except:
+        except (URLError, TimeoutError):
             return False
 
     def enviar_vendas_pendentes(self):
@@ -24,7 +27,10 @@ class Sincronizador:
         """
         # 1. Busca vendas não sincronizadas (sincronizado = 0)
         cursor = self.banco.conexao.cursor()
-        cursor.execute("SELECT * FROM vendas WHERE sincronizado = 0")
+        cursor.execute(
+            """SELECT id, uuid, total_cent, status FROM vendas
+               WHERE sincronizado = 0 AND status = 'fechada'"""
+        )
         vendas_pendentes = cursor.fetchall()
 
         if not vendas_pendentes:
@@ -40,14 +46,18 @@ class Sincronizador:
         # 2. Loop de envio (Simulação por enquanto)
         for venda in vendas_pendentes:
             venda_id = venda[0]
-            total = venda[2]
-            
+            total = venda[2] / 100
+
             # AQUI ENTRARIA O CÓDIGO REAL DE ENVIO PARA SUA API
             enviado_sucesso = self._simular_envio_api(venda)
 
             if enviado_sucesso:
                 # 3. Se a API confirmou o recebimento, atualizamos o banco local
-                cursor.execute("UPDATE vendas SET sincronizado = 1 WHERE id = ?", (venda_id,))
+                cursor.execute(
+                    """UPDATE vendas SET sincronizado = 1
+                       WHERE id = ? AND status = 'fechada'""",
+                    (venda_id,),
+                )
                 self.banco.conexao.commit()
                 print(f"Venda {venda_id} (R$ {total}) sincronizada com sucesso!")
 

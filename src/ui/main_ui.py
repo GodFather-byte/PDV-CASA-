@@ -1,6 +1,8 @@
 import flet as ft
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.venda_controller import VendaController
+from src.ui.cadastros_ui import criar_tela_cadastros
+
 
 def main(page: ft.Page):
     page.title = "PDV Profissional - Boate"
@@ -114,7 +116,14 @@ def main(page: ft.Page):
         valor_total_item = p[3] * qtd # Preço * Qtd
 
         # Backend (Salva no Banco)
-        venda_ctrl.adicionar_item(estado["venda_id"], p[0], qtd, p[3])
+        if not venda_ctrl.adicionar_item(estado["venda_id"], p[0], qtd, p[3]):
+            page.snack_bar = ft.SnackBar(
+                ft.Text("Não foi possível lançar o produto; confira o estoque e a venda."),
+                bgcolor="red",
+            )
+            page.snack_bar.open = True
+            resetar_busca()
+            return
 
         # Frontend (Atualiza Tela)
         estado["carrinho"].append({
@@ -164,35 +173,11 @@ def main(page: ft.Page):
     txt_codigo.on_submit = buscar_produto
     txt_quantidade.on_submit = confirmar_venda_item
 
-    # =================================================================
-    # ABA ADMIN (Para cadastrar produtos de teste)
-    # =================================================================
-    txt_adm_nome = ft.TextField(label="Nome (Ex: Skol)")
-    txt_adm_cod = ft.TextField(label="Código (Ex: 2)", width=100)
-    txt_adm_preco = ft.TextField(label="Preço (Ex: 8.00)", width=100)
-
-    def salvar_produto(e):
-        try:
-            produto_ctrl.cadastrar_produto(
-                txt_adm_nome.value, 
-                float(txt_adm_preco.value.replace(",", ".")), 
-                txt_adm_cod.value, 
-                100
-            )
-            page.snack_bar = ft.SnackBar(ft.Text("Salvo!"), bgcolor="green")
-            page.snack_bar.open = True
-            page.update()
-        except: pass
-
-    layout_admin = ft.Row([
-        txt_adm_cod, txt_adm_nome, txt_adm_preco,
-        ft.ElevatedButton("Cadastrar", on_click=salvar_produto)
-    ])
 
     # =================================================================
     # LAYOUT FINAL
     # =================================================================
-    
+
     coluna_esquerda = ft.Container(
         content=ft.Column([
             ft.Text("CAIXA OPERACIONAL", size=20, weight="bold", color="cyan"),
@@ -222,7 +207,7 @@ def main(page: ft.Page):
         selected_index=0,
         tabs=[
             ft.Tab(text="Caixa", content=ft.Row([coluna_esquerda, coluna_direita], expand=True)),
-            ft.Tab(text="Admin (Cadastros)", content=ft.Container(layout_admin, padding=20))
+            ft.Tab(text="Admin (Cadastros)", content=criar_tela_cadastros(page))
         ]
     )
 
