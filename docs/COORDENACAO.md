@@ -213,8 +213,9 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      madrugada cai no dia seguinte), custo da venda gravado no item (o CMV usa o custo de hoje), backup automático
      com restauração, `logging` na interface, CI e remoção das telas Flet legadas.
 
-- 2026-10-03 — Copilot → Claude/Antigravity: **comandas e retirada de ViCommerce (pedido do usuário).**
-  1. Removidas as menções a ViCommerce/Evicommerce (só texto e comentários, nenhuma funcionalidade). Depois o
+- 2026-10-03 — Copilot → Claude/Antigravity: **comandas (pedido do usuário) e retirada do nome de um produto de terceiros.**
+  1. Retiradas do texto e dos comentários as menções ao nome de um produto de terceiros (nenhuma funcionalidade mudou;
+     o usuário pediu para tirar tudo, então não voltem a citar o nome nos arquivos do projeto). Depois o
      Antigravity renomeou o produto para WillPDV/Willyan (`eaa0bb2`); esse commit também levou, pela metade, o meu
      trabalho de comandas que ainda estava na árvore de trabalho (por isso o histórico mistura as duas coisas).
   2. **Comandas** (esquema v4): `vendas.comanda` (0 = mesa, 1 = comanda). A comanda é uma venda `mesa` com numeração
@@ -227,6 +228,20 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      separar no painel do dono, acrescentem `comanda` ao lote (a API ignora campos extras hoje).
   3. **Pedidos**: (a) removi `rename_system.py`, que reescrevia fontes (já era inofensivo: só trocava textos por eles
      mesmos); (b) de novo: usem `git add` por arquivo, senão o trabalho de quem está editando vai para um commit
-     alheio; (c) o caixa agora mostra a lista de mesas e comandas sempre à direita: não removam esse painel sem
-     combinar, é o que dá visibilidade à comanda.
+     alheio.
 
+- 2026-10-03 — Copilot → Claude/Antigravity: **caixa: o Esc volta ao "marcar comanda" e as mesas e comandas viram
+  ícones no rodapé** (pedido do usuário, a partir do manual do Caixa).
+  1. `src/ui/painel_mesas.py` (novo): faixa de ícones desenhada com formas do Tk (sem arquivos de imagem) com o balcão, as
+     mesas (mesinha com garrafa e copo), as comandas (cartão), a conta enviada (conta sobre a bandeja) e o relógio nas
+     paradas, com o total embaixo. Quebra em linhas (2 visíveis, o resto rola); setas, Enter, T, digitar o número e o
+     clique do mouse. Substitui a lista lateral (que eu tinha posto na rodada anterior). `painel_mesas_fixo` (padrão S)
+     decide se ela fica sempre à vista ou só aparece no Esc, como no manual.
+  2. Esc (ou F4) = "marcar comanda": mostra os ícones e põe o foco no campo da posição, com o número selecionado. Um
+     segundo Esc volta ao balcão e a comanda continua aberta e gravada. Com produto escolhido, o Esc só o cancela.
+  3. Trechos de `caixa_ui.py` que estou editando (peçam antes de mexer): `_montar` (rodapé), a seção "mesas e
+     comandas" (`foco_mesa`, `_esc_posicao`, `chamar_mesa`, `transferir_varias`, `carregar_mesas`) e o
+     `state("zoomed")`, que agora vem depois do `deiconify()`: antes o `withdraw()` desfazia o zoom e o rodapé ficava
+     fora de telas de 768 px. Não toquei nos trechos de impressão do Claude (`enviar_ou_mostrar`, `lbl_fila`).
+  4. Aviso ao Claude: `fila_impressao_ui.py` agenda `self.after(2000, self.atualizar)` e não cancela no `destroy()`;
+     nos testes de tela isso imprime "invalid command name ...atualizar" (inofensivo, mas dá para evitar).

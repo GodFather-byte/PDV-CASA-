@@ -6,6 +6,7 @@ import tempfile
 import tkinter as tk
 import unittest
 from datetime import date, datetime
+from types import SimpleNamespace
 from tkinter import ttk
 from unittest import mock
 
@@ -247,42 +248,144 @@ class TesteFluxosCaixa(BaseUI):
         self.cx.var_pos.set("0"); self.cx.chamar_mesa(); self.cx.update()
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas"), 0)
 
-    def lista_de_mesas(self):
-        g = self.cx.grade_mesas
-        return [g.valores(i) for i in g.tree.get_children()]
+    def tiles(self):
+        return [(t["chave"], t["estado"], t["total"]) for t in self.cx.painel_mesas.tiles()]
 
-    def test_skol_na_comanda_2_aparece_na_lista_como_uma_mesa(self):
-        self.assertTrue(self.cx.mesas_visiveis)                       # a lista fica à vista, sem apertar Esc
+    def itens_do_icone(self, chave, marca):
+        return self.cx.painel_mesas.canvas.find_withtag(f"t:{chave}&&{marca}")
+
+    def clicar_no_icone(self, chave):
+        c = self.cx.painel_mesas.canvas
+        self.cx.update()
+        x1, y1, x2, y2 = c.bbox(f"t:{chave}&&fundo")
+        x, y = (x1 + x2) // 2, (y1 + y2) // 2
+        c.event_generate("<Motion>", x=x, y=y)         # o Tk só sabe qual é o item sob o mouse depois de um movimento
+        c.event_generate("<Button-1>", x=x, y=y)
+        self.cx.update()
+
+    def foco(self):
+        return str(self.cx.focus_lastfor())
+
+    def test_skol_na_comanda_2_aparece_como_icone_no_rodape(self):
+        self.assertTrue(self.cx.mesas_visiveis)                       # os ícones ficam à vista, sem apertar Esc
+        self.assertEqual(self.tiles(), [("0", "balcao", "")])         # só o balcão
         self.cx.var_cod.set("C2"); self.cx._enter_codigo(); self.cx.update()   # "C2" no código abre a comanda 2
         self.assertEqual(self.cx.lbl_situacao.cget("text"), "Comanda 2")
         self.assertEqual(self.cx.var_pos.get(), "C2")
         self.lancar("1", 1)
         self.assertEqual(self.cx.lbl_total.cget("text"), "8,80")      # 8,00 + 10% de serviço, como na mesa
-        self.assertEqual(self.lista_de_mesas(), [["C2", "Consumindo", "8,80"]])
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("C2", "consumindo", "8,80")])
+        self.assertTrue(self.itens_do_icone("C2", "icone:comanda"))
+        fundo = self.itens_do_icone("C2", "fundo")[0]
+        self.assertEqual(float(self.cx.painel_mesas.canvas.itemcget(fundo, "width")), 3.0)   # a que está na tela: borda grossa
         v = self.banco.um("SELECT modalidade, comanda, posicao FROM vendas")
         self.assertEqual((v["modalidade"], v["comanda"], v["posicao"]), ("mesa", 1, 2))
         self.sem_travar()
 
-    def test_mesa_2_e_comanda_2_na_mesma_lista_e_troca_pela_lista(self):
+    def test_mesa_2_e_comanda_2_sao_icones_diferentes_e_o_clique_troca(self):
         self.cx.var_pos.set("2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 1)
         self.cx.var_pos.set("c2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("2", 2)
-        self.assertEqual([l[0] for l in self.lista_de_mesas()], ["2", "C2"])
-        self.cx.alternar_mesas(True)                                  # Esc no código: foco na lista, com a atual marcada
-        self.assertEqual(self.cx.grade_mesas.selecionado(), "C2")
-        self.cx.grade_mesas.selecionar("2")
-        self.cx._mesa_escolhida(); self.cx.update()
+        self.assertEqual([t[0] for t in self.tiles()], ["0", "2", "C2"])      # balcão, mesas e depois comandas
+        self.assertTrue(self.itens_do_icone("2", "icone:mesa"))
+        self.assertTrue(self.itens_do_icone("C2", "icone:comanda"))
+        self.clicar_no_icone("2")
         self.assertEqual((self.cx.lbl_situacao.cget("text"), self.cx.lbl_total.cget("text")), ("Mesa 2", "8,80"))
-        self.assertTrue(self.cx.mesas_visiveis)
+        self.clicar_no_icone("0")
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Balcão")
+        self.clicar_no_icone("C2")
+        self.assertEqual((self.cx.lbl_situacao.cget("text"), self.cx.lbl_total.cget("text")), ("Comanda 2", "7,70"))
         self.sem_travar()
 
-    def test_lista_envelhece_sozinha_e_marca_a_comanda_parada(self):
-        from datetime import timedelta
+    def test_esc_volta_ao_marcar_comanda_e_o_segundo_esc_ao_balcao(self):
         self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 1)
-        self.assertEqual(self.lista_de_mesas(), [["C2", "Consumindo", "8,80"]])
+        self.cx.ent_codigo.focus_set()
+        self.cx._esc_codigo(); self.cx.update()                       # Esc no lançamento de itens
+        self.assertEqual(self.foco(), str(self.cx.ent_pos))
+        self.assertTrue(self.cx.ent_pos.selection_present())          # o número fica selecionado: é só digitar o próximo
+        self.assertEqual(self.cx.var_pos.get(), "C2")
+        self.assertTrue(self.cx.mesas_visiveis)
+        self.cx._esc_posicao(); self.cx.update()                      # segundo Esc: balcão; a comanda continua gravada
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Balcão")
+        self.assertEqual(self.banco.valor("SELECT status FROM vendas WHERE comanda = 1"), "aberta")
+        self.assertIn(("C2", "consumindo", "8,80"), self.tiles())
+        self.assertEqual(self.foco(), str(self.cx.ent_codigo))
+        self.cx._esc_posicao(); self.cx.update()                      # já no balcão: só devolve o foco ao código
+        self.assertEqual(self.foco(), str(self.cx.ent_codigo))
+        self.sem_travar()
+
+    def test_esc_com_produto_pendente_so_cancela_o_produto(self):
+        self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update()
+        self.cx.var_cod.set("1"); self.cx._enter_codigo(); self.cx.update()      # produto escolhido, falta a quantidade
+        self.assertIsNotNone(self.cx.produto)
+        self.cx._esc_codigo(); self.cx.update()
+        self.assertIsNone(self.cx.produto)
+        self.assertEqual(self.foco(), str(self.cx.ent_codigo))
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Comanda 2")           # continua na comanda
+        self.cx._esc_codigo(); self.cx.update()                                   # o próximo Esc marca a comanda
+        self.assertEqual(self.foco(), str(self.cx.ent_pos))
+
+    def test_comanda_vazia_deixada_com_esc_nao_vira_icone_fantasma(self):
+        self.cx.var_pos.set("C4"); self.cx.chamar_mesa(); self.cx.update()
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("C4", "consumindo", "0,00")])   # recém-aberta já aparece
+        self.cx._esc_codigo(); self.cx._esc_posicao(); self.cx.update()
+        self.assertEqual(self.tiles(), [("0", "balcao", "")])
+
+    def test_icones_mostram_conta_enviada_e_comanda_parada(self):
+        from datetime import timedelta
+        self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 2)
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.cx.pre_conta(); self.cx.update()                                      # conta enviada
+        self.cx.var_pos.set("C3"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("2", 1)
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("C2", "conta", "17,60"), ("C3", "consumindo", "3,85")])
+        self.assertTrue(self.itens_do_icone("C2", "icone:conta"))
+        self.assertFalse(self.itens_do_icone("C3", "relogio"))
         self.addCleanup(fmt.definir_relogio, None)
-        fmt.definir_relogio(lambda: datetime.now() + timedelta(minutes=45))      # passam 45 min sem lançar nada
-        self.cx._atualizar_lista(); self.cx.update()
-        self.assertEqual(self.lista_de_mesas(), [["C2", "Parada 45 min", "8,80"]])
+        fmt.definir_relogio(lambda: datetime.now() + timedelta(minutes=45))        # passam 45 min sem lançar nada
+        self.cx._atualizar_painel(); self.cx.update()
+        self.assertEqual(self.tiles()[2], ("C3", "parada", "3,85"))
+        self.assertTrue(self.itens_do_icone("C3", "relogio"))
+        self.assertFalse(self.itens_do_icone("C2", "relogio"))      # conta enviada não é "parada": o cliente está pagando
+        self.sem_travar()
+
+    def test_muitos_icones_quebram_em_linhas_e_rolam(self):
+        from src.ui.painel_mesas import ALTURA, MARGEM
+        for n in range(1, 61):
+            v, _ = self.ctx.caixa.abrir_mesa(n, comanda=True)
+            self.ctx.caixa.adicionar_item(v, self.skol, 1)
+        self.cx.carregar_mesas(); self.cx.update()
+        p = self.cx.painel_mesas
+        self.assertEqual(len(p.tiles()), 61)                          # 60 comandas e o balcão
+        self.assertEqual(int(p.canvas.cget("height")), 2 * ALTURA + MARGEM)      # só duas linhas à vista
+        self.assertEqual(p.barra.winfo_manager(), "place")            # e a barra de rolagem aparece
+        p.focar("C1")
+        p._tecla(SimpleNamespace(keysym="End", char=""))
+        self.assertEqual(p.cursor(), "C60")
+        p._tecla(SimpleNamespace(keysym="Home", char=""))
+        self.assertEqual(p.cursor(), "0")
+        p._tecla(SimpleNamespace(keysym="Up", char=""))               # no alto da faixa: volta ao campo da posição
+        self.assertEqual(self.foco(), str(self.cx.ent_pos))
+        self.sem_travar()
+
+    def test_teclado_nos_icones_escolhe_digita_e_transfere(self):
+        p = self.cx.painel_mesas
+        self.cx.var_pos.set("3"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 1)
+        self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("2", 1)
+        self.cx.var_pos.set("C9"); self.cx.chamar_mesa(); self.cx.update(); self.lancar("1", 2)
+        p.focar("3")
+        p._tecla(SimpleNamespace(keysym="Return", char="\r"))         # Enter chama a escolhida
+        self.assertEqual(self.cx.lbl_situacao.cget("text"), "Mesa 3")
+        p.focar("0")
+        p._tecla(SimpleNamespace(keysym="c", char="c"))               # digitar C já começa a marcar a posição
+        self.assertEqual((self.cx.var_pos.get(), self.foco()), ("C", str(self.cx.ent_pos)))
+        self.cx.var_pos.set("C9"); self.cx.chamar_mesa(); self.cx.update()
+
+        def digita(w):
+            entradas(w)[0].insert(0, "3, C2"); clicar(w, "OK")
+        self.robo.quando("Dialogo", digita)
+        p.focar("C9")
+        p._tecla(SimpleNamespace(keysym="t", char="t")); self.cx.update()      # T: as outras vêm para a escolhida
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("C9", "consumindo", "30,25")])
+        self.assertEqual(self.cx.lbl_total.cget("text"), "30,25")     # 16,00 + 8,00 + 3,50 + 10%
         self.sem_travar()
 
     def test_comanda_desligada_avisa_e_nao_abre(self):
@@ -308,12 +411,12 @@ class TesteFluxosCaixa(BaseUI):
         self.cx.pre_conta(); self.cx.update()
         self.assertIn("CONTA DA COMANDA", textos[0])
         self.assertEqual(self.banco.valor("SELECT status FROM vendas"), "conta_enviada")
-        self.assertEqual(self.lista_de_mesas(), [["C2", "Conta enviada", "17,60"]])
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("C2", "conta", "17,60")])
         self.cx.var_pos.set("C2"); self.cx.chamar_mesa(); self.cx.update()
         self.pagar("Pix")
         v = self.banco.um("SELECT status, comanda, servico_cent FROM vendas")
         self.assertEqual((v["status"], v["comanda"], v["servico_cent"]), ("fechada", 1, 160))
-        self.assertEqual(self.lista_de_mesas(), [])
+        self.assertEqual(self.tiles(), [("0", "balcao", "")])
         self.sem_travar()
 
     def test_transferir_comanda_para_mesa_com_f10(self):
@@ -326,7 +429,7 @@ class TesteFluxosCaixa(BaseUI):
         v = self.banco.um("SELECT comanda, posicao FROM vendas")
         self.assertEqual((v["comanda"], v["posicao"]), (0, 7))
         self.assertEqual((self.cx.lbl_situacao.cget("text"), self.cx.var_pos.get()), ("Mesa 7", "7"))
-        self.assertEqual(self.lista_de_mesas(), [["7", "Consumindo", "8,80"]])
+        self.assertEqual(self.tiles(), [("0", "balcao", ""), ("7", "consumindo", "8,80")])
         self.sem_travar()
 
     def test_posicao_invalida_e_avisada(self):
@@ -336,17 +439,21 @@ class TesteFluxosCaixa(BaseUI):
         self.assertIn("Dialogo", self.robo.log)
         self.sem_travar()
 
-    def test_lista_escondivel_quando_o_painel_fixo_esta_desligado(self):
+    def test_painel_so_aparece_no_esc_quando_nao_e_fixo(self):
         self.cx.destroy()
         self.banco.cfg_set("painel_mesas_fixo", "N")
         from src.ui.caixa_ui import JanelaCaixa
         self.cx = JanelaCaixa(self.root, self.ctx)
         self.cx.update()
-        self.assertFalse(self.cx.mesas_visiveis)                      # comportamento original: Esc mostra e esconde
+        self.assertFalse(self.cx.mesas_visiveis)
+        self.assertEqual(self.cx.painel_mesas.winfo_manager(), "")    # fora da tela até o Esc
         self.cx._esc_codigo(); self.cx.update()
         self.assertTrue(self.cx.mesas_visiveis)
-        self.cx.alternar_mesas(False); self.cx.update()
+        self.assertEqual(self.cx.painel_mesas.winfo_manager(), "pack")
+        self.assertEqual(self.foco(), str(self.cx.ent_pos))
+        self.cx.var_pos.set("C5"); self.cx.chamar_mesa(); self.cx.update()    # abriu a comanda: o painel some de novo
         self.assertFalse(self.cx.mesas_visiveis)
+        self.assertEqual(self.foco(), str(self.cx.ent_codigo))
         self.sem_travar()
 
     def test_cancelar_item_e_conta_inteira(self):

@@ -82,12 +82,17 @@ class CaixaController:
         dados.update(extra)
         return self.banco.inserir("vendas", dados)
 
+    def balcao_aberto(self) -> dict | None:
+        """A venda de balcão em andamento, se houver (a que o caixa retoma após uma queda de energia)."""
+        r = self.banco.um(
+            "SELECT * FROM vendas WHERE modalidade = 'balcao' AND status = 'aberta' ORDER BY id DESC LIMIT 1")
+        return dict(r) if r else None
+
     def abrir_balcao(self) -> int:
         """Retoma a venda de balcão em andamento (ex.: após queda de energia) ou abre outra."""
         self.turnos.exigir_aberto()
-        r = self.banco.valor(
-            "SELECT id FROM vendas WHERE modalidade = 'balcao' AND status = 'aberta' ORDER BY id DESC LIMIT 1")
-        return r or self._nova("balcao")
+        r = self.balcao_aberto()
+        return r["id"] if r else self._nova("balcao")
 
     def abrir_caderneta(self, cliente_id: int) -> int:
         """Venda a prazo ou recebimento de dívida do cliente (a mesma tela serve aos dois:

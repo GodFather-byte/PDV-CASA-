@@ -52,7 +52,7 @@ CAMPOS_CONFIG = [
     ("comissao_garcom_pct", "Comissão dos garçons sobre produtos (%)", "decimal", "Mesas e serviço"),
     ("tempo_inatividade_min", "Alertar mesa parada após (minutos, 0 = desligado)", "int", "Mesas e serviço"),
     ("pergunta_pessoas", "Perguntar o nº de pessoas ao abrir a mesa", "sn", "Mesas e serviço"),
-    ("painel_mesas_fixo", "Mostrar sempre a lista de mesas e comandas abertas no caixa", "sn", "Mesas e serviço"),
+    ("painel_mesas_fixo", "Mostrar sempre os ícones das mesas e comandas abertas no rodapé do caixa", "sn", "Mesas e serviço"),
     ("num_turnos", "Número de turnos por dia", "int", "Caixa"),
     ("exigir_senha_gaveta", "Exigir senha de supervisor para abrir a gaveta", "sn", "Caixa"),
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),

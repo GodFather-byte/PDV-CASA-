@@ -72,6 +72,11 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   (índice único `(comanda, posicao)` entre as abertas). Notação: `5` = mesa, `C2` = comanda. O limite é
   `num_comandas` (padrão 200; 0 desliga). A nuvem recebe a comanda como `mesa` (sem campo novo no contrato);
   se o dono quiser separar no painel, acrescentar `comanda` ao lote é compatível com a API atual.
+- **Esc e o painel de ícones** (manual do Caixa, "Abrir e lançar itens em mesas"): Esc leva ao "marcar comanda", com o
+  painel de ícones das posições abertas e o campo da posição habilitado; um segundo Esc volta ao balcão, e os dados das
+  mesas abertas permanecem gravados. Os ícones seguem o manual (mesa consumindo, conta enviada com bandeja, relógio na
+  parada) e foram desenhados do zero; o balcão é o primeiro ícone e cada um mostra o total (acréscimos nossos). O manual
+  mostra o painel só depois do Esc; aqui ele fica sempre no rodapé (`painel_mesas_fixo = S`) e `N` volta ao do manual.
 - **Estoque baixa ao fechar a venda**, não ao lançar o item; cancelar o cupom estorna. Estoque negativo é permitido.
 - **Promoções** (período, dias da semana, horário) valem em conjunto; havendo mais de uma, vence a de menor
   preço. Faixas que viram a meia-noite funcionam (ex.: 22:00 às 02:00).

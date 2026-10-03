@@ -23,6 +23,7 @@ from src.hardware.impressora_termica import ErroImpressao
 from src.ui import caixa_dialogos, tema
 from src.ui.caixa_pagamento import JanelaPagamento
 from src.ui.clientes_ui import JanelaClientes, JanelaEntregas
+from src.ui.painel_mesas import PainelMesas
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
 
@@ -39,11 +40,7 @@ class JanelaCaixa(tk.Toplevel):
         self.leitor = bool(ctx.config.maquina()["leitor_optico"])
         self.title(f"Caixa - {ctx.config.nome_loja()}")
         self.configure(bg=tema.COR["fundo"])
-        self.geometry("1180x740")
-        try:
-            self.state("zoomed")
-        except tk.TclError:
-            pass
+        self.geometry(f"1180x{min(740, self.winfo_screenheight() - 90)}")     # cabe em tela de 768 px se o zoom falhar
         self.protocol("WM_DELETE_WINDOW", self.sair)
         self.withdraw()
         if ctx.turnos.atual() is None and not caixa_dialogos.abrir_turno(self, ctx):
@@ -53,12 +50,16 @@ class JanelaCaixa(tk.Toplevel):
         self.venda_id = ctx.banco.valor(   # retoma a venda de balcão interrompida (queda de energia, saída do caixa)
             "SELECT id FROM vendas WHERE modalidade = 'balcao' AND status = 'aberta' ORDER BY id DESC LIMIT 1")
         self.deiconify()
+        try:
+            self.state("zoomed")      # depois de mostrar: antes disso o withdraw() desfaz o zoom e o rodapé fica fora da tela
+        except tk.TclError:
+            pass
         self.lift()
         self.focus_force()
         self.recarregar()
         self.ent_codigo.focus_set()
         self._relogio()
-        self._id_lista = self.after(30000, self._atualizar_lista)
+        self._id_lista = self.after(30000, self._atualizar_painel)
 
     # ================================================================ layout
     def _montar(self) -> None:
@@ -119,21 +120,17 @@ class JanelaCaixa(tk.Toplevel):
         self.lbl_preco = ttk.Label(ent, text="", font=("Segoe UI", 14, "bold"), width=10)
         self.lbl_preco.grid(row=1, column=5, sticky="w")
 
-        corpo = ttk.Frame(self, padding=12)
-        corpo.pack(fill="both", expand=True)
-        self.painel_mesas = ttk.LabelFrame(corpo, text="Mesas e comandas abertas", padding=8)
-        self.grade_mesas = tema.Grade(self.painel_mesas, [("pos", "Posição", 70, "center"), ("sit", "Situação", 120, "w"),
-                                                           ("tot", "Total", 90, "e")], altura=14)
-        self.grade_mesas.pack(fill="both", expand=True)
-        ttk.Label(self.painel_mesas, text="Enter chama a mesa ou comanda (C2); T transfere outras para ela", wraplength=260, foreground=tema.COR["suave"]).pack(anchor="w", pady=(6, 0))
-        self.grade_mesas.tag("enviada", foreground=tema.COR["aviso"])
-        self.grade_mesas.tag("parada", foreground=tema.COR["perigo"])
-        self.grade = tema.Grade(corpo, [("cod", "Código", 100, "w"), ("prod", "Produto", 240, "w"), ("un", "Un", 40, "w"),
-                                        ("preco", "Preço", 80, "e"), ("qtd", "Quantidade", 85, "e"), ("tot", "Total", 90, "e"),
-                                        ("obs", "Observação", 120, "w")], altura=14)
-        self.grade.pack(side="left", fill="both", expand=True)
+        # O rodapé é empacotado antes da grade: em tela pequena a grade encolhe, os ícones e a barra de estado não somem.
         self.status = ttk.Label(self, text="", foreground=tema.COR["suave"], padding=(12, 3))
         self.status.pack(fill="x", side="bottom")
+        self.painel_mesas = PainelMesas(self, ao_escolher=self._tile_escolhido, ao_transferir=self.transferir_varias,
+                                        ao_voltar=self._painel_voltar, ao_digitar=self._digitar_posicao)
+        corpo = ttk.Frame(self, padding=12)
+        corpo.pack(fill="both", expand=True)
+        self.grade = tema.Grade(corpo, [("cod", "Código", 120, "w"), ("prod", "Produto", 330, "w"), ("un", "Un", 50, "w"),
+                                        ("preco", "Preço", 90, "e"), ("qtd", "Quantidade", 90, "e"), ("tot", "Total", 100, "e"),
+                                        ("obs", "Observação", 200, "w")], altura=14)
+        self.grade.pack(fill="both", expand=True)
 
         e = self.ent_codigo
         e.bind("<Return>", self._enter_codigo)
@@ -142,18 +139,14 @@ class JanelaCaixa(tk.Toplevel):
         self.ent_qtd.bind("<Return>", lambda ev: self.confirmar_item())
         self.ent_qtd.bind("<Escape>", lambda ev: self.cancelar_item_pendente())
         self.ent_pos.bind("<Return>", lambda ev: self.chamar_mesa())
-        self.ent_pos.bind("<Escape>", lambda ev: self.ent_codigo.focus_set())
+        self.ent_pos.bind("<Escape>", self._esc_posicao)
+        self.ent_pos.bind("<Down>", lambda ev: self.painel_mesas.focar(self._chave_atual()))
         t = self.grade.tree
         t.bind("<Delete>", lambda ev: self.cancelar_item_selecionado())
         t.bind("<Return>", self._enter_grade)
         t.bind("<Escape>", lambda ev: self._sair_modo_cancelar())
         t.bind("o", lambda ev: self.observacao_item()); t.bind("O", lambda ev: self.observacao_item())
         t.bind("t", lambda ev: self.transferir_item()); t.bind("T", lambda ev: self.transferir_item())
-        gm = self.grade_mesas.tree
-        gm.bind("<Return>", self._mesa_escolhida)
-        gm.bind("<Double-1>", self._mesa_escolhida)
-        gm.bind("t", lambda ev: self.transferir_varias()); gm.bind("T", lambda ev: self.transferir_varias())
-        gm.bind("<Escape>", lambda ev: self.alternar_mesas(False))
         for tecla, fn in (("F1", self.f1), ("F2", self.balanca), ("F3", self.alternar_leitor), ("F4", self.foco_mesa), ("F5", self.caderneta),
                           ("F6", self.entrega), ("F7", self.sangria), ("F8", self.pre_conta), ("F9", self.repique),
                           ("F10", self.transferir_mesa), ("F11", self.gaveta), ("F12", self.pagar)):
@@ -186,12 +179,12 @@ class JanelaCaixa(tk.Toplevel):
         except tk.TclError:      # janela já destruída
             pass
 
-    def _atualizar_lista(self) -> None:
-        """Com a lista de mesas sempre à vista, 'Parada X min' precisa envelhecer sozinha, sem o operador agir."""
+    def _atualizar_painel(self) -> None:
+        """Com os ícones sempre à vista, a mesa parada precisa ganhar o relógio sozinha, sem o operador agir."""
         try:
             if self.mesas_visiveis:
                 self.carregar_mesas()
-            self._id_lista = self.after(30000, self._atualizar_lista)
+            self._id_lista = self.after(30000, self._atualizar_painel)
         except tk.TclError:      # janela já destruída
             pass
 
@@ -275,7 +268,7 @@ class JanelaCaixa(tk.Toplevel):
         if self.produto is not None:
             self.cancelar_item_pendente()
         else:
-            self.alternar_mesas()
+            self.foco_mesa()      # Esc volta ao "marcar comanda": ícones à vista e o campo da posição pronto para digitar
         return "break"
 
     def resolver_codigo(self, texto: str) -> None:
@@ -475,55 +468,65 @@ class JanelaCaixa(tk.Toplevel):
     # ============================================================== mesas e comandas
     def _mostrar_painel(self) -> None:
         self.mesas_visiveis = True
-        self.painel_mesas.pack(side="right", fill="y", padx=(10, 0), before=self.grade)
+        self.painel_mesas.pack(fill="x", side="bottom", padx=12, pady=(0, 4), after=self.status)
 
-    def alternar_mesas(self, mostrar: bool | None = None) -> None:
-        """Lista de mesas e comandas. Com o painel fixo (padrão) ela nunca some: 'esconder' só devolve o foco ao código."""
-        if mostrar is None:
-            mostrar = True if self.painel_fixo else not self.mesas_visiveis
-        if mostrar:
-            self._mostrar_painel()
-            self.carregar_mesas()
-            self.grade_mesas.tree.focus_set()
-            v = self.venda()
-            atual = rotulo_posicao(v["comanda"], v["posicao"]) if v and v["modalidade"] == "mesa" else None
-            if atual and self.grade_mesas.tree.exists(atual):
-                self.grade_mesas.selecionar(atual)
-            else:
-                self.grade_mesas.selecionar_indice(0)
-        else:
-            if not self.painel_fixo:
-                self.mesas_visiveis = False
-                self.painel_mesas.pack_forget()
-            self.ent_codigo.focus_set()
+    def _esconder_painel(self) -> None:
+        self.mesas_visiveis = False
+        self.painel_mesas.pack_forget()
+
+    def _chave_atual(self) -> str | None:
+        """O ícone da venda que está na tela: '0' (balcão), '5' (mesa) ou 'C2' (comanda); None na caderneta e na entrega."""
+        v = self.venda()
+        if v is None or v["modalidade"] == "balcao":
+            return "0"
+        if v["modalidade"] == "mesa":
+            return rotulo_posicao(v["comanda"], v["posicao"])
+        return None
 
     def carregar_mesas(self) -> None:
-        ms = self.ctx.caixa.mesas()
-        linhas, tags = [], []
-        for m in ms:
-            if m["status"] == "conta_enviada":
-                sit, tag = "Conta enviada", ("enviada",)
-            elif m["inativa"]:
-                sit, tag = f"Parada {m['minutos_parada']} min", ("parada",)
-            else:
-                sit, tag = "Consumindo", ()
-            linhas.append([m["rotulo"], sit, fmt.fmt_num(m["total_cent"])])
-            tags.append(tag)
-        escolhida = self.grade_mesas.selecionado()
-        self.grade_mesas.preencher(linhas, [m["rotulo"] for m in ms], tags)
-        self.grade_mesas.selecionar(escolhida)
-
-    def _mesa_escolhida(self, _=None) -> str:
-        s = self.grade_mesas.selecionado()
-        if s is not None:
-            self.var_pos.set(s)
-            self.chamar_mesa()
-        return "break"
+        self.painel_mesas.atualizar(self.ctx.caixa.mesas(), self.ctx.caixa.balcao_aberto(), self._chave_atual())
 
     def foco_mesa(self) -> None:
-        self.alternar_mesas(True)
+        """Esc ou F4: volta ao 'marcar comanda'. Os ícones aparecem e o campo da posição fica pronto para digitar."""
+        self._mostrar_painel()
+        self.carregar_mesas()
         self.ent_pos.focus_set()
         self.ent_pos.selection_range(0, "end")
+
+    def _sair_marcacao(self) -> None:
+        """Sai do 'marcar comanda' para o lançamento de itens (com o painel fixo, os ícones continuam à vista)."""
+        if not self.painel_fixo:
+            self._esconder_painel()
+        self.ent_codigo.focus_set()
+
+    def _esc_posicao(self, _=None) -> str:
+        """Segundo Esc, já no campo da posição: volta ao balcão, como no manual. Mesas e comandas abertas ficam gravadas."""
+        v = self.venda()
+        if v and v["modalidade"] == "mesa":
+            nome = nome_posicao(v["comanda"], v["posicao"]).lower()
+            tinha_itens = bool(self.ctx.caixa.itens(v["id"]))
+            self.var_pos.set("0")
+            self.chamar_mesa()
+            if tinha_itens and self.venda_id != v["id"]:
+                self.avisar(f"Balcão. A {nome} continua aberta: tecle Esc e escolha-a para voltar.")
+        else:
+            self._sair_marcacao()
+        return "break"
+
+    def _painel_voltar(self) -> None:
+        """Esc (ou seta para cima, no alto) nos ícones: volta ao campo da posição."""
+        self.ent_pos.focus_set()
+        self.ent_pos.selection_range(0, "end")
+
+    def _tile_escolhido(self, chave: str) -> None:
+        self.var_pos.set(chave)
+        self.chamar_mesa()
+
+    def _digitar_posicao(self, caractere: str) -> None:
+        """Com o foco nos ícones, digitar um número ou C já começa a marcar a posição."""
+        self.ent_pos.focus_set()
+        self.var_pos.set(caractere.upper())
+        self.ent_pos.icursor("end")
 
     def _descartar_se_vazia(self) -> None:
         """Ao sair de uma venda sem itens (mesa ou comanda recém-aberta) ela é eliminada para não deixar mesa fantasma."""
@@ -541,16 +544,19 @@ class JanelaCaixa(tk.Toplevel):
         if atual and atual["modalidade"] == "mesa" and atual["posicao"] == n and bool(atual["comanda"]) == comanda:
             self.ent_codigo.focus_set()
             return
+        if atual and n == 0 and atual["modalidade"] == "balcao":      # já está no balcão
+            self._sair_marcacao()
+            return
         if atual and self.ctx.caixa.itens(atual["id"]) and atual["modalidade"] in ("balcao", "caderneta", "entrega"):
             tema.aviso(self, "Conclua, pague ou cancele a venda em andamento antes de chamar uma mesa ou comanda.")
             self.var_pos.set("0")
             return
         self._descartar_se_vazia()
         if n == 0:
-            self.venda_id = self.ctx.banco.valor(
-                "SELECT id FROM vendas WHERE modalidade = 'balcao' AND status = 'aberta' ORDER BY id DESC LIMIT 1")
+            balcao = self.ctx.caixa.balcao_aberto()
+            self.venda_id = balcao["id"] if balcao else None
             self.recarregar()
-            self.ent_codigo.focus_set()
+            self._sair_marcacao()
             return
         pessoas = 0
         existente = self.ctx.banco.valor(
@@ -561,9 +567,8 @@ class JanelaCaixa(tk.Toplevel):
         ok, res = tema.tratar(self, self.ctx.caixa.abrir_mesa, n, pessoas, comanda)
         if ok:
             self.venda_id = res[0]
-            self.alternar_mesas(False)
             self.recarregar()
-            self.ent_codigo.focus_set()
+            self._sair_marcacao()
 
     def pre_conta(self) -> None:
         v = self.venda()
@@ -602,13 +607,13 @@ class JanelaCaixa(tk.Toplevel):
             self.recarregar()
             self.avisar(f"{origem} transferida para {nome_posicao(*destino).lower()}.", tema.COR["ok"])
 
-    def transferir_varias(self) -> None:
-        s = self.grade_mesas.selecionado()
-        if s is None:
+    def transferir_varias(self, destino_chave: str | None = None) -> None:
+        """T nos ícones: outras mesas e comandas vão para a escolhida (`destino_chave`, como '38' ou 'C2')."""
+        if destino_chave is None or destino_chave == "0":
             return
-        destino = nome_posicao(*interpretar_posicao(s)).lower()
+        destino = interpretar_posicao(destino_chave)
         txt = tema.pedir_texto(self, "Transfere várias mesas ou comandas",
-                               f"Origens (separe por vírgula, ex.: 3, C2) que irão para a {destino}:")
+                               f"Origens (separe por vírgula, ex.: 3, C2) que irão para a {nome_posicao(*destino).lower()}:")
         if not txt:
             return
         try:
@@ -616,12 +621,11 @@ class JanelaCaixa(tk.Toplevel):
         except ValueError as e:
             tema.aviso(self, str(e))
             return
-        ok, vid = tema.tratar(self, self.ctx.caixa.transferir_varias, origens, interpretar_posicao(s))
+        ok, vid = tema.tratar(self, self.ctx.caixa.transferir_varias, origens, destino)
         if ok:
-            self.carregar_mesas()
             if self.venda_id and not self.ctx.banco.valor("SELECT 1 FROM vendas WHERE id = ?", (self.venda_id,)):
                 self.venda_id = None
-                self.recarregar()
+            self.recarregar()
 
     def transferir_item(self) -> None:
         s = self.grade.selecionado()
