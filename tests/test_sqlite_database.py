@@ -6,6 +6,7 @@ from pathlib import Path
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.venda_controller import VendaController
 from src.database.conexao import BancoDados
+from src.database.esquema import VERSAO_ESQUEMA
 from tests.base import BaseTeste
 
 
@@ -100,7 +101,7 @@ class BancoSQLiteTests(BaseTeste):
                 )
                 self.assertEqual(
                     banco.conexao.execute("PRAGMA user_version").fetchone()[0],
-                    2,
+                    VERSAO_ESQUEMA,
                 )
             finally:
                 banco.fechar()

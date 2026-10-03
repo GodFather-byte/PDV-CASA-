@@ -99,12 +99,13 @@ class TurnoController:
             return b.valor(f"SELECT COALESCE(SUM({coluna}), 0) FROM vendas WHERE {filtro}", (turno_id,), 0)
 
         recebimentos = [dict(r) for r in b.todos(
-            """SELECT t.id AS tipo_id, t.tipo, SUM(p.valor_cent - p.troco_cent) AS valor
+            """SELECT t.id AS tipo_id, t.tipo, t.na_gaveta, SUM(p.valor_cent - p.troco_cent) AS valor
                FROM pagamentos_venda p JOIN vendas v ON v.id = p.venda_id
                JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id
                WHERE v.turno_id = ? AND v.status = 'fechada'
                GROUP BY t.id ORDER BY t.ordem, t.tipo""", (turno_id,))]
         total_recebido = sum(r["valor"] for r in recebimentos)
+        na_gaveta = sum(r["valor"] for r in recebimentos if r["na_gaveta"])
         tc = b.valor(f"SELECT COUNT(*) FROM vendas WHERE {com_itens}", (turno_id,), 0)
         venda_total = soma("total_cent")
         pessoas = soma("pessoas")
@@ -144,8 +145,10 @@ class TurnoController:
             "cupom_final": cupons["fim"] or 0,
             "valor_inicial": t["valor_inicial_cent"],
         }
-        # Valor esperado na gaveta: fundo + tudo que entrou (já líquido de troco) + suprimentos - sangrias
-        r["esperado"] = t["valor_inicial_cent"] + total_recebido + entradas - saidas
+        # Valor esperado na gaveta: fundo + recebido nas formas que ficam na gaveta (dinheiro, cheque, ticket;
+        # já líquido de troco) + suprimentos - sangrias. Cartão e Pix não entram: são conferidos na maquininha.
+        r["esperado"] = t["valor_inicial_cent"] + na_gaveta + entradas - saidas
+        r["fora_da_gaveta"] = total_recebido - na_gaveta
         return r
 
     def fechar(self, turno_id: int, operador_id: int, valor_final_cent: int) -> dict:

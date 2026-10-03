@@ -7,6 +7,7 @@ Convenções do sistema inteiro:
 """
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
@@ -106,9 +107,12 @@ def para_qtd(texto) -> float:
     if "," in s:
         s = s.replace(".", "").replace(",", ".")
     try:
-        return round(float(s), CASAS_QTD)
+        valor = round(float(s), CASAS_QTD)
     except ValueError:
         raise ValueError(f"quantidade inválida: {texto!r}") from None
+    if not math.isfinite(valor):            # 'nan', 'inf' e '1e999' também passam por float()
+        raise ValueError(f"quantidade inválida: {texto!r}")
+    return valor
 
 
 def fmt_qtd(q, casas: int = 3) -> str:

@@ -133,19 +133,19 @@ class RelatoriosGestao:
                         criterios=[f"Sem consumo de {fmt.fmt_data(desde)} a {fmt.fmt_data(ate)}"])
         for r in self.banco.todos(
                 """SELECT c.numero_consulta, c.nome, c.telefone, c.saldo_cent,
-                          (SELECT MAX(date(v.fechada_em)) FROM vendas v WHERE v.cliente_id = c.id
+                          (SELECT date(MAX(v.fechada_em)) FROM vendas v WHERE v.cliente_id = c.id
                            AND v.status = 'fechada' AND v.subtotal_cent > 0) AS ultima
                    FROM clientes c WHERE c.ativo = 1 AND NOT EXISTS (
                        SELECT 1 FROM vendas v WHERE v.cliente_id = c.id AND v.status = 'fechada' AND v.subtotal_cent > 0
-                       AND date(v.fechada_em) BETWEEN ? AND ?) ORDER BY c.nome""", (desde, ate)):
+                       AND v.fechada_em >= ? AND v.fechada_em < ?) ORDER BY c.nome""", (desde, fmt.somar_dias(ate, 1))):
             rel.add(r["numero_consulta"], r["nome"], r["telefone"], fmt.fmt_data(r["ultima"]) or "nunca", M(r["saldo_cent"]))
         return rel
 
     def clientes_resumo(self, f: dict) -> Relatorio:
         """Entrega, consumo em caderneta, pagamentos e saldo por cliente."""
         onde, p = ["1=1"], []
-        if f.get("de"): onde.append("date(v.fechada_em) >= ?"); p.append(f["de"])
-        if f.get("ate"): onde.append("date(v.fechada_em) <= ?"); p.append(f["ate"])
+        if f.get("de"): onde.append("v.fechada_em >= ?"); p.append(f["de"])
+        if f.get("ate"): onde.append("v.fechada_em < ?"); p.append(fmt.somar_dias(f["ate"], 1))
         rel = Relatorio("Vendas por clientes", [Coluna("Nº", 8), Coluna("Cliente", 24), Coluna("Entrega", 11, "d"),
                                                 Coluna("Consumo", 11, "d"), Coluna("Pagamento", 11, "d"), Coluna("Saldo", 11, "d")])
         for r in self.banco.todos(
@@ -188,8 +188,8 @@ class RelatoriosGestao:
         vendas = 0
         if f.get("incluir_vendas", True) and not f.get("apenas_debitos") and not f.get("plano_id") and not f.get("subplano_id"):
             ov, pv = ["status = 'fechada'", "subtotal_cent > 0"], []
-            if f.get("de"): ov.append("date(fechada_em) >= ?"); pv.append(f["de"])
-            if f.get("ate"): ov.append("date(fechada_em) <= ?"); pv.append(f["ate"])
+            if f.get("de"): ov.append("fechada_em >= ?"); pv.append(f["de"])
+            if f.get("ate"): ov.append("fechada_em < ?"); pv.append(fmt.somar_dias(f["ate"], 1))
             vendas = self.banco.valor(f"SELECT COALESCE(SUM(total_cent),0) FROM vendas WHERE {' AND '.join(ov)}", pv, 0)
         grupos: dict = {"credito": [], "debito": [], "provisao": [], "financeiro": []}
         for ln in linhas:
@@ -242,8 +242,8 @@ class RelatoriosGestao:
             entra = sai = 0
             vend = self.banco.valor(
                 """SELECT COALESCE(SUM(p.valor_cent - p.troco_cent),0) FROM pagamentos_venda p JOIN vendas v ON v.id = p.venda_id
-                   WHERE p.tipo_pagamento_id = ? AND v.status = 'fechada' AND date(v.fechada_em) >= ? AND date(v.fechada_em) <= ?""",
-                (tid, ini, fim), 0)
+                   WHERE p.tipo_pagamento_id = ? AND v.status = 'fechada' AND v.fechada_em >= ? AND v.fechada_em < ?""",
+                (tid, ini, fmt.somar_dias(fim, 1)), 0)
             entra += vend
             for r in self.banco.todos(
                     """SELECT pl.debito, SUM(c.valor_cent) AS tot FROM contas c JOIN subplanos sp ON sp.id = c.subplano_id

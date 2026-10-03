@@ -15,7 +15,7 @@ from src.controllers.config_controller import ConfigController
 from src.controllers.impressao_controller import ImpressaoController
 from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
-from src.database.esquema import MAQUINAS_DDL
+from src.database.esquema import MAQUINAS_DDL, VERSAO_ESQUEMA
 from src.hardware import impressora_termica as term
 from src.hardware.dispositivos import DispositivoIndisponivel, Gaveta
 from src.hardware.impressora_termica import ErroImpressao, ImpressoraTermica
@@ -255,7 +255,7 @@ class TesteRoteamento(BaseCaixa):
 
 
 class TesteMigracao(unittest.TestCase):
-    def test_v1_para_v2_preserva_dados_e_adiciona_termica(self):
+    def test_v1_migra_ate_a_versao_atual_preservando_dados_e_adicionando_termica(self):
         import shutil
         d = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, d, True)              # roda por último (LIFO)
@@ -275,17 +275,17 @@ class TesteMigracao(unittest.TestCase):
         c.close()
         b = BancoDados(caminho)
         self.addCleanup(b.fechar)                            # roda antes do rmtree (LIFO)
-        self.assertEqual(b.valor("PRAGMA user_version"), 2)
+        self.assertEqual(b.valor("PRAGMA user_version"), VERSAO_ESQUEMA)
         m = b.um("SELECT * FROM maquinas WHERE terminal = 1")
         self.assertEqual((m["nome_computador"], m["colunas_fita"]), ("CAIXA-01", 48))
         self.assertEqual(m["impressora_termica_codepage"], "cp850")       # coluna nova com default
         b.executar("UPDATE maquinas SET modo_impressao = 'termica'")       # CHECK antigo não impede mais
         self.assertEqual(b.valor("SELECT modo_impressao FROM maquinas"), "termica")
 
-    def test_banco_novo_ja_nasce_v2(self):
+    def test_banco_novo_ja_nasce_na_versao_atual(self):
         b = BancoDados(":memory:")
         self.addCleanup(b.fechar)
-        self.assertEqual(b.valor("PRAGMA user_version"), 2)
+        self.assertEqual(b.valor("PRAGMA user_version"), VERSAO_ESQUEMA)
         self.assertIn("impressora_termica_conexao", [r[1] for r in b.todos("PRAGMA table_info(maquinas)")])
 
 

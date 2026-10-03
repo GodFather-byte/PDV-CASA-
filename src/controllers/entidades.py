@@ -280,6 +280,7 @@ _ENTIDADES = [
         Campo("caixa", "Aceito no caixa", "sn", padrao=1, largura=9),
         Campo("emite_vale", "Emite vale", "sn", padrao=0, largura=9),
         Campo("permite_troco", "Permite troco", "sn", padrao=0, largura=9),
+        Campo("na_gaveta", "Fica na gaveta (dinheiro, cheque, ticket)", "sn", padrao=1, largura=9),
         Campo("saldo_inicial_cent", "Saldo inicial", "dinheiro", padrao=0, largura=12),
         Campo("taxa_pct", "Taxa % (banco/operadora)", "decimal", padrao=0, na_grade=False),
         Campo("desc_cartao_pct", "Desc. cartão %", "decimal", padrao=0, na_grade=False),

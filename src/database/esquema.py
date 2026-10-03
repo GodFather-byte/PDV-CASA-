@@ -1,11 +1,11 @@
-"""Esquema SQLite do PDV (versao 1).
+"""Esquema SQLite do PDV (a versão atual está em VERSAO_ESQUEMA; as migrações, em MIGRACOES).
 
 Convencoes: dinheiro em INTEIRO de centavos (colunas *_cent); quantidades REAL;
 datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 2
+VERSAO_ESQUEMA = 3
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -193,6 +193,7 @@ TABELAS = [
         caixa INTEGER NOT NULL DEFAULT 1,
         emite_vale INTEGER NOT NULL DEFAULT 0,
         permite_troco INTEGER NOT NULL DEFAULT 0,
+        na_gaveta INTEGER NOT NULL DEFAULT 1,
         saldo_inicial_cent INTEGER NOT NULL DEFAULT 0,
         taxa_pct REAL NOT NULL DEFAULT 0,
         desc_cartao_pct REAL NOT NULL DEFAULT 0,
@@ -391,11 +392,27 @@ TABELAS = [
         criado_em TEXT NOT NULL
     )""",
     "CREATE INDEX IF NOT EXISTS ix_caderneta_cli ON caderneta(cliente_id)",
+    # Índices dos relatórios e do fechamento (v3). São criados também em bancos antigos, na próxima abertura.
+    "CREATE INDEX IF NOT EXISTS ix_vendas_status_fechada ON vendas(status, fechada_em)",
+    "CREATE INDEX IF NOT EXISTS ix_vendas_cliente ON vendas(cliente_id, status, fechada_em)",
+    "CREATE INDEX IF NOT EXISTS ix_vendas_turno ON vendas(turno_id)",
+    "CREATE INDEX IF NOT EXISTS ix_itens_produto ON itens_venda(produto_id)",
+    "CREATE INDEX IF NOT EXISTS ix_partes_item ON itens_venda_partes(item_id)",
+    "CREATE INDEX IF NOT EXISTS ix_pagto_tipo ON pagamentos_venda(tipo_pagamento_id)",
+    "CREATE INDEX IF NOT EXISTS ix_movcaixa_turno ON movimentos_caixa(turno_id)",
+    "CREATE INDEX IF NOT EXISTS ix_repiques_turno ON repiques(turno_id)",
+    "CREATE INDEX IF NOT EXISTS ix_caderneta_venda ON caderneta(venda_id)",
+    "CREATE INDEX IF NOT EXISTS ix_movest_ref ON movimentos_estoque(ref_tipo, ref_id)",
+    "CREATE INDEX IF NOT EXISTS ix_itens_estoque_lanc ON itens_estoque(lancamento_id)",
+    "CREATE INDEX IF NOT EXISTS ix_itens_estoque_prod ON itens_estoque(produto_id)",
+    "CREATE INDEX IF NOT EXISTS ix_lanc_estoque_data ON lancamentos_estoque(data)",
+    "CREATE INDEX IF NOT EXISTS ix_contas_quit ON contas(dt_quitacao)",
 ]
 
 
 # Migrações por versão de destino, aplicadas em ordem quando o banco está atrasado
-# (ver BancoDados._migrar). Bancos novos já nascem na VERSAO_ESQUEMA e não as executam.
+# (ver BancoDados._migrar). Bancos novos já nascem na VERSAO_ESQUEMA e não as executam. Cada passo é um
+# comando SQL ou ("coluna", tabela, nome, definição), que só adiciona a coluna se ela ainda não existir.
 MIGRACOES = {
     # v2: adiciona campos da impressora térmica e remove o CHECK de modo_impressao.
     # Recria a tabela maquinas preservando os dados existentes.
@@ -407,5 +424,14 @@ MIGRACOES = {
         " SELECT id, terminal, nome_computador, descricao, modo_impressao, colunas_fita,"
         " impressora_remota_pasta, balanca, balanca_porta, gaveta, leitor_optico FROM _maquinas_old",
         "DROP TABLE _maquinas_old",
+    ],
+    # v3: marca quais formas de pagamento ficam fisicamente na gaveta (o valor esperado do turno passa a
+    # contar só elas). Mantém o comportamento antigo (tudo conta) para formas personalizadas e tira da
+    # gaveta as eletrônicas: cartão, Pix, transferência e as que acionam TEF.
+    3: [
+        ("coluna", "tipos_pagamento", "na_gaveta", "INTEGER NOT NULL DEFAULT 1"),
+        "UPDATE tipos_pagamento SET na_gaveta = 0 WHERE aciona_tef = 1 OR tipo_tef > 0"
+        " OR lower(tipo) LIKE '%cart%' OR lower(tipo) LIKE '%pix%' OR lower(tipo) LIKE '%transfer%'"
+        " OR lower(tipo) LIKE '%d_bito%' OR lower(tipo) LIKE '%cr_dito%'",
     ],
 }

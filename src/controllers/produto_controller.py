@@ -149,8 +149,8 @@ class ProdutoController:
         t = (texto or "").strip().replace("%", "").replace("_", "")
         filtro = "AND ativo = 1 AND venda = 1" if apenas_venda else ""
         linhas = self.banco.todos(
-            f"""SELECT * FROM produtos WHERE nome LIKE ? {filtro}
-                ORDER BY (nome LIKE ?) DESC, nome LIMIT ?""", (f"%{t}%", f"{t}%", limite))
+            f"""SELECT * FROM produtos WHERE norm(nome) LIKE norm(?) {filtro}
+                ORDER BY (norm(nome) LIKE norm(?)) DESC, nome LIMIT ?""", (f"%{t}%", f"{t}%", limite))
         return [dict(r) for r in linhas]
 
     def listar_venda(self) -> list[dict]:

@@ -119,7 +119,8 @@ class ImpressaoController:
             linhas.append("Lançado na caderneta do cliente".center(w))
         if v["mensagem"]:
             linhas.append(f"Msg: {v['mensagem']}"[:w])
-        linhas += ["=" * w, "Obrigado e volte sempre!".center(w)]
+        rodape = self.banco.cfg("mensagem_rodape") or "Obrigado e volte sempre!"
+        linhas += ["=" * w, rodape.center(w)]
         return "\n".join(linhas)
 
     def pre_conta(self, venda_id: int) -> str:

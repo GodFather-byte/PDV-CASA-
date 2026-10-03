@@ -21,14 +21,17 @@ class ContasController:
                 dt_vencimento: str | None = None, dt_entrada: str | None = None, dt_quitacao: str | None = None,
                 documento: str | None = None, mercadoria: bool = False, nota: str | None = None,
                 previsao: bool = False, fornecedor_id: int | None = None, meses: int = 1,
-                lancamento_estoque_id: int | None = None) -> list[int]:
-        """Cria a conta. `meses` > 1 repete o lançamento mensalmente (conta mensal)."""
+                lancamento_estoque_id: int | None = None, parcelas_cent: list[int] | None = None) -> list[int]:
+        """Cria a conta. `meses` > 1 repete o lançamento mensalmente (conta mensal: o mesmo valor todo mês);
+        com `parcelas_cent` (um valor por mês) cada mês recebe o seu valor, para dividir um total."""
         if not (descricao or "").strip():
             raise ErroNegocio("Informe a descrição da conta.")
         if valor_cent <= 0:
             raise ErroNegocio("Informe um valor maior que zero.")
         if not 1 <= meses <= 120:
             raise ErroNegocio("O número de meses deve ficar entre 1 e 120.")
+        if parcelas_cent is not None and (len(parcelas_cent) != meses or min(parcelas_cent) <= 0):
+            raise ErroNegocio(f"Valor pequeno demais para dividir em {meses} parcelas.")
         entrada = fmt.para_data_iso(dt_entrada) or fmt.hoje()
         venc = fmt.para_data_iso(dt_vencimento) or entrada
         quit_ = fmt.para_data_iso(dt_quitacao)
@@ -39,7 +42,7 @@ class ContasController:
             for i in range(meses):
                 ids.append(self.banco.inserir("contas", {
                     "subplano_id": subplano_id, "descricao": descricao.strip(),
-                    "tipo_pagamento_id": tipo_pagamento_id, "valor_cent": valor_cent,
+                    "tipo_pagamento_id": tipo_pagamento_id, "valor_cent": parcelas_cent[i] if parcelas_cent else valor_cent,
                     "documento": documento, "mercadoria": int(bool(mercadoria)), "nota": nota,
                     "previsao": int(bool(previsao)), "dt_entrada": entrada,
                     "dt_vencimento": fmt.somar_meses(venc, i),
@@ -97,7 +100,7 @@ class ContasController:
         if previsao is not None:
             onde.append("c.previsao = ?"); params.append(int(previsao))
         if texto:
-            onde.append("(c.descricao LIKE ? OR c.documento LIKE ? OR c.nota LIKE ?)")
+            onde.append("(norm(c.descricao) LIKE norm(?) OR norm(c.documento) LIKE norm(?) OR norm(c.nota) LIKE norm(?))")
             params += [f"%{texto}%"] * 3
         sql = SQL_BASE + (" WHERE " + " AND ".join(onde) if onde else "")
         return [dict(r) for r in self.banco.todos(sql + f" ORDER BY c.{por}, c.id", params)]
@@ -120,8 +123,10 @@ class ContasController:
         return a, b
 
     def criar_da_compra(self, lancamento_id: int, vencimento: str, tipo_pagamento_id: int,
-                        subplano_id: int | None = None, meses: int = 1) -> list[int]:
-        """Botão 'Contas a Pagar' da compra: gera a conta de mercadorias do fornecedor."""
+                        subplano_id: int | None = None, meses: int = 1, dividir: bool = True) -> list[int]:
+        """Botão 'Contas a Pagar' da compra: gera a conta de mercadorias do fornecedor. Com `meses` > 1 o
+        total da compra é DIVIDIDO em parcelas mensais (os centavos que sobram ficam na 1ª); `dividir=False`
+        repete o valor inteiro todo mês, que só serve para contas recorrentes, não para uma compra."""
         lanc = self.banco.um("SELECT * FROM lancamentos_estoque WHERE id = ?", (lancamento_id,))
         if lanc is None or lanc["tipo"] not in ("compra", "pedido"):
             raise ErroNegocio("Lançamento de compra não encontrado.")
@@ -133,9 +138,13 @@ class ContasController:
             subplano_id = self.banco.valor("SELECT sp.id FROM subplanos sp JOIN planos_contas p ON p.id = sp.plano_id "
                                            "WHERE p.codigo = '2.01' LIMIT 1")
         forn = self.banco.valor("SELECT nome FROM fornecedores WHERE id = ?", (lanc["fornecedor_id"],), "")
+        parcelas = None
+        if dividir and meses > 1:
+            base, sobra = divmod(valor, meses)
+            parcelas = [base + sobra] + [base] * (meses - 1)
         return self.incluir(subplano_id, f"Compra {forn}".strip(), tipo_pagamento_id, valor, vencimento,
                             lanc["data"], None, lanc["documento"], True, lanc["nota_fiscal"], False,
-                            lanc["fornecedor_id"], meses, lancamento_id)
+                            lanc["fornecedor_id"], meses, lancamento_id, parcelas)
 
     def painel(self) -> dict:
         hoje = fmt.hoje()

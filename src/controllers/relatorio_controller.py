@@ -23,7 +23,8 @@ class RelatorioController(RelatoriosVendas, RelatoriosGestao):
         hoje = fmt.hoje()
         v = b.um(
             """SELECT COUNT(*) AS n, COALESCE(SUM(total_cent), 0) AS total FROM vendas
-               WHERE status = 'fechada' AND date(fechada_em) = ? AND subtotal_cent > 0""", (hoje,))
+               WHERE status = 'fechada' AND fechada_em >= ? AND fechada_em < ? AND subtotal_cent > 0""",
+            (hoje, fmt.somar_dias(hoje, 1)))
         contas = ContasController(b).painel()
         return {
             "atualizado_em": fmt.agora(),

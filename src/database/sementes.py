@@ -72,10 +72,11 @@ UNIDADES = [("Unidade", "UN"), ("Quilo", "KG"), ("Litro", "LT"), ("Dose", "DS"),
 ALIQUOTAS = [("ISENTO", 0, "II"), ("SUBSTITUIÇÃO TRIBUTÁRIA", 0, "FF"),
              ("7%", 7, "0700"), ("12%", 12, "1200"), ("18%", 18, "1800")]
 
-# (tipo, ordem, permite_troco, emite_vale). Dinheiro sempre na primeira posição.
-TIPOS_PAGAMENTO = [("Dinheiro", 1, 1, 0), ("Cheque", 2, 0, 0), ("Ticket", 3, 0, 1),
-                   ("Contra Vale", 4, 0, 1), ("Cartão Débito", 5, 0, 0),
-                   ("Cartão Crédito", 6, 0, 0), ("Pix", 7, 0, 0)]
+# (tipo, ordem, permite_troco, emite_vale, na_gaveta). Dinheiro sempre na primeira posição.
+# Cartão e Pix não ficam na gaveta: o operador confere na maquininha, não contando dinheiro.
+TIPOS_PAGAMENTO = [("Dinheiro", 1, 1, 0, 1), ("Cheque", 2, 0, 0, 1), ("Ticket", 3, 0, 1, 1),
+                   ("Contra Vale", 4, 0, 1, 1), ("Cartão Débito", 5, 0, 0, 0),
+                   ("Cartão Crédito", 6, 0, 0, 0), ("Pix", 7, 0, 0, 0)]
 
 # (nome, código, débito(1=saída), afeta_resultado, [subplanos])
 PLANOS = [
@@ -126,10 +127,10 @@ def aplicar(banco) -> None:
         for desc, aliq, formato in ALIQUOTAS:
             banco.executar("INSERT OR IGNORE INTO aliquotas(descricao, aliquota, formato) VALUES (?,?,?)",
                            (desc, aliq, formato))
-        for tipo, ordem, troco, vale in TIPOS_PAGAMENTO:
+        for tipo, ordem, troco, vale, gaveta in TIPOS_PAGAMENTO:
             banco.executar(
-                "INSERT OR IGNORE INTO tipos_pagamento(tipo, ordem, permite_troco, emite_vale) VALUES (?,?,?,?)",
-                (tipo, ordem, troco, vale))
+                "INSERT OR IGNORE INTO tipos_pagamento(tipo, ordem, permite_troco, emite_vale, na_gaveta) VALUES (?,?,?,?,?)",
+                (tipo, ordem, troco, vale, gaveta))
         for ordem, (nome, codigo, debito, resultado, subs) in enumerate(PLANOS, start=1):
             banco.executar(
                 "INSERT OR IGNORE INTO planos_contas(nome, codigo, debito, resultado, ordem) VALUES (?,?,?,?,?)",

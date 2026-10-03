@@ -40,7 +40,7 @@ class CadastroController:
         onde, params = [], []
         if texto and ent.busca:
             padrao = "%" + re.sub(r"([%_\\])", r"\\\1", texto.strip()) + "%"
-            onde.append("(" + " OR ".join(f"{c} LIKE ? ESCAPE '\\'" for c in ent.busca) + ")")
+            onde.append("(" + " OR ".join(f"norm({c}) LIKE norm(?) ESCAPE '\\'" for c in ent.busca) + ")")
             params += [padrao] * len(ent.busca)
         if apenas_ativos and ent.tem_ativo:
             onde.append("ativo = 1")
@@ -122,7 +122,7 @@ class CadastroController:
         elif chave == "observacoes":
             brutos["codigo"] = str(b.valor("SELECT MAX(codigo) FROM observacoes", padrao=0) + 1)
         elif chave == "clientes":
-            brutos["numero_consulta"] = str(b.valor("SELECT COUNT(*) FROM clientes", padrao=0) + 1).zfill(6)
+            brutos["numero_consulta"] = self.proximo_numero_cliente()
         elif chave == "tipos_pagamento":
             brutos["ordem"] = str(b.valor("SELECT MAX(ordem) FROM tipos_pagamento", padrao=0) + 10)
         elif chave == "planos_contas":
@@ -135,6 +135,14 @@ class CadastroController:
             if cod.isdigit():
                 maior = max(maior, int(cod))
         return str(maior + 1).zfill(13)
+
+    def proximo_numero_cliente(self) -> str:
+        """Maior número de consulta numérico + 1 (contar os clientes repetiria um número depois de uma exclusão)."""
+        maior = 0
+        for (num,) in self.banco.todos("SELECT numero_consulta FROM clientes"):
+            if num.isdigit():
+                maior = max(maior, int(num))
+        return str(maior + 1).zfill(6)
 
     # ------------------------------------------------------------ gravação
     def converter(self, ent: Entidade, valores: dict, inserindo: bool) -> dict:

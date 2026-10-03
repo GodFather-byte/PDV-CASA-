@@ -30,8 +30,9 @@ class RelatoriosVendas:
             onde.append(sql)
             p.append(valor)
 
-        if f.get("de"): add(f"date({a}.fechada_em) >= ?", f["de"])
-        if f.get("ate"): add(f"date({a}.fechada_em) <= ?", f["ate"])
+        # Faixa em vez de date(coluna): assim o índice de fechada_em é usado ('AAAA-MM-DD' <= 'AAAA-MM-DD hh:mm:ss').
+        if f.get("de"): add(f"{a}.fechada_em >= ?", f["de"])
+        if f.get("ate"): add(f"{a}.fechada_em < ?", fmt.somar_dias(f["ate"], 1))
         if f.get("hora_ini"): add(f"time({a}.fechada_em) >= ?", _hora(f["hora_ini"]))
         if f.get("hora_fim"): add(f"time({a}.fechada_em) <= ?", _hora(f["hora_fim"]))
         if f.get("cupom_ini"): add(f"{a}.cupom >= ?", int(f["cupom_ini"]))

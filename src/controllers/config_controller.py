@@ -42,6 +42,7 @@ CAMPOS_MAQUINA = [
 ]
 
 CAMPOS_CONFIG = [
+    ("mensagem_rodape", "Mensagem de rodape do cupom", "texto", "Impressao"),
     ("num_mesas", "Número de mesas / posições de consumo", "int", "Mesas e serviço"),
     ("cobra_servico_mesa", "Cobrar serviço nas mesas", "sn", "Mesas e serviço"),
     ("servico_pct", "Percentual de serviço (%)", "decimal", "Mesas e serviço"),

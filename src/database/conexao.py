@@ -5,11 +5,21 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 
 from src.core import formatacao as fmt
 from src.database import esquema, sementes
+
+
+def normalizar(texto) -> str | None:
+    """Maiúsculas e sem acentos ('Café' -> 'CAFE'): a busca por nome acha 'cafe', 'CAFÉ' e 'café'.
+    O LIKE do SQLite só ignora a caixa das letras ASCII, então ele sozinho falha com acento."""
+    if texto is None:
+        return None
+    sem_acento = unicodedata.normalize("NFKD", str(texto))
+    return "".join(c for c in sem_acento if not unicodedata.combining(c)).upper()
 
 
 def _raiz_dados() -> Path:
@@ -57,6 +67,7 @@ class BancoDados:
     def _abrir(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.caminho, isolation_level=None, timeout=15)
         con.row_factory = sqlite3.Row
+        con.create_function("norm", 1, normalizar, deterministic=True)
         con.execute("PRAGMA foreign_keys = ON")
         if self.caminho != ":memory:":
             con.execute("PRAGMA journal_mode = WAL")
@@ -102,8 +113,15 @@ class BancoDados:
                 continue
             self.conexao.execute("BEGIN")
             try:
-                for sql in comandos:
-                    self.conexao.execute(sql)
+                for passo in comandos:
+                    if isinstance(passo, tuple):
+                        # ("coluna", tabela, nome, definição): só adiciona se faltar (a tabela pode ter acabado
+                        # de ser criada já na forma atual, em um banco antigo que não a tinha).
+                        _, tabela, coluna, definicao = passo
+                        if coluna not in [r[1] for r in self.conexao.execute(f"PRAGMA table_info({tabela})")]:
+                            self.conexao.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
+                    else:
+                        self.conexao.execute(passo)
             except Exception:
                 self.conexao.execute("ROLLBACK")
                 raise

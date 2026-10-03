@@ -9,6 +9,7 @@ Regras principais:
 """
 from __future__ import annotations
 
+import math
 from uuid import uuid4
 
 from src.controllers.estoque_controller import EstoqueController
@@ -18,6 +19,9 @@ from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 
 ABERTAS = ("aberta", "conta_enviada")
+# Teto de quantidade por item (config qtd_maxima_item; 0 = sem limite): barra o código de barras bipado
+# no campo Quantidade, que viraria uma venda de bilhões.
+QTD_MAXIMA_ITEM = 99_999
 
 
 class CaixaController:
@@ -132,8 +136,12 @@ class CaixaController:
         if not p["venda"]:
             raise ErroNegocio(f"'{p['nome']}' não está liberado para venda.")
         quantidade = fmt.arred_qtd(quantidade)
-        if quantidade <= 0:
+        if not math.isfinite(quantidade) or quantidade <= 0:
             raise ErroNegocio("Informe uma quantidade maior que zero.")
+        maximo = self.banco.cfg_int("qtd_maxima_item", QTD_MAXIMA_ITEM)
+        if 0 < maximo < quantidade:
+            raise ErroNegocio(f"Quantidade acima do limite de {maximo} por item. "
+                              "Confira se um código de barras não foi digitado no campo Quantidade.")
         if not p["aceita_decimal"] and quantidade != int(quantidade):
             raise ErroNegocio(f"'{p['nome']}' não aceita quantidade fracionada.")
         if v["modalidade"] == "caderneta" and v["cliente_id"] is None:
@@ -495,12 +503,16 @@ class CaixaController:
                 self.banco.executar("UPDATE itens_venda SET venda_id = ? WHERE id = ?", (destino_id, item_id))
             else:
                 resto = fmt.arred_qtd(item["quantidade"] - quantidade)
-                self.banco.executar("UPDATE itens_venda SET quantidade = ?, total_cent = ? WHERE id = ?",
-                                    (resto, fmt.mult_cent(item["preco_unit_cent"], resto), item_id))
+                total_resto = fmt.mult_cent(item["preco_unit_cent"], resto)
+                comissao_resto = fmt.arredondar(
+                    fmt._dec(item["comissao_cent"]) * fmt._dec(resto) / fmt._dec(item["quantidade"]))
+                # As duas partes somam exatamente o total e a comissão originais (sem duplicar nem perder centavo).
+                self.banco.executar("UPDATE itens_venda SET quantidade = ?, total_cent = ?, comissao_cent = ? WHERE id = ?",
+                                    (resto, total_resto, comissao_resto, item_id))
                 novo = dict(item)
                 novo.pop("id")
-                novo.update(venda_id=destino_id, quantidade=quantidade,
-                            total_cent=fmt.mult_cent(item["preco_unit_cent"], quantidade))
+                novo.update(venda_id=destino_id, quantidade=quantidade, total_cent=item["total_cent"] - total_resto,
+                            comissao_cent=item["comissao_cent"] - comissao_resto)
                 novo_id = self.banco.inserir("itens_venda", novo)
                 for pt in self.banco.todos("SELECT produto_id, fracao FROM itens_venda_partes WHERE item_id = ?", (item_id,)):
                     self.banco.inserir("itens_venda_partes", {"item_id": novo_id, "produto_id": pt["produto_id"], "fracao": pt["fracao"]})

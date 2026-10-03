@@ -15,7 +15,7 @@ class CadernetaController:
         linhas = self.banco.todos(
             """SELECT c.*, b.nome AS bairro, b.taxa_cent FROM clientes c
                LEFT JOIN bairros b ON b.id = c.bairro_id
-               WHERE c.ativo = 1 AND (c.numero_consulta = ? OR c.nome LIKE ? OR c.telefone LIKE ?)
+               WHERE c.ativo = 1 AND (c.numero_consulta = ? OR norm(c.nome) LIKE norm(?) OR c.telefone LIKE ?)
                ORDER BY (c.numero_consulta = ?) DESC, c.nome LIMIT ?""",
             (t, f"%{t}%", f"%{t}%", t, limite))
         return [dict(r) for r in linhas]

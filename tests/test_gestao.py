@@ -315,7 +315,8 @@ class TesteRelatorios(BaseCaixa):
 
     def test_fechamentos_e_caixa(self):
         self.turnos.movimentar(self.turno, self.adm, "saida", 500, "gelo")
-        self.turnos.fechar(self.turno, self.adm, 10000 + 2730 - 500)
+        res = self.turnos.fechar(self.turno, self.adm, 10000 + 1950 - 500)   # o Pix (7,80) não está na gaveta
+        self.assertEqual((res["esperado"], res["fora_da_gaveta"]), (10000 + 1950 - 500, 780))
         r = self.rel.fechamentos(self.f)
         self.assertEqual(r.linhas[0][-1], "0,00")
         m = self.rel.caixa_movimentos(self.f)
