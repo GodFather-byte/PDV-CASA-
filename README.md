@@ -10,7 +10,7 @@ sincronização idempotente com a nuvem.
 > manuais Virtual.Net/ViCommerce) está implementado em Python + SQLite + Tkinter e coberto
 > por testes automatizados de regras e de telas. Ainda **não foi validado em loja**: não há
 > emissão fiscal, TEF nem leitura real de balança/gaveta (ver
-> [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a sincronização com a nuvem ainda é simulada.
+> [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a sincronização com a nuvem (API + cliente) ainda não foi testada em loja.
 
 ## Começar
 
@@ -31,8 +31,8 @@ Usuário inicial: **ADM**, senha **ADM** (nível 4; troque a senha e crie os ope
 Manutenção de Cadastros > Operadores). Operadores de nível 0 entram direto no caixa. O
 primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
 
-Não é preciso instalar nada além do Python: o sistema usa só a biblioteca padrão
-(Tkinter e SQLite). A pasta `src/ui/` ainda contém telas Flet antigas
+O sistema local usa só a biblioteca padrão (Tkinter e SQLite). Quem usa a sincronização, a balança ou a
+impressão RAW do Windows precisa de `pip install -r requirements.txt`. A pasta `src/ui/` ainda contém telas Flet antigas
 (`main_ui.py`, `cadastros_ui.py`, `mesas_ui.py`...) que estão **congeladas e não fazem parte do
 sistema novo**; o protótipo de console `src/main.py` também é legado.
 
@@ -61,12 +61,12 @@ sistema novo**; o protótipo de console `src/main.py` também é legado.
 - `src/ui/`: interface Tkinter (`app.py` é a janela principal, `caixa_ui.py` o caixa); telas Flet antigas congeladas.
 - `tests/`: regras de negócio, telas (com um robô que opera as janelas modais) e o teste de fumaça.
 - `src/sync/`: transporte PDV ↔ nuvem.
-- `backend/`: protótipo separado de persistência/modelos para a nuvem; ainda não
-  implementa a API receptora de sincronização e não é usado pelo PDV local.
+- `backend/`: API de nuvem (FastAPI) que recebe os lotes de vendas e o painel do dono; não é usada pelo PDV local.
+- `tools/`: ferramentas do fornecedor (licença); não vão no instalador.
 
 ## Banco local e dados
 
-O banco padrão é `loja_offline.db`, na raiz do projeto. Para usar outro arquivo no
+O banco padrão é `loja_offline.db`, na raiz do projeto (no executável, em `%LOCALAPPDATA%\PDV-CASA`). Para usar outro arquivo no
 PowerShell:
 
 ```powershell
@@ -86,21 +86,43 @@ Convenções obrigatórias entre as camadas:
 - timestamps locais são armazenados em ISO (`YYYY-MM-DD HH:MM:SS`);
 - UUID identifica a venda e permite reenvio idempotente.
 
-## Sincronização e produção
+## Sincronização com a nuvem
 
-`SyncController` prepara os dados e confirma os UUIDs aceitos; o transporte em
-`src/sync/sincronizador.py` ainda usa uma simulação. Ele **não está pronto para
-enviar vendas a uma API real**. Não trate a mensagem de sucesso do protótipo como
-confirmação remota nem use a sincronização simulada em operação com vendas reais.
+O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de forma idempotente por UUID:
 
-Antes de operar comercialmente, ainda é necessário validar e completar: teste em
-loja com a rotina real do caixa, transporte HTTP autenticado com confirmação por UUID,
-tratamento de falhas e retries, instalador/dependências, backup e restauração
-testados, hardware fiscal/periféricos e homologação no ambiente da loja.
+1. No servidor (`pip install -r backend/requirements.txt`), na raiz do repositório:
 
-## Implementação em nuvem
+   ```powershell
+   $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"
+   python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+   ```
 
-`backend/` contém atualmente configuração SQLAlchemy, modelos de cadastro e um
-arquivo de dependências, mas não um app FastAPI/rota para receber vendas. A
-implementação da API e a integração com o contrato em
-[`docs/COORDENACAO.md`](docs/COORDENACAO.md) ainda estão pendentes.
+   O painel do dono abre em `http://servidor:8000/` e pede o mesmo token.
+2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000/v1/sincronizar`), o token e a chave
+   da loja.
+3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `PDV_CasaVerde.exe --sync`).
+   Ele registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e só confirma o que a API aceitou.
+
+O painel inicial do PDV mostra as vendas aguardando envio e as recusadas pela nuvem (em quarentena). O contrato está em
+[`docs/COORDENACAO.md`](docs/COORDENACAO.md) e é verificado por `tests/test_nuvem.py`.
+
+Antes de operar comercialmente ainda é necessário: HTTPS (proxy reverso ou túnel) e token por loja, teste em loja com a
+rotina real do caixa, backup e restauração testados, hardware fiscal/periféricos e homologação no ambiente da loja.
+
+## Licença mensal e executável
+
+`python build_pdv.py` gera o executável (PyInstaller) em `dist/PDV_CasaVerde/`. No executável os dados (banco, Backup,
+impressao, logs) ficam em `%LOCALAPPDATA%\PDV-CASA` e a licença é sempre exigida; rodando do código-fonte ela só vale com
+`licenca_exigir = S` nas configurações.
+
+A licença é um código assinado (Ed25519) com a chave da loja e o último dia de validade. O PDV só guarda a chave
+pública; a privada fica com o fornecedor, fora do repositório (`~/.pdv-casa/licenca_privada.key`):
+
+```powershell
+python -m tools.gerar_licenca emitir --loja CASAVERDE-01 --dias 30
+```
+
+O operador cola o código em "Código de licença..." na tela de entrada. O sistema avisa 7 dias antes de vencer, dá 5
+dias de carência depois e nunca bloqueia com o turno aberto. Para criar o par de chaves (uma única vez) rode
+`python -m tools.gerar_licenca novo-par` e cole a chave pública em `CHAVE_PUBLICA_HEX` (`src/core/licenca.py`); trocar a
+chave invalida os códigos já emitidos.

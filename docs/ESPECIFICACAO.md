@@ -59,9 +59,11 @@ O sistema web em si (cadastros e relatórios no navegador) é outra aplicação 
 
 Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 
-- **Valor esperado do turno** = valor inicial + recebimentos de todas as formas (já líquidos de troco)
-  + entradas − sangrias. Repique e contra-vale emitido são informativos e não entram. (O exemplo do
-  manual não incluía as sangrias no esperado; aqui elas reduzem o esperado porque o dinheiro saiu.)
+- **Valor esperado do turno** = valor inicial + recebimentos das formas que ficam na gaveta (dinheiro, cheque, ticket;
+  já líquidos de troco) + entradas − sangrias. Cartão e Pix NÃO entram: são conferidos na maquininha, e o relatório
+  mostra o total "fora da gaveta". Cada forma de pagamento tem a marca "Fica na gaveta" (`tipos_pagamento.na_gaveta`;
+  cartão, Pix, transferência e TEF saem de fábrica). Repique e contra-vale emitido são informativos e não entram.
+  (O exemplo do manual não incluía as sangrias no esperado; aqui elas reduzem o esperado porque o dinheiro saiu.)
 - **Serviço** (10% configurável) só em mesa, calculado sobre os itens marcados "cobrar serviço", antes
   do desconto. O desconto incide só nos produtos. O operador pode digitar outro valor de serviço, até zero.
 - **Estoque baixa ao fechar a venda**, não ao lançar o item; cancelar o cupom estorna. Estoque negativo é permitido.
@@ -71,13 +73,20 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   baixa a fração correspondente do estoque.
 - **Caderneta**: limite 0 significa sem limite; saldo negativo é dívida. Excedente do pagamento pode virar
   crédito ou troco.
-- **Conta mensal** repete o mesmo valor por N meses (não divide o valor em parcelas).
+- **Conta mensal** repete o mesmo valor por N meses (aluguel, internet). Já a compra lançada em contas a pagar
+  em N meses DIVIDE o total (os centavos que sobram vão na 1ª parcela).
 - **Cupom** é numerado ao fechar ou cancelar. Só dá para cancelar cupom do turno ainda aberto.
 - **Limpeza do movimento** apaga até o dia anterior à data informada, faz backup antes, recusa apagar vendas não
   enviadas à nuvem quando a sincronização está configurada e preserva o saldo da caderneta.
 - **Módulos de acesso**: o manual cita 31 módulos sem listá-los; foram definidos 40 (ver `sementes.ACESSOS`),
   todos com nível configurável de 1 a 4.
 - **Senhas** são guardadas com PBKDF2 e comparadas sem diferenciar maiúsculas, como pede o manual.
+- **Busca por nome** (produtos, clientes, contas, cadastros) ignora acento e caixa: "cafe" acha "Café" (função SQL `norm()`).
+- **Quantidade por item** tem teto (configuração `qtd_maxima_item`, padrão 99.999; 0 desliga), para um código de
+  barras digitado no campo Quantidade não virar uma venda de bilhões. `nan` e `inf` são recusados.
+- **Transferir parte de um item** divide total e comissão sem perder nem criar centavo.
+- **Licença mensal** (Ed25519, offline): aviso 7 dias antes, carência de 5 dias, nunca bloqueia com o turno aberto;
+  só é exigida no executável ou com `licenca_exigir = S`. Detalhes em `src/core/licenca.py` e no README.
 
 ## 3. O que NÃO está implementado
 
@@ -87,7 +96,7 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 | TEF (cartões) | Campos do cadastro existem; não há integração. |
 | Balança Toledo/Filizola e gaveta | Há a interface; a leitura/abertura automática não foi implementada (depende do equipamento). O caixa pede o peso digitado e registra a abertura de gaveta. |
 | Rede com vários caixas no mesmo banco | O banco SQLite é local a cada terminal. |
-| Sincronização real com a nuvem | O PDV monta o lote e confirma por UUID (`SyncController`); o transporte HTTP e a API estão com o outro agente e **ainda são simulados**. Cadastros descendo da nuvem: não existe. |
+| Sincronização com a nuvem em loja | API (FastAPI) e cliente existem, com testes de contrato; falta validar em loja, HTTPS e token por loja. Cadastros descendo da nuvem: não existe. |
 | Tabela de preços por empresa (multi-loja) | Uma única tabela de preços. |
 | E-mail, logotipo no cupom, foto do subgrupo | Os campos são guardados; não são usados. |
 | Colunas "Turno 1 a 3" e "Figura" do tipo de pagamento | O manual não explica o uso; omitidas. |
