@@ -8,6 +8,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -187,6 +188,89 @@ class TesteApi(BasePDV):
 
     def test_saude_nao_exige_token(self):
         self.assertEqual(self.http.get("/v1/saude").json(), {"status": "ok"})
+
+
+@unittest.skipIf(TestClient is None, "fastapi/httpx não instalados")
+class TestePainelDoDono(BasePDV):
+    H = {"Authorization": "Bearer token-de-teste"}
+
+    def setUp(self):
+        super().setUp()
+        self.http = TestClient(nuvem.app)
+        db = nuvem.SessionLocal()                       # a nuvem de teste é compartilhada: começa vazia
+        for modelo in (nuvem.VendaPagamento, nuvem.VendaItem, nuvem.Venda):
+            db.query(modelo).delete()
+        db.commit()
+        db.close()
+
+    def enviar(self, lote):
+        r = self.http.post("/v1/sincronizar", json=lote, headers=self.H)
+        self.assertEqual(r.status_code, 200, r.text)
+
+    def resumo(self, **params):
+        return self.http.get("/v1/dashboard/resumo", params=params, headers=self.H)
+
+    def test_dados_do_painel_exigem_o_token(self):
+        self.vender()
+        self.enviar(SyncController(self.banco).montar_lote())
+        self.assertEqual(self.http.get("/v1/dashboard/resumo").status_code, 401)
+        self.assertEqual(self.http.get("/v1/dashboard/resumo", headers={"Authorization": "Bearer errado"}).status_code, 401)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("PDV_API_TOKEN")
+            self.assertEqual(self.resumo().status_code, 503)
+        self.assertEqual(self.resumo().status_code, 200)
+
+    def test_pagina_do_painel_e_publica_mas_nao_traz_dados_nem_usa_innerhtml(self):
+        self.vender()
+        self.enviar(SyncController(self.banco).montar_lote())
+        r = self.http.get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/html", r.headers["content-type"])
+        self.assertIn("Authorization", r.text)                        # a página envia o token ao consultar
+        self.assertNotIn("innerHTML", r.text)                         # nome de produto vem do PDV: nunca como HTML
+        self.assertNotIn("R$ 11,00", r.text)
+
+    def test_resumo_do_dia_conta_so_vendas_fechadas_com_itens(self):
+        self.vender(), self.vender(mesa=3, qtd=2)
+        cancelada = self.vender()
+        self.caixa.cancelar_venda(cancelada, "erro")
+        cliente = self.banco.inserir("clientes", {"numero_consulta": "9", "nome": "ANA"})
+        recebimento = self.caixa.abrir_caderneta(cliente)               # recebimento de dívida: subtotal 0
+        self.caixa.adicionar_pagamento(recebimento, self.tipo("Dinheiro"), 500)
+        self.caixa.fechar(recebimento, excesso_como_credito=True)
+        self.enviar(SyncController(self.banco).montar_lote())
+        r = self.resumo().json()
+        # 1 x 10,00 + 1 mesa com 2 x 10,00 e 10% de serviço = 10,00 + 22,00
+        self.assertEqual((r["dia"], r["cupons"], r["receita_cent"]), ("2026-10-03", 2, 1000 + 2200))
+        self.assertEqual(r["ticket_medio_cent"], 1600)
+        self.assertIsInstance(r["ticket_medio_cent"], int)
+        self.assertEqual(r["top_produtos"], [{"nome": "SKOL", "qtd": 3.0, "total_cent": 3000}])
+
+    def test_ticket_medio_arredonda_para_centavos_inteiros(self):
+        for _ in range(3):
+            self.vender()
+        self.vender(qtd=2)
+        self.enviar(SyncController(self.banco).montar_lote())
+        r = self.resumo().json()
+        self.assertEqual((r["cupons"], r["receita_cent"], r["ticket_medio_cent"]), (4, 5000, 1250))
+
+    def test_filtra_por_dia_e_por_loja_e_valida_a_data(self):
+        self.vender()
+        self._hora["t"] = datetime(2026, 10, 4, 1, 30, 0)
+        self.vender(qtd=3)
+        self.enviar(SyncController(self.banco).montar_lote())
+        self.assertEqual(self.resumo().json()["dia"], "2026-10-04")           # padrão: dia da venda mais recente
+        self.assertEqual(self.resumo(dia="2026-10-04").json()["receita_cent"], 3000)
+        self.assertEqual(self.resumo(dia="2026-10-03").json()["receita_cent"], 1000)
+        self.assertEqual(self.resumo(dia="2026-10-05").json()["cupons"], 0)
+        self.assertEqual(self.resumo(dia="2026-10-03", chave_loja="OUTRA").json()["receita_cent"], 0)
+        self.assertEqual(self.resumo(dia="2026-10-03", chave_loja="LOJA-1").json()["receita_cent"], 1000)
+        for ruim in ("amanha", "2026-13-40", "2026-10-3"):
+            self.assertEqual(self.resumo(dia=ruim).status_code, 422, ruim)
+
+    def test_sem_nenhuma_venda_o_painel_responde_zerado(self):
+        r = self.resumo().json()
+        self.assertEqual((r["cupons"], r["receita_cent"], r["ticket_medio_cent"], r["top_produtos"]), (0, 0, 0, []))
 
 
 class RespostaFalsa:

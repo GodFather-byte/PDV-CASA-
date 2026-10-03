@@ -13,25 +13,21 @@ from __future__ import annotations
 import hmac
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import List, Literal, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, Column, Float, Integer, String
-from sqlalchemy.orm import Session
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi import Request
-from sqlalchemy import func
-
-templates = Jinja2Templates(directory="backend/templates")
-
+from pydantic import BaseModel, Field
+from sqlalchemy import Boolean, Column, Float, Integer, String, func
+from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
 
 log = logging.getLogger("pdv.nuvem")
 
+PAGINA_PAINEL = Path(__file__).resolve().parent / "templates" / "dashboard.html"
 DATA_HORA = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
 # Uma venda só avança no tempo: fechada -> cancelada. Reenvio com estado igual ou anterior não muda nada.
 ORDEM_STATUS = {"fechada": 1, "cancelada": 2}
@@ -202,31 +198,39 @@ def sincronizar_vendas(lote: LoteSync, db: Session = Depends(get_db)):
 
     return {"aceitas": aceitas}
 
-# ------------------------------------------------------------------- dashboard
-@app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+# ------------------------------------------------------------ painel do dono
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def painel():
+    """Página do painel. Ela não traz dados: pede o token e consulta /v1/dashboard/resumo."""
+    return HTMLResponse(PAGINA_PAINEL.read_text(encoding="utf-8"))
 
-@app.get("/v1/dashboard/resumo")
-def dashboard_resumo(db: Session = Depends(get_db)):
-    total_receita = db.query(func.sum(Venda.total_cent)).filter(Venda.status == "fechada").scalar() or 0
-    total_cupons = db.query(Venda).filter(Venda.status == "fechada").count()
-    ticket_medio = (total_receita / total_cupons) if total_cupons > 0 else 0
-    
-    # Produtos mais vendidos
-    top_produtos = db.query(
-        VendaItem.nome, 
-        func.sum(VendaItem.quantidade).label('qtd'),
-        func.sum(VendaItem.total_cent).label('total')
-    ).join(Venda, Venda.uuid == VendaItem.venda_uuid)\
-     .filter(Venda.status == "fechada", VendaItem.cancelado == False)\
-     .group_by(VendaItem.nome)\
-     .order_by(func.sum(VendaItem.quantidade).desc())\
-     .limit(5).all()
 
+@app.get("/v1/dashboard/resumo", dependencies=[Depends(exigir_token)])
+def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+                     chave_loja: Optional[str] = Query(None, max_length=64),
+                     db: Session = Depends(get_db)):
+    """Faturamento, cupons, ticket médio e mais vendidos de um dia. Sem `dia`, vale o da venda mais recente
+    (assim o painel não depende do fuso do servidor). Só vendas fechadas com itens; recebimentos de
+    caderneta (subtotal 0) e cancelamentos ficam de fora, como no painel do PDV."""
+    if dia is None:
+        ultima = db.query(func.max(Venda.fechada_em)).scalar()
+        dia = ultima[:10] if ultima else date.today().isoformat()
+    try:
+        inicio = date.fromisoformat(dia)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="dia inválido")
+    filtro = [Venda.status == "fechada", Venda.subtotal_cent > 0,
+              Venda.fechada_em >= f"{inicio.isoformat()} 00:00:00",
+              Venda.fechada_em < f"{(inicio + timedelta(days=1)).isoformat()} 00:00:00"]
+    if chave_loja:
+        filtro.append(Venda.chave_loja == chave_loja)
+    receita, cupons = db.query(func.coalesce(func.sum(Venda.total_cent), 0), func.count(Venda.id)).filter(*filtro).one()
+    mais_vendidos = (db.query(VendaItem.nome, func.sum(VendaItem.quantidade), func.sum(VendaItem.total_cent))
+                     .join(Venda, Venda.uuid == VendaItem.venda_uuid)
+                     .filter(*filtro, VendaItem.cancelado.is_(False))
+                     .group_by(VendaItem.nome).order_by(func.sum(VendaItem.quantidade).desc()).limit(5).all())
     return {
-        "receita_cent": total_receita,
-        "cupons": total_cupons,
-        "ticket_medio_cent": ticket_medio,
-        "top_produtos": [{"nome": p.nome, "qtd": p.qtd, "total_cent": p.total} for p in top_produtos]
+        "dia": dia, "receita_cent": int(receita), "cupons": cupons,
+        "ticket_medio_cent": (int(receita) + cupons // 2) // cupons if cupons else 0,   # centavos inteiros
+        "top_produtos": [{"nome": n, "qtd": float(q), "total_cent": int(t)} for n, q, t in mais_vendidos],
     }
