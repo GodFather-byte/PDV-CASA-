@@ -15,6 +15,17 @@ from src.controllers.relatorio_controller import RelatorioController
 from src.core import formatacao as fmt
 from src.core.relatorio import para_texto
 from src.database.conexao import RAIZ
+from src.hardware import impressora_termica as term
+from src.hardware.impressora_termica import ErroImpressao, ImpressoraTermica
+
+# Ênfase ESC/POS por tipo de documento (quais linhas saem em negrito/dobro de altura).
+_ESTILOS = {
+    "cupom": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL",)},
+    "pre_conta": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL",)},
+    "entrega": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL", "LEVAR TROCO")},
+    "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado")},
+    "pedido": {"negrito_linhas": 1},
+}
 
 M, Q = fmt.fmt_num, fmt.fmt_qtd
 
@@ -82,12 +93,14 @@ class ImpressaoController:
             return "Caderneta"
         return "Balcão"
 
-    def cupom(self, venda_id: int) -> str:
+    def cupom(self, venda_id: int, segunda_via: bool = False) -> str:
         w = self.largura()
         v = self.caixa.obter(venda_id)
         op = self.banco.valor("SELECT nome FROM operadores WHERE id = ?", (v["operador_id"],), "")
         linhas = self.cabecalho(w) + ["=" * w]
         titulo = "CUPOM NÃO FISCAL" + (" - CANCELADO" if v["status"] == "cancelada" else "")
+        if segunda_via:
+            linhas.append("** SEGUNDA VIA - REIMPRESSAO **".center(w))
         linhas += [titulo.center(w), _lr(f"Cupom {v['cupom'] or '-'}", self._origem(v), w),
                    _lr(fmt.fmt_datahora(v["fechada_em"] or v["aberta_em"]), f"Op: {op}", w), "-" * w]
         if v["cliente_id"]:
@@ -223,24 +236,67 @@ class ImpressaoController:
         p.mkdir(exist_ok=True)
         return p
 
-    def enviar(self, texto: str, nome: str = "documento") -> str:
-        """Grava o texto em impressao/ (histórico) e, no modo 'windows', manda para a impressora padrão."""
+    def _historico(self, texto: str, nome: str) -> str:
+        """Grava sempre uma cópia do documento em impressao/ (rastreabilidade)."""
         seguro = re.sub(r"[^A-Za-z0-9_-]+", "_", nome)[:40] or "documento"
         caminho = self.pasta_saida() / f"{fmt.agora().replace(':', '').replace(' ', '-')}-{seguro}.txt"
         caminho.write_text(texto, encoding="utf-8")
-        if self.config.maquina()["modo_impressao"] == "windows" and hasattr(os, "startfile"):
-            os.startfile(str(caminho), "print")  # type: ignore[attr-defined]
         return str(caminho)
 
-    def enviar_remoto(self, texto: str, nome: str) -> str:
-        """Pedido para a cozinha/bar: grava na pasta da impressora remota (se configurada) e no histórico."""
-        pasta = (self.config.maquina()["impressora_remota_pasta"] or "").strip()
-        if pasta:
-            destino = Path(pasta)
-            destino.mkdir(parents=True, exist_ok=True)
-            seguro = re.sub(r"[^A-Za-z0-9_-]+", "_", nome)[:40]
-            (destino / f"{fmt.agora().replace(':', '').replace(' ', '-')}-{seguro}.txt").write_text(texto, encoding="utf-8")
-        return self.enviar(texto, nome)
+    def impressora_termica(self) -> ImpressoraTermica:
+        return ImpressoraTermica.da_maquina(self.config.maquina())
+
+    def modo(self) -> str:
+        return self.config.maquina()["modo_impressao"]
 
     def deve_mostrar_na_tela(self) -> bool:
-        return self.config.maquina()["modo_impressao"] == "tela"
+        return self.modo() == "tela"
+
+    def enviar(self, texto: str, nome: str = "documento", tipo: str | None = None, abrir_gaveta: bool = False) -> str:
+        """Grava o histórico e envia para a saída configurada (térmica/Windows/arquivo).
+
+        Levanta ErroImpressao se a impressora térmica falhar (quem chama decide se mostra na tela)."""
+        caminho = self._historico(texto, nome)
+        modo = self.modo()
+        if modo == "termica":
+            estilos = _ESTILOS.get(tipo or "", {"negrito_linhas": 1})
+            self.impressora_termica().imprimir(texto, abrir_gaveta=abrir_gaveta, **estilos)
+        elif modo == "windows" and hasattr(os, "startfile"):
+            os.startfile(caminho, "print")  # type: ignore[attr-defined]
+        return caminho
+
+    def enviar_remoto(self, texto: str, nome: str) -> str:
+        """Pedido para a cozinha/bar: vai para a impressora remota (pasta ou rede), nunca para a
+        impressora do caixa. Também grava no histórico."""
+        caminho = self._historico(texto, nome)
+        m = self.config.maquina()
+        conexao = (m["impressora_remota_conexao"] or "pasta").strip()
+        if conexao == "rede":
+            endereco = (m["impressora_remota_endereco"] or "").strip()
+            dados = term.texto_para_escpos(texto, codepage=m["impressora_termica_codepage"] or "cp850",
+                                           cortar=True, negrito_linhas=1)
+            term.enviar_rede(endereco, dados)
+        elif conexao == "pasta":
+            pasta = (m["impressora_remota_pasta"] or "").strip()
+            if pasta:
+                destino = Path(pasta)
+                destino.mkdir(parents=True, exist_ok=True)
+                seguro = re.sub(r"[^A-Za-z0-9_-]+", "_", nome)[:40]
+                (destino / f"{fmt.agora().replace(':', '').replace(' ', '-')}-{seguro}.txt").write_text(texto, encoding="utf-8")
+        return caminho
+
+    # -------------------------------------------------- gaveta / teste / 2ª via
+    def abrir_gaveta(self) -> None:
+        """Abre a gaveta pelo pulso da impressora térmica."""
+        self.impressora_termica().abrir_gaveta()
+
+    def imprimir_teste(self) -> None:
+        """Página de teste da impressora térmica (Configurações > Máquinas)."""
+        imp = self.impressora_termica()
+        imp.imprimir(imp.ticket_teste(self.config.nome_loja()), grande_prefixos=("TOTAL",), negrito_linhas=1)
+
+    def reimprimir_cupom(self, venda_id: int) -> str:
+        """Segunda via de um cupom já fechado/cancelado. Envia para a saída e devolve o texto."""
+        texto = self.cupom(venda_id, segunda_via=True)
+        self.enviar(texto, f"2via_cupom_{self.banco.valor('SELECT cupom FROM vendas WHERE id=?', (venda_id,)) or venda_id}", tipo="cupom")
+        return texto

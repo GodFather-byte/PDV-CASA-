@@ -72,9 +72,29 @@ class BancoDados:
             copia.close()
 
     def _criar_esquema(self) -> None:
+        versao = self.conexao.execute("PRAGMA user_version").fetchone()[0]
+        novo = self.conexao.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='config'").fetchone() is None
         for comando in esquema.TABELAS:
             self.conexao.execute(comando)
+        if not novo and versao < esquema.VERSAO_ESQUEMA:
+            self._migrar(versao)
         self.conexao.execute(f"PRAGMA user_version = {esquema.VERSAO_ESQUEMA}")
+
+    def _migrar(self, de: int) -> None:
+        """Aplica as migrações pendentes, da versão `de`+1 até a atual, cada uma em transação."""
+        for versao in range(de + 1, esquema.VERSAO_ESQUEMA + 1):
+            comandos = esquema.MIGRACOES.get(versao)
+            if not comandos:
+                continue
+            self.conexao.execute("BEGIN")
+            try:
+                for sql in comandos:
+                    self.conexao.execute(sql)
+            except Exception:
+                self.conexao.execute("ROLLBACK")
+                raise
+            self.conexao.execute("COMMIT")
 
     # ------------------------------------------------------------ transações
     @contextmanager

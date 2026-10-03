@@ -6,14 +6,15 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from src.core.relatorio import Relatorio, para_csv, para_texto
+from src.hardware.impressora_termica import ErroImpressao
 from src.ui import tema
 
 
 class Visualizador(tk.Toplevel):
     def __init__(self, master, ctx, titulo: str, texto: str, nome: str = "documento", csv: str | None = None,
-                 modal: bool = True, largura_chars: int | None = None):
+                 modal: bool = True, largura_chars: int | None = None, tipo: str | None = None):
         super().__init__(master)
-        self.ctx, self.texto, self.nome, self.csv = ctx, texto, nome, csv
+        self.ctx, self.texto, self.nome, self.csv, self.tipo = ctx, texto, nome, csv, tipo
         self.title(titulo)
         self.configure(bg=tema.COR["fundo"])
         colunas = largura_chars or max((len(l) for l in texto.splitlines()), default=40)
@@ -50,14 +51,25 @@ class Visualizador(tk.Toplevel):
             self.wait_window(self)
 
     def imprimir(self) -> None:
-        caminho = self.ctx.impressao.enviar(self.texto, self.nome)
         try:
-            if hasattr(os, "startfile"):
-                os.startfile(caminho, "print")  # type: ignore[attr-defined]
-            else:
-                tema.mensagem(self, f"Arquivo salvo em:\n{caminho}", "Impressão")
-        except OSError as e:
-            tema.erro(self, f"Não foi possível imprimir: {e}\nO texto foi salvo em:\n{caminho}")
+            caminho = self.ctx.impressao.enviar(self.texto, self.nome, tipo=self.tipo)
+        except ErroImpressao as e:
+            tema.erro(self, f"Não foi possível imprimir: {e}")
+            return
+        modo = self.ctx.impressao.modo()
+        if modo == "termica":
+            tema.mensagem(self, "Enviado para a impressora térmica.", "Impressão")
+        elif modo == "windows":
+            tema.mensagem(self, "Enviado para a impressora padrão do Windows.", "Impressão")
+        else:
+            # Modo tela/arquivo: não há impressora configurada; manda o .txt para a impressão do Windows.
+            try:
+                if hasattr(os, "startfile"):
+                    os.startfile(caminho, "print")  # type: ignore[attr-defined]
+                else:
+                    tema.mensagem(self, f"Documento salvo em:\n{caminho}", "Impressão")
+            except OSError as e:
+                tema.erro(self, f"Não foi possível imprimir: {e}\nO texto foi salvo em:\n{caminho}")
 
     def salvar(self) -> None:
         caminho = filedialog.asksaveasfilename(parent=self, defaultextension=".txt", initialfile=f"{self.nome}.txt",
@@ -81,3 +93,21 @@ def mostrar_texto(master, ctx, titulo: str, texto: str, nome: str = "documento",
 def mostrar_relatorio(master, ctx, rel: Relatorio, largura: int = 80, nome: str | None = None) -> Visualizador:
     nome = nome or rel.titulo.lower().replace(" ", "_")
     return Visualizador(master, ctx, rel.titulo, para_texto(rel, largura), nome, csv=para_csv(rel), largura_chars=largura)
+
+
+def enviar_ou_mostrar(master, ctx, titulo: str, texto: str, nome: str = "documento", tipo: str | None = None,
+                      abrir_gaveta: bool = False, modal: bool = True) -> bool:
+    """No modo 'tela' abre o Visualizador. Nos demais envia para a impressora configurada; se a
+    impressora falhar, mostra o documento na tela com um aviso (nunca perde o cupom).
+
+    Devolve True se foi impresso fisicamente, False se foi mostrado na tela."""
+    if ctx.impressao.deve_mostrar_na_tela():
+        Visualizador(master, ctx, titulo, texto, nome, tipo=tipo, modal=modal)
+        return False
+    try:
+        ctx.impressao.enviar(texto, nome, tipo=tipo, abrir_gaveta=abrir_gaveta)
+        return True
+    except ErroImpressao as e:
+        tema.erro(master, f"Não foi possível imprimir: {e}\nMostrando o documento na tela.")
+        Visualizador(master, ctx, titulo, texto, nome, tipo=tipo, modal=modal)
+        return False

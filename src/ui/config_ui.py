@@ -18,9 +18,25 @@ def abrir(master, ctx, chave: str):
                                 ctx.config.loja, ctx.config.salvar_loja, imprimivel=True)
     if chave == "maquinas":
         campos = [(c[0], c[1], c[2], "Máquina", c[3] if len(c) > 3 else None) for c in CAMPOS_MAQUINA]
+
+        def _testar(janela):
+            ok, _ = tema.tratar(janela, ctx.config.salvar_maquina, janela._coletar())
+            if ok:
+                sucesso, _ = tema.tratar(janela, ctx.impressao.imprimir_teste)
+                if sucesso:
+                    tema.mensagem(janela, "Página de teste enviada à impressora térmica.", "Teste de impressão")
+
+        def _gaveta(janela):
+            ok, _ = tema.tratar(janela, ctx.config.salvar_maquina, janela._coletar())
+            if ok:
+                sucesso, _ = tema.tratar(janela, ctx.impressao.abrir_gaveta)
+                if sucesso:
+                    tema.mensagem(janela, "Pulso de abertura enviado à gaveta.", "Gaveta")
+
         return JanelaFormulario(master, ctx, "Máquinas", campos, ctx.config.maquina, ctx.config.salvar_maquina,
                                 aviso="Atenção: as mudanças nas configurações do equipamento só valem depois de sair do programa e entrar novamente.",
-                                somente_leitura=("terminal",))
+                                somente_leitura=("terminal",),
+                                acoes=[("Imprimir página de teste", _testar), ("Abrir gaveta", _gaveta)])
     return JanelaFormulario(master, ctx, "Configurações", [(c[0], c[1], c[2], c[3], None) for c in CAMPOS_CONFIG],
                             ctx.config.todas, ctx.config.salvar_config)
 
@@ -29,19 +45,21 @@ class JanelaFormulario(tk.Toplevel):
     """Formulário simples dirigido por lista de campos (chave, rótulo, tipo, seção, opções)."""
 
     def __init__(self, master, ctx, titulo, campos, carregar, salvar, aviso: str | None = None,
-                 imprimivel: bool = False, somente_leitura: tuple = ()):
+                 imprimivel: bool = False, somente_leitura: tuple = (), acoes=None):
         super().__init__(master)
         self.ctx, self.campos, self.carregar, self.salvar = ctx, campos, carregar, salvar
         self.somente_leitura = somente_leitura
         self.title(titulo)
         self.configure(bg=tema.COR["fundo"])
-        self.geometry("900x620" if len({c[3] for c in campos}) > 1 else "760x560")
+        self.geometry("900x660" if len({c[3] for c in campos}) > 1 else "760x560")
         barra = tk.Frame(self, bg=tema.COR["marinho"], padx=6, pady=5)
         barra.pack(fill="x")
         ttk.Button(barra, text="Gravar", style="Barra.TButton", command=self.gravar).pack(side="left", padx=2)
         ttk.Button(barra, text="Cancelar", style="Barra.TButton", command=self.recarregar).pack(side="left", padx=2)
         if imprimivel:
             ttk.Button(barra, text="Imprimir", style="Barra.TButton", command=self.imprimir).pack(side="left", padx=2)
+        for rotulo, fn in (acoes or []):
+            ttk.Button(barra, text=rotulo, style="Barra.TButton", command=lambda f=fn: f(self)).pack(side="left", padx=2)
         ttk.Button(barra, text="Sair", style="Barra.TButton", command=self.destroy).pack(side="right")
         if aviso:
             ttk.Label(self, text=aviso, foreground=tema.COR["aviso"], wraplength=800, padding=(12, 8, 12, 0)).pack(anchor="w")
@@ -91,7 +109,7 @@ class JanelaFormulario(tk.Toplevel):
             else:
                 self.vars[chave].set("" if v is None else str(v))
 
-    def gravar(self) -> None:
+    def _coletar(self) -> dict:
         valores = {}
         for chave, _, tipo, _, opc in self.campos:
             if chave in self.somente_leitura:
@@ -102,7 +120,10 @@ class JanelaFormulario(tk.Toplevel):
             elif tipo == "escolha":
                 v = self.opcoes[chave].get(v, v)
             valores[chave] = v
-        ok, _ = tema.tratar(self, self.salvar, valores)
+        return valores
+
+    def gravar(self) -> None:
+        ok, _ = tema.tratar(self, self.salvar, self._coletar())
         if ok:
             tema.mensagem(self, "Configurações gravadas.", "Gravar")
 

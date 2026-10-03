@@ -100,7 +100,7 @@ class BancoSQLiteTests(BaseTeste):
                 )
                 self.assertEqual(
                     banco.conexao.execute("PRAGMA user_version").fetchone()[0],
-                    1,
+                    2,
                 )
             finally:
                 banco.fechar()

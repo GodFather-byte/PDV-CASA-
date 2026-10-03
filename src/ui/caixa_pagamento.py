@@ -10,7 +10,7 @@ from tkinter import ttk
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 from src.ui import caixa_dialogos, tema
-from src.ui.visualizador import Visualizador
+from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
 
 class JanelaPagamento(tk.Toplevel):
@@ -268,9 +268,10 @@ class JanelaPagamento(tk.Toplevel):
         self.fechou = True
         if self.ctx.banco.cfg_bool("imprimir_cupom", True):
             texto = self.ctx.impressao.cupom(self.venda_id)
-            if self.ctx.impressao.deve_mostrar_na_tela():
-                self.destroy()
-                Visualizador(self.master, self.ctx, f"Cupom {venda['cupom']}", texto, f"cupom_{venda['cupom']}")
-                return
-            self.ctx.impressao.enviar(texto, f"cupom_{venda['cupom']}")
+            # abre a gaveta quando houve pagamento em dinheiro (forma que permite troco)
+            abrir_gaveta = any(p["permite_troco"] for p in self.caixa.pagamentos(self.venda_id))
+            self.destroy()
+            enviar_ou_mostrar(self.master, self.ctx, f"Cupom {venda['cupom']}", texto, f"cupom_{venda['cupom']}",
+                              tipo="cupom", abrir_gaveta=abrir_gaveta)
+            return
         self.destroy()

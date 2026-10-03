@@ -19,12 +19,26 @@ CAMPOS_MAQUINA = [
     ("terminal", "Nº do terminal", "int"), ("nome_computador", "Nome do computador", "texto"),
     ("descricao", "Descrição", "texto"),
     ("modo_impressao", "Impressão de cupons e relatórios", "escolha",
-     [("tela", "Mostrar na tela"), ("arquivo", "Salvar em arquivo"), ("windows", "Impressora padrão do Windows")]),
-    ("colunas_fita", "Colunas da fita (impressora de cupom)", "int"),
-    ("impressora_remota_pasta", "Pasta dos pedidos da impressora remota (cozinha/bar)", "texto"),
+     [("tela", "Mostrar na tela"), ("termica", "Impressora térmica (ESC/POS)"),
+      ("windows", "Impressora padrão do Windows"), ("arquivo", "Salvar em arquivo")]),
+    ("colunas_fita", "Colunas da fita (58mm = 32, 80mm = 48)", "int"),
+    ("impressora_termica_conexao", "Impressora térmica: conexão", "escolha",
+     [("rede", "Rede (TCP/IP, porta 9100)"), ("serial", "Serial (COM)"),
+      ("spooler", "Windows RAW (nome da impressora)"), ("arquivo", "Arquivo/dispositivo"), ("nenhuma", "Nenhuma")]),
+    ("impressora_termica_endereco", "Impressora térmica: endereço (IP:porta, COM1, nome ou caminho)", "texto"),
+    ("impressora_termica_codepage", "Impressora térmica: página de código", "escolha",
+     [("cp850", "CP850 (padrão, português)"), ("cp860", "CP860 (português)"),
+      ("cp1252", "Windows-1252"), ("cp437", "CP437"), ("ascii", "ASCII (sem acentos)")]),
+    ("impressora_termica_cortar", "Impressora térmica: cortar o papel", "sn"),
+    ("impressora_termica_gaveta", "Gaveta ligada à impressora térmica", "sn"),
+    ("impressora_termica_pino", "Pino da gaveta (0 ou 1)", "int"),
+    ("impressora_remota_conexao", "Impressora remota (cozinha/bar): conexão", "escolha",
+     [("pasta", "Pasta de arquivos"), ("rede", "Rede (TCP/IP)"), ("nenhuma", "Nenhuma")]),
+    ("impressora_remota_pasta", "Impressora remota: pasta dos pedidos", "texto"),
+    ("impressora_remota_endereco", "Impressora remota: endereço de rede (IP:porta)", "texto"),
     ("balanca", "Balança", "escolha", [("Nenhuma", "Nenhuma"), ("Toledo", "Toledo"), ("Filizola", "Filizola")]),
     ("balanca_porta", "Porta da balança (ex.: COM1)", "texto"),
-    ("gaveta", "Gaveta de dinheiro", "sn"), ("leitor_optico", "Leitor óptico de código de barras", "sn"),
+    ("gaveta", "Gaveta de dinheiro instalada", "sn"), ("leitor_optico", "Leitor óptico de código de barras", "sn"),
 ]
 
 CAMPOS_CONFIG = [
@@ -83,17 +97,25 @@ class ConfigController:
 
     def salvar_maquina(self, dados: dict, terminal: int | None = None) -> None:
         atual = self.maquina(terminal)
-        permitidos = {c[0] for c in CAMPOS_MAQUINA if c[0] != "terminal"}
+        tipos = {c[0]: c[2] for c in CAMPOS_MAQUINA if c[0] != "terminal"}
         limpos = {}
         for k, v in dados.items():
-            if k not in permitidos:
+            tipo = tipos.get(k)
+            if tipo is None:
                 continue
-            if k in ("gaveta", "leitor_optico"):
+            if tipo == "sn":
                 v = 1 if str(v).strip().upper() in ("S", "1", "SIM", "TRUE") or v is True else 0
-            elif k == "colunas_fita":
-                v = int(v)
-                if not 24 <= v <= 80:
+            elif tipo == "int":
+                try:
+                    v = int(str(v).strip() or 0)
+                except ValueError:
+                    raise ErroValidacao(f"Valor inválido em '{k}'.", {k: "inválido"}) from None
+                if k == "colunas_fita" and not 24 <= v <= 80:
                     raise ErroValidacao("A fita deve ter entre 24 e 80 colunas.", {k: "inválido"})
+                if k == "impressora_termica_pino" and v not in (0, 1):
+                    raise ErroValidacao("O pino da gaveta deve ser 0 ou 1.", {k: "inválido"})
+            else:
+                v = (str(v).strip() or None) if v is not None else None
             limpos[k] = v
         self.banco.atualizar("maquinas", atual["id"], limpos)
 

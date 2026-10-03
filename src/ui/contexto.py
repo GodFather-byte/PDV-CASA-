@@ -15,6 +15,7 @@ from src.controllers.relatorio_controller import RelatorioController
 from src.controllers.turno_controller import TurnoController
 from src.controllers.utilitario_controller import UtilitarioController
 from src.hardware.dispositivos import Balanca, Gaveta
+from src.hardware.impressora_termica import ImpressoraTermica
 
 
 class Contexto:
@@ -60,7 +61,8 @@ class Contexto:
         return Balanca(m["balanca"], m["balanca_porta"])
 
     def gaveta(self) -> Gaveta:
-        return Gaveta(bool(self.config.maquina()["gaveta"]))
+        m = self.config.maquina()
+        return Gaveta(bool(m["gaveta"]), ImpressoraTermica.da_maquina(m))
 
     def pode(self, modulo: str) -> bool:
         return self.operador is not None and self.acesso.pode(self.operador, modulo)

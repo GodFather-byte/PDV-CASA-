@@ -5,7 +5,31 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 1
+VERSAO_ESQUEMA = 2
+
+# Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
+# modo_impressao: a validação fica em config_controller, e isso permite novos modos
+# (como 'termica') sem precisar recriar a tabela a cada modo novo.
+MAQUINAS_DDL = """CREATE TABLE IF NOT EXISTS maquinas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    terminal INTEGER NOT NULL UNIQUE DEFAULT 1,
+    nome_computador TEXT, descricao TEXT,
+    modo_impressao TEXT NOT NULL DEFAULT 'tela',
+    colunas_fita INTEGER NOT NULL DEFAULT 40,
+    impressora_remota_pasta TEXT,
+    balanca TEXT NOT NULL DEFAULT 'Nenhuma',
+    balanca_porta TEXT,
+    gaveta INTEGER NOT NULL DEFAULT 0,
+    leitor_optico INTEGER NOT NULL DEFAULT 0,
+    impressora_termica_conexao TEXT NOT NULL DEFAULT 'rede',
+    impressora_termica_endereco TEXT,
+    impressora_termica_codepage TEXT NOT NULL DEFAULT 'cp850',
+    impressora_termica_cortar INTEGER NOT NULL DEFAULT 1,
+    impressora_termica_gaveta INTEGER NOT NULL DEFAULT 0,
+    impressora_termica_pino INTEGER NOT NULL DEFAULT 0,
+    impressora_remota_conexao TEXT NOT NULL DEFAULT 'pasta',
+    impressora_remota_endereco TEXT
+)"""
 
 TABELAS = [
     """CREATE TABLE IF NOT EXISTS mesas (
@@ -29,18 +53,7 @@ TABELAS = [
         endereco TEXT, complemento TEXT, bairro TEXT, cidade TEXT, uf TEXT, cep TEXT,
         telefone TEXT, email TEXT, logotipo TEXT
     )""",
-    """CREATE TABLE IF NOT EXISTS maquinas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        terminal INTEGER NOT NULL UNIQUE DEFAULT 1,
-        nome_computador TEXT, descricao TEXT,
-        modo_impressao TEXT NOT NULL DEFAULT 'tela' CHECK (modo_impressao IN ('tela','arquivo','windows')),
-        colunas_fita INTEGER NOT NULL DEFAULT 40,
-        impressora_remota_pasta TEXT,
-        balanca TEXT NOT NULL DEFAULT 'Nenhuma',
-        balanca_porta TEXT,
-        gaveta INTEGER NOT NULL DEFAULT 0,
-        leitor_optico INTEGER NOT NULL DEFAULT 0
-    )""",
+    MAQUINAS_DDL,
     """CREATE TABLE IF NOT EXISTS acessos (
         modulo TEXT PRIMARY KEY,
         descricao TEXT NOT NULL,
@@ -379,3 +392,20 @@ TABELAS = [
     )""",
     "CREATE INDEX IF NOT EXISTS ix_caderneta_cli ON caderneta(cliente_id)",
 ]
+
+
+# Migrações por versão de destino, aplicadas em ordem quando o banco está atrasado
+# (ver BancoDados._migrar). Bancos novos já nascem na VERSAO_ESQUEMA e não as executam.
+MIGRACOES = {
+    # v2: adiciona campos da impressora térmica e remove o CHECK de modo_impressao.
+    # Recria a tabela maquinas preservando os dados existentes.
+    2: [
+        "ALTER TABLE maquinas RENAME TO _maquinas_old",
+        MAQUINAS_DDL,
+        "INSERT INTO maquinas (id, terminal, nome_computador, descricao, modo_impressao,"
+        " colunas_fita, impressora_remota_pasta, balanca, balanca_porta, gaveta, leitor_optico)"
+        " SELECT id, terminal, nome_computador, descricao, modo_impressao, colunas_fita,"
+        " impressora_remota_pasta, balanca, balanca_porta, gaveta, leitor_optico FROM _maquinas_old",
+        "DROP TABLE _maquinas_old",
+    ],
+}

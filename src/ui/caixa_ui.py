@@ -13,10 +13,11 @@ from tkinter import ttk
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 from src.hardware.dispositivos import DispositivoIndisponivel
+from src.hardware.impressora_termica import ErroImpressao
 from src.ui import caixa_dialogos, tema
 from src.ui.caixa_pagamento import JanelaPagamento
 from src.ui.clientes_ui import JanelaClientes, JanelaEntregas
-from src.ui.visualizador import Visualizador
+from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
 
 class JanelaCaixa(tk.Toplevel):
@@ -356,10 +357,17 @@ class JanelaCaixa(tk.Toplevel):
         if self.venda_id is None:
             self.venda_id = caixa.abrir_balcao()
         item_id = caixa.adicionar_item(self.venda_id, produto_id, qtd, partes=partes)
-        for sub, texto in self.ctx.impressao.pedido_remoto(self.venda_id, [item_id]).items():
-            self.ctx.impressao.enviar_remoto(texto, f"pedido_{sub}")
-            self.avisar(f"Pedido enviado à impressora remota: {sub}", tema.COR["ok"])
+        self._enviar_remoto([item_id])
         return item_id
+
+    def _enviar_remoto(self, item_ids: list[int]) -> None:
+        """Manda os itens para a cozinha/bar. Falha de impressora remota não bloqueia a venda."""
+        try:
+            for sub, texto in self.ctx.impressao.pedido_remoto(self.venda_id, item_ids).items():
+                self.ctx.impressao.enviar_remoto(texto, f"pedido_{sub}")
+                self.avisar(f"Pedido enviado à impressora remota: {sub}", tema.COR["ok"])
+        except ErroImpressao as e:
+            self.avisar(f"Impressora da cozinha/bar indisponível: {e}", tema.COR["perigo"])
 
     def observacao_item(self) -> None:
         s = self.grade.selecionado()
@@ -371,8 +379,7 @@ class JanelaCaixa(tk.Toplevel):
         texto = caixa_dialogos.escolher_observacao(self, self.ctx)
         if texto:
             self.ctx.caixa.definir_observacao(int(s), texto)
-            for sub, tk_ in self.ctx.impressao.pedido_remoto(self.venda_id, [int(s)]).items():
-                self.ctx.impressao.enviar_remoto(tk_, f"obs_{sub}")
+            self._enviar_remoto([int(s)])
             self.recarregar()
             self.grade.selecionar(s)
 
@@ -611,7 +618,8 @@ class JanelaCaixa(tk.Toplevel):
 
     def _pos_fechamento(self, venda: dict) -> None:
         if venda["modalidade"] == "caderneta" and self.ctx.banco.cfg_bool("imprimir_cupom", True):
-            Visualizador(self, self.ctx, f"Cupom {venda['cupom']}", self.ctx.impressao.cupom(venda["id"]), f"cupom_{venda['cupom']}")
+            enviar_ou_mostrar(self, self.ctx, f"Cupom {venda['cupom']}", self.ctx.impressao.cupom(venda["id"]),
+                              f"cupom_{venda['cupom']}", tipo="cupom")
         self.lbl_troco.configure(text=fmt.fmt_num(venda["troco_cent"]))
         self.venda_id = None
         self._limpar_entrada()
@@ -768,13 +776,39 @@ class JanelaCaixa(tk.Toplevel):
         self.avisar("Leitor óptico " + ("ativado: cada item entra com quantidade 1." if self.leitor else "desativado."))
 
     def impressora(self) -> None:
-        op = tema.escolher(self, "Impressora", [("x", "Leitura X (parcial do turno - gerencial)"), ("z", "Redução Z (fechamento do dia - gerencial)")],
-                           "Funções gerenciais (não emitem documento fiscal):", altura=3)
+        op = tema.escolher(self, "Impressora", [
+            ("2via_ult", "Reimprimir último cupom (2ª via)"),
+            ("2via_num", "Reimprimir cupom por número (2ª via)"),
+            ("x", "Leitura X (parcial do turno - gerencial)"),
+            ("z", "Redução Z (fechamento do dia - gerencial)")],
+            "Escolha (nenhuma função emite documento fiscal):", altura=4)
         if op == "x":
             t = self.ctx.turnos.atual()
             Visualizador(self, self.ctx, "Leitura X", self.ctx.impressao.leitura_x(t["id"]), "leitura_x")
         elif op == "z":
             Visualizador(self, self.ctx, "Redução Z", self.ctx.impressao.reducao_z(), "reducao_z")
+        elif op == "2via_ult":
+            self._reimprimir(self._ultimo_cupom())
+        elif op == "2via_num":
+            n = tema.pedir_numero(self, "Reimprimir cupom", "Número do cupom:", "", 1)
+            if n is not None:
+                vid = self.ctx.banco.valor("SELECT id FROM vendas WHERE cupom = ? AND status IN ('fechada','cancelada')", (n,))
+                if vid is None:
+                    tema.aviso(self, f"Cupom {n} não encontrado entre as vendas fechadas/canceladas.")
+                else:
+                    self._reimprimir(vid)
+
+    def _ultimo_cupom(self) -> int | None:
+        return self.ctx.banco.valor(
+            "SELECT id FROM vendas WHERE cupom IS NOT NULL AND status IN ('fechada','cancelada') ORDER BY cupom DESC LIMIT 1")
+
+    def _reimprimir(self, venda_id: int | None) -> None:
+        if venda_id is None:
+            tema.aviso(self, "Ainda não há cupom para reimprimir.")
+            return
+        texto = self.ctx.impressao.cupom(venda_id, segunda_via=True)
+        n = self.ctx.banco.valor("SELECT cupom FROM vendas WHERE id = ?", (venda_id,))
+        enviar_ou_mostrar(self, self.ctx, f"2ª via cupom {n}", texto, f"2via_cupom_{n}", tipo="cupom")
 
     def fechar_turno(self) -> None:
         v = self.venda()

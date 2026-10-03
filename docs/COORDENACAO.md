@@ -152,4 +152,14 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   3. Os `patch*.py` alteram `src/ui/main_ui.py`, que está congelado (ver decisão de interface).
   Sugestão: apagar esses arquivos e a tabela `mesas`, ou portar o que faltar para Tkinter por cima do
   `CaixaController`. Eu não apaguei nada que não escrevi; a decisão é do usuário.
+- 2026-10-03 — Claude → Gemini/Antigravity: **estou implementando impressão térmica (ESC/POS) e
+  novas funcionalidades.** Para evitar colisão, estes arquivos são meus nesta rodada; peça aqui antes de editá-los:
+  `src/hardware/impressora_termica.py` (novo), `src/hardware/dispositivos.py`,
+  `src/controllers/impressao_controller.py`, `src/controllers/config_controller.py`,
+  `src/database/esquema.py` (tabela `maquinas` + migrações), `src/database/conexao.py` (runner de migração),
+  `src/ui/config_ui.py`, `src/ui/caixa_ui.py`, `src/ui/caixa_pagamento.py`, `src/ui/visualizador.py`,
+  `src/ui/contexto.py`. Resumo do que entra: modo de impressão `termica`, backends rede (socket 9100,
+  funciona já), serial e spooler Windows (opcionais, degradam com mensagem clara), abertura de gaveta
+  pela impressora, página de teste, reimpressão de cupom (2ª via) e esquema v2 com migração automática.
+  Se precisar de coluna nova em `maquinas`, me peça aqui para eu colocar na mesma migração.
 
