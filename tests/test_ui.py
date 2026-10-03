@@ -5,6 +5,8 @@ from __future__ import annotations
 import tempfile
 import tkinter as tk
 import unittest
+from datetime import date, datetime
+from unittest import mock
 
 from src.controllers.cadastro_controller import CadastroController
 from src.controllers.entidades import ENTIDADES
@@ -434,5 +436,80 @@ class TesteLancamentosUI(BaseUI):
         self.sem_travar()
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TesteLoginComLicenca(BaseUI):
+    """Entrada com a licença exigida (o executável): bloqueio, renovação, aviso e turno aberto."""
+    SEMENTE = bytes(range(32))
+
+    def setUp(self):
+        super().setUp()
+        from src.core import ed25519, licenca
+        self.licenca = licenca
+        patcher = mock.patch.object(licenca, "CHAVE_PUBLICA_HEX", ed25519.chave_publica(self.SEMENTE).hex())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(fmt.definir_relogio, None)
+        fmt.definir_relogio(lambda: datetime(2026, 10, 3, 21, 0, 0))
+        self.banco.cfg_set("licenca_exigir", "S")
+
+    def codigo(self, dias=30, hoje=date(2026, 10, 3)):
+        return self.licenca.gerar_licenca(self.SEMENTE, "LOJA-1", dias, hoje)
+
+    def entrar(self, senha="adm", codigo=None):
+        from src.ui.login import JanelaLogin
+        j = JanelaLogin(self.root, self.ctx, "Loja")
+        j.var_usuario.set("adm"); j.var_senha.set(senha)
+        with mock.patch.object(tema, "pedir_texto", return_value=codigo) as pedir, \
+                mock.patch.object(tema, "mensagem") as aviso:
+            j.entrar()
+        return j, pedir, aviso
+
+    def test_sem_licenca_pede_o_codigo_e_entra_ao_ativar(self):
+        j, pedir, aviso = self.entrar(codigo=self.codigo())
+        pedir.assert_called_once()
+        self.assertEqual(j.operador.nome, "ADM")
+        self.assertEqual(self.banco.cfg("chave_loja"), "LOJA-1")
+        aviso.assert_not_called()
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM log_eventos WHERE evento = 'licenca_bloqueio'"), 1)
+
+    def test_codigo_invalido_ou_cancelado_nao_deixa_entrar(self):
+        j, pedir, _ = self.entrar(codigo="lixo")
+        self.assertIsNone(j.operador)
+        self.assertIn("inválido", j.lbl_msg.cget("text"))
+        j.destroy()
+        j2, pedir2, _ = self.entrar(codigo=None)
+        self.assertIsNone(j2.operador)
+        j2.destroy()
+        pedir.assert_called_once(); pedir2.assert_called_once()
+
+    def test_com_o_turno_aberto_entra_sem_pedir_codigo_e_avisa(self):
+        self.abrir_turno()
+        j, pedir, aviso = self.entrar()
+        pedir.assert_not_called()
+        self.assertEqual(j.operador.nome, "ADM")
+        self.assertIn("turno aberto", aviso.call_args.args[1])
+
+    def test_perto_do_vencimento_avisa_e_registra_o_uso(self):
+        self.licenca.ativar(self.banco, self.codigo(dias=3))
+        j, pedir, aviso = self.entrar()
+        pedir.assert_not_called()
+        self.assertEqual(j.operador.nome, "ADM")
+        self.assertIn("vence em 3 dias", aviso.call_args.args[1])
+        self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "2026-10-03")
+
+    def test_licenca_em_dia_entra_sem_aviso_e_senha_errada_continua_barrando(self):
+        self.licenca.ativar(self.banco, self.codigo(dias=30))
+        j, _, aviso = self.entrar(senha="errada")
+        self.assertIsNone(j.operador)
+        self.assertEqual(j.lbl_msg.cget("text"), "Senha Incorreta")
+        j.destroy()
+        j, _, aviso = self.entrar()
+        self.assertEqual(j.operador.nome, "ADM")
+        aviso.assert_not_called()
+
+    def test_sem_exigencia_o_login_nao_mexe_na_licenca(self):
+        self.banco.cfg_set("licenca_exigir", "N")
+        j, pedir, aviso = self.entrar()
+        self.assertEqual(j.operador.nome, "ADM")
+        pedir.assert_not_called(); aviso.assert_not_called()
+        self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "")
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM log_eventos WHERE evento LIKE 'licenca%'"), 0)

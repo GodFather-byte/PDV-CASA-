@@ -25,3 +25,19 @@ Backup/
 impressao/
 mala_direta/
 *.legado-*.bak
+
+# Arquivos auxiliares do SQLite: o -wal guarda vendas ainda não gravadas no .db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Ambiente virtual e resultado do build do executável (PyInstaller)
+.venv/
+build/
+dist/
+*.spec
+
+# Chaves privadas (ex.: licença do fornecedor) nunca vão para o repositório
+*.key

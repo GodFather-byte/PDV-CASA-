@@ -4,13 +4,24 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 
 from src.core import formatacao as fmt
 from src.database import esquema, sementes
 
-RAIZ = Path(__file__).resolve().parents[2]
+
+def _raiz_dados() -> Path:
+    """Pasta do banco, de Backup/ e de impressao/. No código-fonte é a raiz do projeto. No executável
+    do PyInstaller o código fica em `_internal`, que a atualização substitui, então os dados vão para
+    %LOCALAPPDATA%\\PDV-CASA e sobrevivem às versões."""
+    if getattr(sys, "frozen", False):
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "PDV-CASA"
+    return Path(__file__).resolve().parents[2]
+
+
+RAIZ = _raiz_dados()
 
 
 def caminho_padrao() -> str:
@@ -22,6 +33,8 @@ class BancoDados:
     def __init__(self, caminho: str | None = None, semear: bool = True):
         self.caminho = str(caminho or caminho_padrao())
         self._profundidade = 0
+        if self.caminho != ":memory:":
+            Path(self.caminho).parent.mkdir(parents=True, exist_ok=True)
         self.conexao = self._abrir()
         try:
             if self._banco_legado():
