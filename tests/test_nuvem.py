@@ -409,6 +409,29 @@ class TesteSincronizador(BasePDV):
         self.cliente(quebrar).iniciar_loop(rodadas=3, dormir=esperas.append)
         self.assertEqual(esperas, [120, 240, 480])
 
+    def test_nuvem_que_responde_200_sem_confirmar_nada_nao_vira_laco_quente(self):
+        v = self.vender()
+        esperas = []
+        r = self.cliente(lambda lote: RespostaFalsa(200, {"aceitas": []})).enviar_pendentes()
+        self.assertEqual((r["estado"], r["enviadas"], r["restantes"]), ("ok", 0, 1))
+        s = self.cliente(lambda lote: RespostaFalsa(200, {"aceitas": []}))
+        s.iniciar_loop(rodadas=3, dormir=esperas.append)
+        self.assertEqual(esperas, [120, 240, 480])                  # espera crescente, nunca 0
+        self.assertEqual(self.sincronizado(v), 0)
+        self.assertEqual(len(self.http.chamadas), 3)
+
+    def test_cancelamento_durante_o_envio_reenvia_na_rodada_seguinte(self):
+        v = self.vender()
+        esperas, primeira = [], [True]
+
+        def cancelar_so_na_primeira(lote):
+            if primeira.pop() if primeira else False:
+                self.caixa.cancelar_venda(v, "cancelada no meio do envio")
+            return aceitar_tudo(lote)
+        self.cliente(cancelar_so_na_primeira).iniciar_loop(rodadas=2, dormir=esperas.append)
+        self.assertEqual(esperas[0], 120)                           # 1ª rodada sem confirmar nada: espera como numa falha
+        self.assertEqual((self.sincronizado(v), self.banco.valor("SELECT status FROM vendas WHERE id = ?", (v,))), (1, "cancelada"))
+
     def test_espera_dobra_a_cada_falha_ate_o_limite(self):
         self.assertEqual([proxima_espera(60, n) for n in range(6)], [60, 120, 240, 480, 600, 600])
         self.assertEqual(proxima_espera(1, 0), 5)

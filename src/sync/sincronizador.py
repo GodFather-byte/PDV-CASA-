@@ -118,14 +118,18 @@ class Sincronizador:
             except Exception:     # nunca deixa o laço morrer: registra e tenta de novo
                 log.exception("Falha inesperada na sincronização.")
                 r = self._erro("Falha inesperada (veja o log).")
-            if r["estado"] == "erro":
+            # 200 sem nenhuma confirmação (ex.: a nuvem recusa o uuid) não é progresso: espera como numa falha,
+            # senão o laço reenviaria o mesmo lote sem parar.
+            sem_progresso = r["estado"] == "ok" and r["enviados"] > 0 and r["enviadas"] == 0
+            if r["estado"] == "erro" or sem_progresso:
                 falhas += 1
-                log.warning("%s (falhas seguidas: %d)", r["mensagem"], falhas)
+                log.warning("%s (falhas seguidas: %d)",
+                            r.get("mensagem") or "A nuvem não confirmou nenhuma venda do lote.", falhas)
             else:
                 falhas = 0
                 if r["estado"] == "ok" and r["enviadas"]:
                     log.info("%d venda(s) confirmada(s) pela nuvem; restam %d.", r["enviadas"], r["restantes"])
-            tem_mais = r["estado"] in ("ok", "rejeitadas") and r.get("restantes", 0) > 0
+            tem_mais = r["estado"] in ("ok", "rejeitadas") and not sem_progresso and r.get("restantes", 0) > 0
             dormir(0 if tem_mais else proxima_espera(self.configuracao()["intervalo"], falhas))
 
 
