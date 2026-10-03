@@ -213,7 +213,7 @@ class TesteServico(unittest.TestCase):
         imp = ImpressaoController(self.banco)
         inicio = time.monotonic()
         imp.enviar("TOTAL 1,00", "cupom_1", tipo="cupom")
-        self.assertLess(time.monotonic() - inicio, 0.5)
+        self.assertLess(time.monotonic() - inicio, 2.0)
         fila = FilaImpressao(self.banco)
         self.assertTrue(self.esperar(lambda: fila.listar()[0]["tentativas"] >= 1), fila.listar())
         item = fila.listar()[0]

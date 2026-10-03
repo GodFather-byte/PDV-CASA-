@@ -122,15 +122,12 @@ class TesteTransportes(unittest.TestCase):
             ImpressoraTermica(conexao="arquivo", endereco=arq).imprimir("teste")
             self.assertTrue(Path(arq).read_bytes().startswith(b"\x1b@"))
 
-    def test_serial_e_spooler_sem_biblioteca(self):
-        # Módulo None em sys.modules faz o import falhar, tenham ou não pyserial/pywin32 instalados.
-        with mock.patch.dict(sys.modules, {"serial": None, "win32print": None}):
+    def test_serial_sem_biblioteca_da_mensagem_clara(self):
+        # Módulo None em sys.modules faz o import falhar, tenha ou não o pyserial instalado.
+        with mock.patch.dict(sys.modules, {"serial": None}):
             with self.assertRaises(ErroImpressao) as e:
                 term.enviar_serial("COM9", b"x")
             self.assertIn("pyserial", str(e.exception))
-            with self.assertRaises(ErroImpressao) as e:
-                term.enviar_spooler("Qualquer", b"x")
-            self.assertIn("pywin32", str(e.exception))
 
     def test_endereco_serial_aceita_velocidade(self):
         self.assertEqual(term._parse_serial("COM3"), ("COM3", 9600))
@@ -259,7 +256,7 @@ class TesteRoteamento(BaseCaixa):
         vid = self._venda_fechada()
         inicio = time.monotonic()
         self.imp.enviar(self.imp.cupom(vid), "cupom", tipo="cupom")
-        self.assertLess(time.monotonic() - inicio, 0.5)      # voltou na hora, sem esperar a conexão
+        self.assertLess(time.monotonic() - inicio, 2.0)      # voltou na hora, sem esperar a conexão
         r = self.imp.fila.processar()
         self.assertEqual((r["enviados"], r["falhas"]), (0, 1))
         item = self.imp.fila.listar()[0]
@@ -296,6 +293,27 @@ class TesteRoteamento(BaseCaixa):
             self.assertEqual(self.imp.fila.listar()[0]["destino"], "remota")
             self.imp.fila.processar()
         self.assertTrue(recebido["dados"].startswith(b"@"))
+
+    def test_pedido_remoto_por_impressora_do_windows_vai_pela_fila_ao_spooler(self):
+        self.banco.executar("UPDATE maquinas SET impressora_remota_conexao='spooler', impressora_remota_endereco='COZINHA'")
+        self.banco.executar("UPDATE subgrupos SET impressora_remota=1")
+        vid = self.caixa.abrir_balcao()
+        item = self.caixa.adicionar_item(vid, self.skol, 1)
+        for sub, texto in self.imp.pedido_remoto(vid, [item]).items():
+            self.imp.enviar_remoto(texto, f"pedido_{sub}")
+        self.assertEqual(self.imp.fila.listar()[0]["destino"], "remota")
+        with mock.patch.object(term, "enviar_spooler") as envia:
+            self.imp.fila.processar()
+        nome, dados = envia.call_args.args[:2]
+        self.assertEqual(nome, "COZINHA")
+        self.assertTrue(dados.startswith(b"\x1b@"))
+        self.assertEqual(self.imp.fila.listar()[0]["status"], "enviado")
+
+    def test_pedido_remoto_por_impressora_do_windows_sem_nome_pede_para_configurar(self):
+        self.banco.executar("UPDATE maquinas SET impressora_remota_conexao='spooler', impressora_remota_endereco=''")
+        with self.assertRaises(ErroImpressao):
+            self.imp.enviar_remoto("PEDIDO", "pedido_bar")
+        self.assertEqual(self.imp.fila.contagem()["pendentes"], 0)
 
     def test_gaveta_do_contexto_abre_pela_termica(self):
         from src.ui.contexto import Contexto

@@ -98,7 +98,9 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   sozinho; impresso e cancelado somem após 7 dias). A gaveta abre pelo pulso da impressora quando alguma forma
   usada tem `na_gaveta`, quando há troco e na sangria. As vias são o maior `tipos_pagamento.vias` (1 a 3). O
   manual pede logotipo BMP de 180x121 em 256 cores; aceitamos BMP sem compressão (1, 4, 8, 24 ou 32 bits) e
-  reduzimos o que passar da largura do papel. Tudo é não fiscal.
+  reduzimos o que passar da largura do papel. Tudo é não fiscal. As impressoras do computador são listadas pela API do
+  Windows (`hardware/impressoras_so.py`, ctypes) e o envio RAW pelo spooler usa a mesma API: o `pywin32` deixou de ser
+  necessário. As portas COM vêm do registro do Windows (e do `pyserial`, só para a descrição).
 - **Limpeza do movimento** apaga até o dia anterior à data informada, faz backup antes, recusa apagar vendas não
   enviadas à nuvem quando a sincronização está configurada e preserva o saldo da caderneta.
 - **Módulos de acesso**: o manual cita 31 módulos sem listá-los; foram definidos 40 (ver `sementes.ACESSOS`),

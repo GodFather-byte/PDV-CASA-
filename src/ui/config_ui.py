@@ -7,6 +7,7 @@ from tkinter import ttk
 from src.controllers.config_controller import CAMPOS_CONFIG, CAMPOS_LOJA, CAMPOS_MAQUINA
 from src.core.erros import ErroNegocio
 from src.ui import tema
+from src.ui.escolher_impressora_ui import JanelaEscolherImpressora
 from src.ui.visualizador import Visualizador
 
 
@@ -36,18 +37,43 @@ def abrir(master, ctx, chave: str):
         return JanelaFormulario(master, ctx, "Máquinas", campos, ctx.config.maquina, ctx.config.salvar_maquina,
                                 aviso="Atenção: as mudanças nas configurações do equipamento só valem depois de sair do programa e entrar novamente.",
                                 somente_leitura=("terminal",),
-                                acoes=[("Imprimir página de teste", _testar), ("Abrir gaveta", _gaveta)])
+                                acoes=[("Escolher impressora do computador", lambda j: escolher_impressora(j, ctx, "termica")),
+                                       ("Imprimir página de teste", _testar), ("Abrir gaveta", _gaveta)],
+                                botoes_campo={"impressora_termica_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "termica")),
+                                              "impressora_remota_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "remota"))})
     return JanelaFormulario(master, ctx, "Configurações", [(c[0], c[1], c[2], c[3], None) for c in CAMPOS_CONFIG],
                             ctx.config.todas, ctx.config.salvar_config)
 
 
+def escolher_impressora(janela, ctx, alvo: str):
+    """Abre a lista das impressoras deste computador e põe a escolha nos campos da janela de Máquinas.
+    `alvo`: 'termica' (impressora do caixa) ou 'remota' (cozinha/bar)."""
+    conexao, endereco = {"termica": ("impressora_termica_conexao", "impressora_termica_endereco"),
+                         "remota": ("impressora_remota_conexao", "impressora_remota_endereco")}[alvo]
+
+    def escolhida(con: str, end: str) -> None:
+        try:
+            janela.definir(conexao, con)
+            janela.definir(endereco, end)
+            if alvo == "termica" and janela.valor("modo_impressao") != "termica" and tema.confirmar(
+                    janela, "O caixa ainda não está configurado para imprimir pela impressora térmica.\n"
+                            "Ativar a impressão pela térmica agora?", "Impressora térmica"):
+                janela.definir("modo_impressao", "termica")
+            tema.mensagem(janela, f"Escolhida: {end}.\nClique em Gravar para guardar.", "Impressora")
+        except tk.TclError:
+            pass            # a janela de Máquinas foi fechada com a lista aberta
+    return JanelaEscolherImpressora(janela, ctx, alvo, escolhida)
+
+
 class JanelaFormulario(tk.Toplevel):
-    """Formulário simples dirigido por lista de campos (chave, rótulo, tipo, seção, opções)."""
+    """Formulário simples dirigido por lista de campos (chave, rótulo, tipo, seção, opções).
+    `botoes_campo`: {chave: (texto, função(janela))} põe um botão ao lado do campo (ex.: escolher da lista)."""
 
     def __init__(self, master, ctx, titulo, campos, carregar, salvar, aviso: str | None = None,
-                 imprimivel: bool = False, somente_leitura: tuple = (), acoes=None):
+                 imprimivel: bool = False, somente_leitura: tuple = (), acoes=None, botoes_campo: dict | None = None):
         super().__init__(master)
         self.ctx, self.campos, self.carregar, self.salvar = ctx, campos, carregar, salvar
+        self.botoes: dict[str, ttk.Button] = {}
         self.somente_leitura = somente_leitura
         self.title(titulo)
         self.configure(bg=tema.COR["fundo"])
@@ -91,6 +117,10 @@ class JanelaFormulario(tk.Toplevel):
                         w = ttk.Entry(pagina, textvariable=v, width=46 if tipo == "texto" else 14,
                                       state="readonly" if chave in somente_leitura else "normal")
                     w.grid(row=i, column=1, sticky="w", pady=4)
+                    if botoes_campo and chave in botoes_campo:
+                        texto, funcao = botoes_campo[chave]
+                        self.botoes[chave] = ttk.Button(pagina, text=texto, command=lambda f=funcao: f(self))
+                        self.botoes[chave].grid(row=i, column=2, sticky="w", padx=8, pady=4)
                 self.vars[chave] = v
         self.recarregar()
         self.bind("<Escape>", lambda e: self.destroy())
@@ -108,6 +138,20 @@ class JanelaFormulario(tk.Toplevel):
                 self.vars[chave].set(next((r for val, r in opc if str(val) == str(v)), ""))
             else:
                 self.vars[chave].set("" if v is None else str(v))
+
+    def definir(self, chave: str, valor) -> None:
+        """Põe um valor no campo como se o operador o tivesse escolhido (em campo de opções, `valor` é o código)."""
+        _, _, tipo, _, opc = next(c for c in self.campos if c[0] == chave)
+        if tipo == "sn":
+            self.vars[chave].set(str(valor).upper() in ("S", "1", "TRUE"))
+        elif tipo == "escolha":
+            self.vars[chave].set(next((r for val, r in opc if str(val) == str(valor)), ""))
+        else:
+            self.vars[chave].set("" if valor is None else str(valor))
+
+    def valor(self, chave: str):
+        """O que está no campo agora, no mesmo formato que será gravado (código da opção, 'S'/'N' ou o texto)."""
+        return self._coletar().get(chave)
 
     def _coletar(self) -> dict:
         valores = {}

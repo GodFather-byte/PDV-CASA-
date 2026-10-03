@@ -323,9 +323,10 @@ class ImpressaoController:
         caminho = self._historico(texto, nome)
         m = self.config.maquina()
         conexao = (m["impressora_remota_conexao"] or "pasta").strip()
-        if conexao == "rede":
+        if conexao in ("rede", "spooler"):
             if not (m["impressora_remota_endereco"] or "").strip():
-                raise ErroImpressao("Informe o endereço da impressora remota (Configurações > Máquinas).")
+                raise ErroImpressao("Informe o endereço (rede) ou o nome (Windows) da impressora remota "
+                                    "(Configurações > Máquinas).")
             dados = term.texto_para_escpos(texto, codepage=m["impressora_termica_codepage"] or "cp850",
                                            cortar=True, negrito_linhas=1)
             self.fila.enfileirar("remota", nome, dados, "pedido")
@@ -343,9 +344,16 @@ class ImpressaoController:
         """Abre a gaveta pelo pulso da impressora térmica."""
         self.impressora_termica().abrir_gaveta()
 
-    def imprimir_teste(self) -> None:
-        """Página de teste da impressora térmica (Configurações > Máquinas)."""
-        imp = self.impressora_termica()
+    def impressora_de(self, conexao: str, endereco: str) -> ImpressoraTermica:
+        """A térmica com esta conexão e este endereço e o resto (página de código, colunas, corte) do que está gravado
+        na máquina: serve para testar uma escolha da lista de impressoras antes de gravá-la."""
+        m = dict(self.config.maquina())
+        m["impressora_termica_conexao"], m["impressora_termica_endereco"] = conexao, endereco
+        return ImpressoraTermica.da_maquina(m)
+
+    def imprimir_teste(self, impressora: ImpressoraTermica | None = None) -> None:
+        """Página de teste da impressora térmica (Configurações > Máquinas). Sem `impressora`, usa a configurada."""
+        imp = impressora or self.impressora_termica()
         imp.imprimir(imp.ticket_teste(self.config.nome_loja()), grande_prefixos=("TOTAL",), negrito_linhas=1)
 
     def reimprimir_cupom(self, venda_id: int) -> str:

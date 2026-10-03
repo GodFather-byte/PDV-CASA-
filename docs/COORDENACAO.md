@@ -295,3 +295,15 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      linhas a mais no resumo do `PainelFechamento` e o botão "Conferência do turno". Se for refazer `fechamento()` ou o
      painel, mantenham essas chamadas. Testes em `tests/test_fechamento_turno.py` (novo; o Claude não precisa mexer).
   4. Não bloqueia a troca de turno com posições abertas (só avisa): em casa noturna é normal ficarem comandas abertas.
+
+- 2026-10-03 — Claude → Copilot/Antigravity: **dois pedidos do usuário: lista das impressoras do PC e comanda só por número.**
+  1. **Impressoras (pronto):** `hardware/impressoras_so.py` (novo, só ctypes/winreg) lista as impressoras instaladas no Windows
+     e as portas COM; `ui/escolher_impressora_ui.py` (novo) é a janela de escolha, aberta por botões em `config_ui.py`
+     (Máquinas). `impressora_termica.enviar_spooler` agora usa a API do spooler por ctypes: **o `pywin32` não é mais necessário**
+     (saiu do `requirements.txt`). A impressora remota (cozinha/bar) também aceita `spooler`. Neste PC a lista achou a Epson
+     TM-T USB do caixa. Arquivos tocados: os dois novos, `config_ui.py`, `config_controller.py`, `impressao_controller.py`,
+     `fila_impressao_controller.py`, `impressora_termica.py` e os testes `test_impressoras_so.py`, `test_impressao.py`, `test_ui.py`.
+  2. **Comanda por número (em andamento):** o número digitado sem letra passa a ser a **comanda** (a mesa vira `M5`; `C2` continua
+     valendo). Vou mexer em `core/posicao.py`, em `caixa_controller.py` (`_par` e `mesas()`), em `caixa_ui.py` e `painel_mesas.py`
+     (só a leitura e o rótulo da posição), em `config_controller.py` e `sementes.py` (`posicao_padrao`, `num_comandas` 10000) e
+     em `esquema.py` (v6, só um UPDATE de configuração). Peço que ninguém edite esses trechos até eu avisar que terminei.

@@ -962,3 +962,156 @@ class TesteImpressaoTermicaNoCaixa(BaseUI):
         j.destroy()
         self.assertEqual(agendados() - antes, set())         # e nada dispara depois de fechar a janela
         self.sem_travar()
+
+
+class TesteSeletorDeImpressoras(BaseUI):
+    """Escolher a impressora numa lista do computador, em vez de digitar o nome dela."""
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        from src.hardware import impressoras_so as so
+        from src.ui import config_ui
+        self.so, self.config_ui = so, config_ui
+        self.lista = [so.ImpressoraWindows("CAIXA", "TMUSB001", "EPSON TM-T(203dpi) Receipt6", padrao=True, termica_provavel=True),
+                      so.ImpressoraWindows("HP DeskJet", "IP_1", "HP DeskJet 5820"),
+                      so.ImpressoraWindows("Microsoft Print to PDF", "PORTPROMPT:", "Microsoft Print To PDF", virtual=True)]
+        self.portas = [so.PortaSerial("COM3", "USB-SERIAL CH340 (COM3)")]
+        for nome, valor in (("listar_impressoras", self.lista), ("listar_portas_seriais", self.portas)):
+            p = mock.patch.object(so, nome, return_value=valor)
+            p.start()
+            self.addCleanup(p.stop)
+        self.form = config_ui.abrir(self.root, self.ctx, "maquinas")
+        self.form.update()
+
+    def responder(self, vezes: int, sim: bool = True):
+        """Fecha os avisos (OK) e responde Sim ou Não às perguntas que a escolha abre."""
+        def acao(w):
+            for prefixo in ("Sim" if sim else "Não", "OK"):
+                try:
+                    clicar(w, prefixo)
+                    return
+                except AssertionError:
+                    continue
+        self.robo.quando("Dialogo", acao, vezes=vezes)
+
+    def abrir_lista(self, alvo: str = "termica"):
+        sel = self.config_ui.escolher_impressora(self.form, self.ctx, alvo)
+        sel.update()
+        return sel
+
+    def test_lista_as_impressoras_do_pc_com_a_termica_primeiro_e_as_portas_com(self):
+        sel = self.abrir_lista()
+        linhas = [sel.grade.valores(i) for i in sel.grade.tree.get_children()]
+        self.assertEqual([l[1] for l in linhas], ["CAIXA  (padrão do Windows)", "HP DeskJet", "Microsoft Print to PDF", "COM3"])
+        self.assertEqual(linhas[0][0], "Cupom (térmica)")
+        self.assertEqual(linhas[2][0], "PDF ou fax (virtual)")
+        self.assertIn("TMUSB001", linhas[0][2])
+        self.assertIn("EPSON", linhas[0][2])
+        self.assertEqual(linhas[3][0], "Porta serial")
+        self.assertEqual(sel.itens[sel.grade.selecionado()]["endereco"], "CAIXA")      # a térmica já vem marcada
+        self.assertIn("3 impressora(s)", sel.lbl.cget("text"))
+
+    def test_usar_preenche_conexao_e_endereco_e_oferece_ativar_a_termica(self):
+        self.responder(3)                          # ativar (Sim), "Escolhida" (OK) e "Configurações gravadas" (OK)
+        sel = self.abrir_lista()
+        sel.usar()
+        self.form.update()
+        self.assertEqual((self.form.valor("impressora_termica_conexao"), self.form.valor("impressora_termica_endereco"),
+                          self.form.valor("modo_impressao")), ("spooler", "CAIXA", "termica"))
+        self.assertFalse(sel.winfo_exists())
+        self.form.gravar()
+        m = self.ctx.config.maquina()
+        self.assertEqual((m["impressora_termica_conexao"], m["impressora_termica_endereco"], m["modo_impressao"]),
+                         ("spooler", "CAIXA", "termica"))
+        self.sem_travar()
+
+    def test_nao_pergunta_pelo_modo_quando_o_caixa_ja_imprime_pela_termica(self):
+        self.form.definir("modo_impressao", "termica")
+        self.responder(1)
+        self.abrir_lista().usar()
+        self.assertEqual(self.robo.log.count("Dialogo"), 1)                           # só o aviso "Escolhida"
+        self.sem_travar()
+
+    def test_porta_serial_vira_conexao_serial_e_o_nao_deixa_o_modo_como_estava(self):
+        self.responder(2, sim=False)
+        sel = self.abrir_lista()
+        sel.grade.selecionar("com:0")
+        sel.usar()
+        self.assertEqual((self.form.valor("impressora_termica_conexao"), self.form.valor("impressora_termica_endereco")),
+                         ("serial", "COM3"))
+        self.assertNotEqual(self.form.valor("modo_impressao"), "termica")
+        self.sem_travar()
+
+    def test_impressora_virtual_pede_confirmacao_e_o_nao_mantem_a_lista_aberta(self):
+        self.responder(1, sim=False)
+        sel = self.abrir_lista()
+        sel.grade.selecionar("imp:2")
+        antes = self.form.valor("impressora_termica_endereco")
+        sel.usar()
+        self.assertTrue(sel.winfo_exists())
+        self.assertEqual(self.form.valor("impressora_termica_endereco"), antes)
+        self.responder(1)
+        sel.testar()                                                                   # teste em PDF: só avisa
+        self.sem_travar()
+
+    def test_teste_usa_a_escolha_sem_gravar_nada(self):
+        from unittest import mock
+        from src.hardware import impressora_termica as term
+        self.responder(1)
+        sel = self.abrir_lista()
+        sel.grade.selecionar("imp:0")
+        antes = dict(self.ctx.config.maquina())
+        with mock.patch.object(term, "enviar_spooler") as envia:
+            sel.testar()
+        nome, dados = envia.call_args.args[:2]
+        self.assertEqual(nome, "CAIXA")
+        self.assertTrue(dados.startswith(b"\x1b@"))
+        self.assertIn(b"TOTAL", dados)
+        self.assertEqual(self.ctx.config.maquina(), antes)                              # testar não grava a escolha
+        self.sem_travar()
+
+    def test_cozinha_lista_so_impressoras_do_windows_e_nao_mexe_no_modo_do_caixa(self):
+        self.responder(1)
+        sel = self.abrir_lista("remota")
+        self.assertEqual(sel.grade.total(), 3)
+        sel.grade.selecionar("imp:1")
+        sel.usar()
+        self.assertEqual((self.form.valor("impressora_remota_conexao"), self.form.valor("impressora_remota_endereco")),
+                         ("spooler", "HP DeskJet"))
+        self.assertNotEqual(self.form.valor("modo_impressao"), "termica")
+        self.sem_travar()
+
+    def test_botoes_ao_lado_dos_campos_e_na_barra_abrem_a_lista(self):
+        from src.ui.escolher_impressora_ui import JanelaEscolherImpressora
+
+        def abertas():
+            return [w for w in self.form.winfo_children() if isinstance(w, JanelaEscolherImpressora)]
+        for chave, alvo in (("impressora_termica_endereco", "termica"), ("impressora_remota_endereco", "remota")):
+            self.form.botoes[chave].invoke()
+            self.form.update()
+            self.assertEqual([a.alvo for a in abertas()], [alvo])
+            abertas()[0].destroy()
+        clicar(self.form, "Escolher impressora do computador")
+        self.assertEqual([a.alvo for a in abertas()], ["termica"])
+        abertas()[0].destroy()
+
+    def test_sem_nenhuma_impressora_explica_o_que_fazer(self):
+        from unittest import mock
+        with mock.patch.object(self.so, "listar_impressoras", return_value=[]), \
+                mock.patch.object(self.so, "listar_portas_seriais", return_value=[]):
+            sel = self.abrir_lista()
+        self.assertEqual(sel.grade.total(), 0)
+        self.assertIn("Nenhuma impressora encontrada", sel.lbl.cget("text"))
+        self.responder(1)
+        sel.usar()                                                                     # sem linha escolhida: só avisa
+        self.assertTrue(sel.winfo_exists())
+        self.sem_travar()
+
+    def test_definir_e_valor_nos_tipos_de_campo_da_tela(self):
+        self.form.definir("impressora_termica_cortar", "N")
+        self.form.definir("impressora_termica_codepage", "cp860")
+        self.form.definir("colunas_fita", 32)
+        self.form.definir("impressora_termica_endereco", "CAIXA")
+        self.assertEqual([self.form.valor(c) for c in ("impressora_termica_cortar", "impressora_termica_codepage",
+                                                        "colunas_fita", "impressora_termica_endereco")], ["N", "cp860", "32", "CAIXA"])

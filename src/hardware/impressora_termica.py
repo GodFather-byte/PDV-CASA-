@@ -6,7 +6,8 @@ térmicas de 58mm/80mm) e envia por um de quatro transportes:
   * rede     — socket TCP (padrão porta 9100). Só biblioteca padrão; funciona sem instalar nada.
   * serial   — porta COM (requer `pyserial`; instale com `pip install pyserial`). O endereço é a porta,
                com a velocidade opcional depois de dois-pontos: `COM3` (9600 bps) ou `COM3:19200`.
-  * spooler  — impressora instalada no Windows, em modo RAW (requer `pywin32`).
+  * spooler  — impressora instalada no Windows, pelo nome que o Windows mostra, em modo RAW. Usa o spooler do
+               próprio Windows (ctypes): não precisa instalar nada. `impressoras_so` lista as instaladas.
   * arquivo  — grava os bytes num arquivo ou caminho de dispositivo (ex.: \\\\.\\COM3 ou um
                compartilhamento \\\\PC\\IMPRESSORA). Serve para testes e casos avançados.
 
@@ -15,10 +16,14 @@ a página de código da impressora (padrão CP850, que cobre o português) e cod
 """
 from __future__ import annotations
 
+import ctypes
 import socket
+import sys
+from ctypes import wintypes
 from dataclasses import dataclass
 
 from src.core.erros import ErroNegocio
+from src.hardware import impressoras_so
 
 # -------------------------------------------------------------- comandos ESC/POS
 ESC = b"\x1b"
@@ -170,24 +175,49 @@ def enviar_serial(porta: str, dados: bytes, baud: int = 9600, timeout: float = 5
         com.close()
 
 
+class _DocInfo1(ctypes.Structure):
+    _fields_ = [("pDocName", wintypes.LPWSTR), ("pOutputFile", wintypes.LPWSTR), ("pDatatype", wintypes.LPWSTR)]
+
+
+def _erro_windows() -> str:
+    codigo = ctypes.get_last_error()
+    return f"{ctypes.FormatError(codigo).strip()} [erro {codigo}]" if codigo else "erro desconhecido"
+
+
 def enviar_spooler(nome: str, dados: bytes, documento: str = "PDV Cupom") -> None:
+    """Envia os bytes, em modo RAW, a uma impressora instalada no Windows (o nome que o Windows mostra).
+
+    Usa o spooler do próprio Windows pela biblioteca padrão (ctypes): não precisa de pywin32. Se a impressora
+    estiver desligada, o Windows guarda o trabalho e imprime quando ela voltar. Sem `nome`, usa a padrão do Windows."""
+    if sys.platform != "win32":
+        raise ErroImpressao("A impressão pelo spooler só existe no Windows.")
+    nome = (nome or "").strip() or (impressoras_so.impressora_padrao() or "")
+    if not nome:
+        raise ErroImpressao("Nenhuma impressora do Windows definida (Configurações > Máquinas).")
     try:
-        import win32print  # type: ignore
-    except ImportError:
-        raise ErroImpressao("Impressão pelo Windows em modo RAW precisa de 'pywin32' (pip install pywin32).") from None
-    nome = (nome or "").strip() or win32print.GetDefaultPrinter()
+        spool = impressoras_so.winspool()
+    except OSError as e:
+        raise ErroImpressao(f"Não foi possível usar o spooler do Windows ({e}).") from e
+    handle = ctypes.c_void_p()
+    if not spool.OpenPrinterW(nome, ctypes.byref(handle), None):
+        raise ErroImpressao(f"Impressora '{nome}' não encontrada no Windows ({_erro_windows()}).")
     try:
-        h = win32print.OpenPrinter(nome)
-    except Exception as e:
-        raise ErroImpressao(f"Impressora '{nome}' não encontrada no Windows ({e}).") from e
-    try:
-        win32print.StartDocPrinter(h, 1, (documento, None, "RAW"))
-        win32print.StartPagePrinter(h)
-        win32print.WritePrinter(h, dados)
-        win32print.EndPagePrinter(h)
-        win32print.EndDocPrinter(h)
+        doc = _DocInfo1(documento, None, "RAW")
+        if not spool.StartDocPrinterW(handle, 1, ctypes.byref(doc)):
+            raise ErroImpressao(f"O Windows não aceitou o documento para '{nome}' ({_erro_windows()}).")
+        try:
+            if not spool.StartPagePrinter(handle):
+                raise ErroImpressao(f"O Windows não abriu a página em '{nome}' ({_erro_windows()}).")
+            try:
+                escrito = wintypes.DWORD(0)
+                if not spool.WritePrinter(handle, bytes(dados), len(dados), ctypes.byref(escrito)) or escrito.value != len(dados):
+                    raise ErroImpressao(f"Falha ao enviar os dados para '{nome}' ({_erro_windows()}).")
+            finally:
+                spool.EndPagePrinter(handle)
+        finally:
+            spool.EndDocPrinter(handle)
     finally:
-        win32print.ClosePrinter(h)
+        spool.ClosePrinter(handle)
 
 
 def enviar_arquivo(caminho: str, dados: bytes) -> None:

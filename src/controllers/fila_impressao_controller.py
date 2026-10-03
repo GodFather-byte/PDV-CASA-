@@ -33,7 +33,11 @@ _ACORDAR = threading.Event()
 def _enviar_padrao(item: dict, maquina: dict) -> None:
     """Envia os bytes do item pela conexão atualmente configurada para o destino dele."""
     if item["destino"] == "remota":
-        term.enviar_rede((maquina.get("impressora_remota_endereco") or "").strip(), item["dados"])
+        endereco = (maquina.get("impressora_remota_endereco") or "").strip()
+        if (maquina.get("impressora_remota_conexao") or "") == "spooler":
+            term.enviar_spooler(endereco, item["dados"], "PDV Pedido")
+        else:
+            term.enviar_rede(endereco, item["dados"])
     else:
         ImpressoraTermica.da_maquina(maquina).enviar_bytes(item["dados"])
 

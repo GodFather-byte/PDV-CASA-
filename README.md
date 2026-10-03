@@ -107,13 +107,18 @@ pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno e Lei
 **Configurar** (Configurações > Máquinas):
 
 1. *Impressão de cupons e relatórios* = **Impressora térmica (ESC/POS)** e *Colunas da fita* = 48 (80 mm) ou 32 (58 mm).
-2. *Conexão* e *endereço*:
+2. **Escolha a impressora na lista do computador:** clique em *Escolher impressora do computador* (ou em *Escolher da
+   lista...* ao lado do endereço). O PDV mostra as impressoras instaladas neste Windows, com a porta, o driver e a
+   situação, e as portas COM. As que parecem de cupom (Epson TM, Bematech, Elgin, POS-80...) vêm primeiro; PDF e fax
+   ficam por último. Use *Imprimir página de teste* na linha escolhida e então *Usar esta*: a conexão e o nome são
+   preenchidos sozinhos. Não apareceu a sua? Instale o driver dela no Windows, ligue o cabo e clique em *Atualizar*.
+   Sem a lista, preencha *Conexão* e *endereço* à mão:
 
    | Conexão | Endereço | Observação |
    |---|---|---|
    | Rede (TCP/IP) | `192.168.0.50` ou `192.168.0.50:9100` | Não instala nada; a porta padrão é 9100. |
    | Serial (COM) | `COM3` ou `COM3:19200` | Velocidade padrão 9600; exige `pip install pyserial`. |
-   | Windows RAW | nome da impressora instalada | Exige `pip install pywin32`. |
+   | Impressora do Windows | o nome que o Windows mostra, como `CAIXA` | Usa o spooler do Windows, sem instalar nada. Se a impressora estiver desligada, o Windows guarda o trabalho. |
    | Arquivo/dispositivo | `C:\saida.prn` ou `\\.\COM3` | Grava os bytes; serve para conferir sem impressora. |
 3. *Página de código* (CP850 é o padrão; troque se os acentos saírem errados), *cortar o papel*, *gaveta ligada à
    impressora* e *pino da gaveta* (0 ou 1).
@@ -139,10 +144,11 @@ pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno e Lei
   reduzida. Só o cupom, a pré-conta e o pedido de entrega levam o logotipo. Arquivo ausente ou inválido não impede a
   venda: o cupom sai sem logotipo e o motivo fica no log (`logotipo_invalido`).
 - **2ª via:** Impressora > Reimprimir último cupom (ou por número) reimprime o cupom marcado como 2ª via.
-- **Cozinha/bar:** a *impressora remota* em rede usa a mesma fila (a opção *Pasta de arquivos* só grava os pedidos).
+- **Cozinha/bar:** a *impressora remota*, em rede ou do Windows (também escolhida na lista), usa a mesma fila. A opção
+  *Pasta de arquivos* só grava os pedidos.
 
-**Limites:** não há ECF, NFC-e, SAT nem TEF. Nada foi validado em equipamento real: os testes usam uma impressora TCP
-simulada e arquivos. A página de código, o corte, a gaveta e a velocidade serial variam por modelo; use a página de teste.
+**Limites:** não há ECF, NFC-e, SAT nem TEF. A lista de impressoras foi conferida num Windows real (achou uma Epson TM-T
+USB), mas a impressão em papel ainda não foi validada: os testes usam impressora TCP simulada, spooler simulado e arquivos. A página de código, o corte, a gaveta e a velocidade serial variam por modelo; use a página de teste.
 A fila só sabe se a impressora aceitou os bytes: falta de papel e tampa aberta não são detectadas (o documento conta
 como impresso; reimprima pela 2ª via).
 
