@@ -71,7 +71,8 @@ que se digita.
 
 No **rodapé** do caixa ficam os ícones das posições abertas, cada um com o número e o total embaixo: o **Balcão** (primeiro
 ícone), a **mesa** (mesinha com garrafa e copo), a **comanda** (cartão, ex.: `123`), a **conta enviada** (conta sobre a
-bandeja) e o **relógio** nas paradas além do tempo de inatividade. O ícone da venda que está na tela tem a borda grossa.
+bandeja) e o **relógio** nas paradas além do tempo de inatividade. A **garota** com comissão a pagar aparece com uma **estrela**
+(ver [Comissão das garotas](#comissão-das-garotas)). O ícone da venda que está na tela tem a borda grossa.
 São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
 
 - **Esc volta ao "marcar comanda":** com a venda em andamento, Esc leva ao campo da posição, com o número selecionado:
@@ -93,33 +94,49 @@ São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
 ## Comissão das garotas
 
 Na boate as garotas ganham comissão pelas bebidas. O número de cada garota (156, 180...) é o mesmo da comanda dela, e o
-**código 50** do caixa é o das comissões:
+**código 50** do caixa é o das comissões. Tudo acontece **na própria tela do caixa**, a mesma do balcão, sem abrir janela:
 
 1. No campo **Comanda**, digite o número da garota (ex.: `180`) e Enter.
-2. No campo do código, digite `50` e Enter. Abre a janela *Comissão da garota* já com o número 180 (e o nome, se ela estiver
-   cadastrada).
-3. Digite o **valor da comissão** (ex.: `25` ou `25,00`) e Enter. Ficou marcado no número dela.
+2. No campo do código, digite `50` e Enter. A linha de entrada vira **Garota nº** (já com o 180; a Descrição mostra o nome,
+   se ela estiver cadastrada) e **Valor (R$)**, e o cursor já vai para o valor.
+3. Digite o **valor da comissão** (ex.: `25` ou `25,00`) e Enter. Ficou marcado no número dela e **a via da garota sai na
+   impressora**.
 
-Fora de comanda (no balcão, por exemplo) a janela pergunta o número da garota. O 50 nunca vira produto nem entra na venda: a
-comanda da garota continua vazia e some sozinha, e a comissão fica guardada.
+Fora de comanda (no balcão, por exemplo) o cursor começa em *Garota nº*: digite o número e Enter para ir ao valor. A seta
+para cima volta do valor ao número (para lançar em outra garota) e **Esc cancela** a comissão. O 50 nunca vira produto nem
+entra na venda: a comanda da garota continua vazia e some sozinha, e a comissão fica guardada.
 
+- **A via da garota:** a cada comissão lançada sai uma via (não fiscal) para ela acompanhar: o *valor desta comissão*, a lista
+  de tudo o que ela tem a receber (os lançamentos pendentes, os 15 mais recentes) e o *total a receber*, com hora e operador.
+  Sem impressora configurada (modo "tela") a via só fica gravada na pasta `impressao/` e a barra de estado avisa; falha na
+  impressora nunca desfaz o lançamento. Em Configurações > Caixa: *Imprimir a via da garota a cada comissão lançada*.
+- **As garotas ficam à vista no rodapé:** junto com o balcão, as mesas e as comandas, a garota com comissão a pagar aparece
+  como um ícone (estrela, com o valor a pagar embaixo); clicar abre a comanda dela. Se ela também tem consumo aberto, o ícone
+  da comanda ganha um selo com a estrela. Em Configurações > Mesas e serviço: *Mostrar no rodapé do caixa as garotas com
+  comissão a pagar*.
 - **A comanda mostra o que foi marcado nela:** ao abrir a comanda da garota (ex.: `180`), as comissões marcadas aparecem
   na lista, em verde (código 50, `COMISSÃO (a pagar)`, valor, hora e operador), e a faixa verde de cima mostra o total a pagar.
   As pagas neste turno ficam em cinza, para saber se já foi paga; as canceladas somem. É só leitura e não é venda: o
-  Total continua sendo o dos itens. Para pagar ou cancelar, o botão *Comissões*. Comanda de cliente e mesa não mostram nada
-  disso (mas uma comissão lançada por engano no número de um cliente aparece nela, o que ajuda a achar o erro).
+  Total continua sendo o dos itens. Comanda de cliente e mesa não mostram nada disso (mas uma comissão lançada por engano no
+  número de um cliente aparece nela, o que ajuda a achar o erro).
+- **Pagar e cancelar sem sair da tela:** **F12** na comanda da garota paga tudo o que está pendente: o dinheiro sai da gaveta
+  (uma sangria "Comissão garota 180 NOME", então a conferência do caixa já conta), a gaveta abre e sai um **recibo** com a
+  linha de assinatura; desmarcando a opção, paga fora do caixa (só dá baixa). Se a comanda também tem consumo, o F12 pergunta o
+  que pagar. **Delete** numa linha de comissão cancela aquele lançamento (pede confirmação e, se o operador não tem nível, a
+  senha de supervisor, como no cancelamento de item); comissão já paga não se cancela.
 - **Contra erro de digitação:** havendo garotas cadastradas, um número que não está no cadastro (ou de garota inativa) pede
-  confirmação, e valor acima de R$ 500,00 também. Lançamento errado se cancela na janela *Comissões*, e fica guardado.
-- **Comissões** (botão na barra do caixa): o que há a pagar a cada garota, com os lançamentos dela. *Pagar a garota escolhida*
-  paga tudo o que está pendente: o dinheiro sai da gaveta (uma sangria "Comissão garota 180 NOME", então a conferência do caixa
-  já conta), a gaveta abre e sai um **recibo** com a linha de assinatura. Desmarcando a opção, paga fora do caixa (só dá baixa).
+  confirmação, e valor acima de R$ 500,00 também.
+- **Comissões** (botão na barra do caixa): a lista geral, com o que há a pagar a cada garota e os lançamentos dela, para pagar
+  ou cancelar de uma vez. É um atalho: o dia a dia se faz na tela do caixa.
 - **Troca de turno:** avisa se há comissão a pagar (pague antes de contar a gaveta). O fechamento e a Leitura X trazem a seção
-  *Comissões das garotas*: o lançado no turno, por garota, e o total que ainda falta pagar.
+  *Comissões das garotas*: o lançado no turno, por garota, e o total que ainda falta pagar. O pagamento aparece nas sangrias.
 - **Relatório:** Relatórios > Caixa > *Comissão das garotas*, por garota (total, pago e a pagar) ou lançamento a lançamento, com
   filtro de período, turno, garota e situação.
 - **Cadastro:** Manutenção de Cadastros > *Garotas* (número, nome, ativa). É opcional: serve para mostrar o nome e conferir o número.
-- **Configurações > Caixa:** o *código* que lança a comissão (50; vazio desliga; não pode ser o de um produto) e *Exigir senha
-  de supervisor para lançar comissão* (desligado de fábrica). Pagar segue a regra da sangria e cancelar a do cancelamento.
+- **Configurações > Caixa:** o *código* que lança a comissão (50; vazio desliga; não pode ser o de um produto), *Exigir senha
+  de supervisor para lançar comissão* (desligado de fábrica) e *Marcar, pagar e cancelar a comissão na própria tela do caixa*
+  (ligado; desligado, o 50 abre a janela *Comissão da garota* e o pagamento e o cancelamento ficam só no botão *Comissões*).
+  Pagar segue a regra da sangria e cancelar a do cancelamento.
 - A comissão **não é venda**: não entra no faturamento, no estoque nem na nuvem. Só vira movimento do caixa quando é paga.
 
 ## Fechamento do turno
@@ -136,10 +153,41 @@ noite:
 No painel do fechamento aparecem as contagens e o botão **Conferência do turno** mostra o detalhe na tela; na fita
 impressa as seções só saem quando há ocorrências (a linha das posições abertas sai sempre, com "nenhuma" se não houver).
 
+### Fechamento para passar o caixa
+
+Ao **trocar o turno** o fechamento sai **sozinho na impressora**, pronto para o caixa que sai entregar ao gerente ou ao
+caixa que entra. Ele mostra tudo da noite e termina com o que o gerente precisa para receber o caixa:
+
+- os totais, os recebimentos, o **valor esperado**, o **valor final** que o operador declarou e o resultado em letra grande:
+  **SOBROU R$ x**, **FALTOU R$ x** ou **CAIXA CONFERIDO**;
+- a lista das **sangrias e suprimentos** do turno (hora, valor, motivo e quem fez), com os pagamentos de comissão;
+- a conferência do turno e a seção das comissões das garotas;
+- no fim, o espaço da **justificativa da diferença** (só se sobrou ou faltou) e as linhas de assinatura do **caixa responsável**
+  (quem fechou o turno, com o nome) e do **gerente / quem recebe o caixa**.
+
+Em Configurações > Caixa: *Imprimir o fechamento ao trocar o turno* (ligado) e *Vias do fechamento* (1 a 3; ex.: uma fica no
+caixa e outra com o gerente). Sem impressora configurada (modo "tela") nada sai sozinho: o painel do fechamento tem o botão
+*Imprimir Fechamento*, que serve também para reimprimir. Falha ao imprimir avisa e o turno fecha do mesmo jeito. A Leitura X
+(parcial, no meio do turno) lista as sangrias, mas não leva resultado nem assinatura.
+
+## Controles de caixa de boate
+
+Pesquisando como funciona o caixa de uma boate (comanda de consumo, conferência na saída, sangrias, cancelamentos), entraram
+dois controles. Outras ideias, que mudam regras ou o banco, estão em `docs/ESPECIFICACAO.md` (seção 3).
+
+- **Consulta Comanda** (botão da barra do caixa): na saída, digite a comanda (ou `M5`) e veja se está **PAGA** (cupom, valor e
+  hora), **ABERTA - A PAGAR** (valor e itens) ou sem registro. Vale a venda mais recente daquele número, porque o cartão da
+  comanda é reutilizado a noite toda. Não mexe na venda que está na tela; no número de uma garota mostra também a comissão a pagar.
+- **Alerta de sangria** (Configurações > Caixa > *Avisar para fazer sangria quando o dinheiro da gaveta passar de*, em R$; 0
+  desliga): ao fechar uma venda, se o dinheiro esperado na gaveta passou do limite, a barra de estado fica laranja pedindo a
+  sangria (F7). Só avisa que passou: não mostra quanto há, para o operador seguir contando a gaveta sem ver o esperado.
+- **Sem programação nova:** *taxa de comanda perdida* e *consumação mínima na entrada* se fazem cadastrando um produto
+  (ex.: `TAXA COMANDA PERDIDA`) e lançando-o na comanda.
+
 ## Impressão térmica
 
 O caixa imprime em impressora térmica ESC/POS (Epson TM, Bematech, Elgin, Tanca e compatíveis; 58 mm ou 80 mm). Cupom,
-pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno e Leituras X/Z saem por ela. Todos são
+pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno, recibo e via da comissão das garotas e Leituras X/Z saem por ela. Todos são
 **não fiscais**.
 
 **Configurar** (Configurações > Máquinas):
@@ -176,7 +224,8 @@ pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno e Lei
   pagamento da venda tem a marca *Fica na gaveta* (dinheiro, cheque e ticket, de fábrica) ou quando há troco, e também
   na sangria e na tecla **F11**. Cartão e Pix não abrem a gaveta.
 - **Vias:** o cupom sai com o maior *Nº de vias* (1 a 3) entre as formas de pagamento usadas (Manutenção de Cadastros >
-  Tipos de Pagamento), com corte entre as vias; a gaveta abre uma vez só.
+  Tipos de Pagamento), com corte entre as vias; a gaveta abre uma vez só. O fechamento do turno usa *Vias do fechamento*
+  (Configurações > Caixa).
 - **Logotipo:** informe o caminho de um BMP em Configurações > Loja e ligue *Imprimir o logotipo da loja no cupom*
   (Configurações > Máquinas). Vale BMP sem compressão de 1, 4, 8, 24 ou 32 bits; imagem mais larga que o papel é
   reduzida. Só o cupom, a pré-conta e o pedido de entrega levam o logotipo. Arquivo ausente ou inválido não impede a

@@ -41,12 +41,13 @@ Convenção: `C` = controlador (regra, em `src/controllers/`), `UI` = tela (em `
 | Lançar item: código, quantidade, Enter; lista por nome; Consultar; observação (tecla O) | UI `caixa_ui` · C `caixa_controller.adicionar_item` |
 | Cancelar item e venda inteira; senha de supervisor | UI `caixa_ui.menu_cancelar` · C `acesso_controller.validar_supervisor` |
 | Pagamento (F12): formas, múltiplos pagamentos, desconto % e valor, serviço editável, troco, contra-vale | UI `caixa_pagamento` · C `caixa_controller.liquidar/fechar` |
-| Comissão das garotas (código 50), pagamento com recibo, cadastro e relatório | C `comissao_controller`, `relatorio_comissoes` · UI `comissao_ui`, `caixa_ui` |
+| Comissão das garotas (código 50), na tela do caixa; via da garota; pagamento com recibo, cadastro e relatório | C `comissao_controller`, `relatorio_comissoes`, `impressao_controller.via_comissao` · UI `comissao_ui`, `caixa_ui`, `painel_mesas` |
 | Mesas e comandas (F4, `123` e `M5`), transferir inteira (F10), várias (T) e parte dos itens, pré-conta (F8), tempo de inatividade | C `caixa_controller`, `core/posicao` · UI `caixa_ui` |
 | Repique (F9), sangria (F7), gaveta (F11), balança (F2), leitor óptico (F3) | UI `caixa_ui` · `hardware/dispositivos.py` (interfaces) |
 | Caderneta (F5): escolher/incluir/consultar cliente, débito, crédito, excedente vira crédito | C `caderneta_controller`, `caixa_controller` · UI `clientes_ui` |
 | Entrega (F6): taxa por bairro, troco para quanto, entregador (E), pendentes | C `entrega_controller` · UI `clientes_ui`, `caixa_ui` |
-| Troca de turno: valor declarado antes do esperado, sobra/falta verde ou vermelho, imprimir e gerar arquivo; conferência (posições abertas, cancelamentos, transferências) | C `turno_controller`, `conferencia_turno` · UI `caixa_dialogos.PainelFechamento` |
+| Troca de turno: valor declarado antes do esperado, sobra/falta verde ou vermelho, imprimir e gerar arquivo; conferência (posições abertas, cancelamentos, transferências); fechamento impresso sozinho com sobra/falta, sangrias e assinaturas | C `turno_controller`, `conferencia_turno`, `impressao_controller.fechamento` · UI `caixa_dialogos` (`trocar_turno`, `imprimir_fechamento`, `PainelFechamento`) |
+| Consulta de comanda na saída e alerta de sangria (acréscimos nossos, de boate) | C `caixa_controller.situacao_posicao`, `turno_controller.dinheiro_esperado` · UI `caixa_ui` |
 | Leitura X e Redução Z | **Gerenciais, não fiscais** (ver seção 3) |
 
 ### Manual da versão web
@@ -87,15 +88,31 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   do `log_eventos`: eventos `item_cancelado` e `transferencia`, sem tabela nova). Um item cancelado aparece no local atual
   da posição (se ela foi transferida depois, o nome novo). Só avisa: não bloqueia a troca de turno com posições abertas.
 - **Comissão das garotas** (pedido do dono, boate; esquema v7): o número da garota é o da comanda dela (comanda 180 = garota
-  180) e o código 50 (`codigo_comissao`) abre a janela do valor. É um registro à parte (`comissoes_garotas`), não uma venda:
+  180) e o código 50 (`codigo_comissao`) lança a comissão **na própria linha de entrada do caixa**, sem janela: "Garota nº" (o
+  da comanda que está na tela, editável) e "Valor (R$)"; Enter lança, Esc cancela (`comissao_na_linha`; desligada, o 50 abre a
+  janela de antes). É um registro à parte (`comissoes_garotas`), não uma venda:
   fica fora do faturamento, do estoque e da nuvem, e a comanda da garota continua vazia. Situações: pendente, paga e
-  cancelada (nada se apaga). Pagar tudo o que está pendente de uma garota registra uma sangria no turno (a conferência da
-  gaveta já conta), abre a gaveta e imprime um recibo para assinar; também dá para pagar fora do caixa. O cadastro de
+  cancelada (nada se apaga). Pagar tudo o que está pendente de uma garota (F12 na comanda dela, ou o botão Comissões) registra
+  uma sangria no turno (a conferência da gaveta já conta), abre a gaveta e imprime um recibo para assinar; também dá para pagar
+  fora do caixa. Cancelar é Delete na linha da comissão (só pendente). **A cada lançamento sai a via da garota** (`via_comissao`:
+  o valor desta comissão, as pendentes e o total a receber; `imprimir_via_comissao`): sem impressora fica só no histórico, e
+  falha de impressão nunca desfaz o lançamento. As garotas com comissão a pagar viram **ícones no rodapé** (estrela; selo na
+  comanda que também tem consumo; `painel_mostra_garotas`), na mesma faixa do balcão. O cadastro de
   garotas (`garotas`) é opcional e serve para mostrar o nome e pedir confirmação de número desconhecido. Ao abrir a comanda
   da garota, a lista mostra as comissões marcadas nela (pendentes de qualquer turno e as pagas neste turno, guardadas por
   `pago_turno_id`, esquema v8), em linhas só de leitura, e a faixa de cima o total a pagar; o Total da comanda segue sendo só o dos itens. O código 50 é
   reservado: nenhum produto pode usá-lo (código, atalho ou barras). **A confirmar com o dono:** se as garotas são pagas no
   fim da noite com dinheiro da gaveta (é o que fizemos) e se a comissão deve abater consumo da própria garota.
+- **Fechamento para passar o caixa** (pedido do dono): ao trocar o turno o fechamento é impresso sozinho
+  (`imprimir_fechamento_ao_trocar`, `vias_fechamento` de 1 a 3; sem impressora, só o botão do painel). Além dos totais traz o
+  resultado em palavras e letra grande (SOBROU / FALTOU / CAIXA CONFERIDO), as sangrias e suprimentos do turno (com os pagamentos
+  de comissão), a conferência do turno, o espaço da justificativa (se houve diferença) e as assinaturas do caixa responsável
+  (`turnos.fechado_por`) e do gerente. Segue o modelo de passagem de caixa que se vê em sistemas de bar e boate (sobra/falta,
+  justificativa e assinatura). A Leitura X é parcial e não leva resultado nem assinatura.
+- **Consulta de comanda e alerta de sangria** (pesquisa sobre caixa de boate): a consulta mostra se a comanda ou mesa está paga
+  (cupom, valor e hora), aberta a pagar ou sem registro, pela venda mais recente do número (o cartão é reutilizado). O alerta
+  (`limite_gaveta`, em R$; 0 desliga) usa `TurnoController.dinheiro_esperado`, a mesma conta do "Valor esperado" do fechamento
+  (um teste garante que as duas batem), e só diz que passou do limite, sem mostrar o valor, para não quebrar a conferência cega.
 - **Estoque baixa ao fechar a venda**, não ao lançar o item; cancelar o cupom estorna. Estoque negativo é permitido.
 - **Promoções** (período, dias da semana, horário) valem em conjunto; havendo mais de uma, vence a de menor
   preço. Faixas que viram a meia-noite funcionam (ex.: 22:00 às 02:00).
@@ -144,3 +161,4 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 | Colunas "Turno 1 a 3" e "Figura" do tipo de pagamento | O manual não explica o uso; omitidas. |
 | Acesso "Transportadoras" da versão web | Citado sem descrição; omitido. |
 | Campos de nota fiscal de compra (BC ICMS, chave de acesso...) | Fora de escopo (dependem de consultor fiscal, segundo o próprio manual). |
+| Controles de boate pesquisados e ainda não feitos | **Consumação mínima** (a casa exige um gasto mínimo por comanda e cobra a diferença na saída: exige marcar produtos que contam e uma regra no pagamento, com mudança de esquema). **Pré-pago/pulseira** (crédito carregado na entrada e debitado no consumo). **Motivo obrigatório no cancelamento de item e de cupom** (hoje o caixa grava sempre "cancelada no caixa" no cupom e, no item, só quem cancelou). **Sangria periódica por horário** (além do limite de dinheiro, já feito). **Taxa de comanda perdida** e **consumação na entrada** já funcionam cadastrando um produto e lançando-o na comanda. |
