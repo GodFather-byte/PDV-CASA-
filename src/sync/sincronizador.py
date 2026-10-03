@@ -1,83 +1,65 @@
 import time
-from urllib.error import URLError
-from urllib.request import urlopen
-
+import requests
 from src.database.conexao import BancoDados
+from src.controllers.sync_controller import SyncController
 
 class Sincronizador:
     def __init__(self):
         self.banco = BancoDados()
-        # URL do seu futuro servidor (onde você vai ver os relatórios)
-        self.api_url = "https://api.seupdv.com.br/v1/sincronizar"
+        self.sync_ctrl = SyncController(self.banco)
+        # URL do backend FastAPI (Evicommerce)
+        self.api_url = "http://localhost:8000/v1/sincronizar"
+        self.token = "MeuTokenSuperSeguro"
 
     def verificar_conexao(self):
-        """
-        Testa se tem internet tentando acessar o Google rapidinho.
-        """
         try:
-            with urlopen("https://www.google.com", timeout=3):
-                pass
+            requests.get("http://localhost:8000/docs", timeout=3)
             return True
-        except (URLError, TimeoutError):
+        except requests.RequestException:
             return False
 
     def enviar_vendas_pendentes(self):
-        """
-        O coração do sistema offline-first.
-        """
-        # 1. Busca vendas não sincronizadas (sincronizado = 0)
-        cursor = self.banco.conexao.cursor()
-        cursor.execute(
-            """SELECT id, uuid, total_cent, status FROM vendas
-               WHERE sincronizado = 0 AND status = 'fechada'"""
-        )
-        vendas_pendentes = cursor.fetchall()
-
-        if not vendas_pendentes:
-            print("Nada para sincronizar.")
+        pendentes = self.sync_ctrl.contagem_pendentes()
+        if pendentes == 0:
             return
 
-        print(f"Encontrei {len(vendas_pendentes)} vendas offline. Tentando enviar...")
+        print(f"Encontrei {pendentes} vendas offline. Montando lote...")
 
         if not self.verificar_conexao():
-            print("Sem internet. Tentarei novamente mais tarde.")
+            print("Sem conexao com backend. Tentarei novamente mais tarde.")
             return
 
-        # 2. Loop de envio (Simulação por enquanto)
-        for venda in vendas_pendentes:
-            venda_id = venda[0]
-            total = venda[2] / 100
-
-            # AQUI ENTRARIA O CÓDIGO REAL DE ENVIO PARA SUA API
-            enviado_sucesso = self._simular_envio_api(venda)
-
-            if enviado_sucesso:
-                # 3. Se a API confirmou o recebimento, atualizamos o banco local
-                cursor.execute(
-                    """UPDATE vendas SET sincronizado = 1
-                       WHERE id = ? AND status = 'fechada'""",
-                    (venda_id,),
-                )
-                self.banco.conexao.commit()
-                print(f"Venda {venda_id} (R$ {total}) sincronizada com sucesso!")
-
-    def _simular_envio_api(self, dados_venda):
-        """
-        MOCK: Finge que enviou para a nuvem.
-        No futuro, trocaremos isso por um 'requests.post(self.api_url, json=dados)'
-        """
-        time.sleep(0.5) # Simula o delay da internet
-        return True # Finge que deu certo sempre
+        lote = self.sync_ctrl.montar_lote(limite=50)
+        
+        try:
+            resposta = requests.post(
+                self.api_url, 
+                json=lote, 
+                headers={"Authorization": f"Bearer {self.token}"},
+                timeout=10
+            )
+            
+            if resposta.status_code == 200:
+                dados = resposta.json()
+                aceitas = dados.get("aceitas", [])
+                
+                if aceitas:
+                    confirmadas = self.sync_ctrl.confirmar(aceitas)
+                    print(f"Sucesso: {confirmadas} vendas sincronizadas (confirmadas)!")
+                else:
+                    print("Servidor nao retornou UUIDs confirmados.")
+            else:
+                print(f"Erro no servidor ({resposta.status_code}): {resposta.text}")
+                
+        except requests.RequestException as e:
+            print(f"Erro de rede ao enviar lote: {e}")
 
     def iniciar_loop(self, intervalo=60):
-        """
-        Roda infinitamente a cada X segundos.
-        """
-        print("Robô de sincronização iniciado...")
+        print("Robo de sincronizacao iniciado...")
         while True:
             self.enviar_vendas_pendentes()
             time.sleep(intervalo)
 
 if __name__ == "__main__":
     robo = Sincronizador()
-    robo.iniciar_loop(intervalo=10) # Tenta sincronizar a cada 10 segundos para teste
+    robo.iniciar_loop(intervalo=10)
