@@ -2,6 +2,11 @@ import flet as ft
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.venda_controller import VendaController
 from src.ui.cadastros_ui import criar_tela_cadastros
+from src.ui.mesas_ui import criar_tela_mesas
+from src.ui.estoque_ui import criar_tela_estoque
+from src.ui.caderneta_ui import criar_tela_caderneta
+
+
 
 
 def main(page: ft.Page):
@@ -207,7 +212,10 @@ def main(page: ft.Page):
         selected_index=0,
         tabs=[
             ft.Tab(text="Caixa", content=ft.Row([coluna_esquerda, coluna_direita], expand=True)),
-            ft.Tab(text="Admin (Cadastros)", content=criar_tela_cadastros(page))
+            ft.Tab(text="Admin (Cadastros)", content=criar_tela_cadastros(page)),
+            ft.Tab(text="Mesas (Comandas)", content=criar_tela_mesas(page)),
+            ft.Tab(text="Lançamentos (Estoque)", content=criar_tela_estoque(page)),
+            ft.Tab(text="Caderneta (Fiado)", content=criar_tela_caderneta(page))
         ]
     )
 
