@@ -87,6 +87,14 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 - **Conta mensal** repete o mesmo valor por N meses (aluguel, internet). Já a compra lançada em contas a pagar
   em N meses DIVIDE o total (os centavos que sobram vão na 1ª parcela).
 - **Cupom** é numerado ao fechar ou cancelar. Só dá para cancelar cupom do turno ainda aberto.
+- **Impressão térmica** (`hardware/impressora_termica.py`, `controllers/fila_impressao_controller.py`): todo documento
+  vai para uma **fila** (`fila_impressao`, esquema v5) e uma thread com conexão própria o envia, então impressora
+  fora do ar não trava o caixa. A ordem é preservada por destino (caixa, cozinha/bar); tentativas após 5, 10, 20,
+  40 e 60 s e depois a cada minuto, até 60, quando o item vira `erro` e espera o operador (nada pendente é apagado
+  sozinho; impresso e cancelado somem após 7 dias). A gaveta abre pelo pulso da impressora quando alguma forma
+  usada tem `na_gaveta`, quando há troco e na sangria. As vias são o maior `tipos_pagamento.vias` (1 a 3). O
+  manual pede logotipo BMP de 180x121 em 256 cores; aceitamos BMP sem compressão (1, 4, 8, 24 ou 32 bits) e
+  reduzimos o que passar da largura do papel. Tudo é não fiscal.
 - **Limpeza do movimento** apaga até o dia anterior à data informada, faz backup antes, recusa apagar vendas não
   enviadas à nuvem quando a sincronização está configurada e preserva o saldo da caderneta.
 - **Módulos de acesso**: o manual cita 31 módulos sem listá-los; foram definidos 40 (ver `sementes.ACESSOS`),
@@ -105,11 +113,13 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 |------|----------|
 | Impressora fiscal (ECF), NFC-e, SAT | Não emite documento fiscal. Cupom é "NÃO FISCAL". Leitura X e Redução Z são relatórios gerenciais. Campos fiscais do produto (NCM, alíquotas) são guardados mas não usados. |
 | TEF (cartões) | Campos do cadastro existem; não há integração. |
-| Balança Toledo/Filizola e gaveta | Há a interface; a leitura/abertura automática não foi implementada (depende do equipamento). O caixa pede o peso digitado e registra a abertura de gaveta. |
+| Balança Toledo/Filizola | Há a interface; a leitura automática não foi implementada (depende do equipamento). O caixa pede o peso digitado. |
+| Gaveta | Abre pelo pulso da impressora térmica (ESC p) e a abertura manual é registrada. Sem impressora térmica configurada o caixa só registra. Não testada em gaveta real. |
+| Impressora térmica em equipamento real | Testada só com impressora TCP simulada e arquivo. Faltam modelos reais: página de código, corte, pino da gaveta e velocidade serial variam. |
 | Rede com vários caixas no mesmo banco | O banco SQLite é local a cada terminal. |
 | Sincronização com a nuvem em loja | API (FastAPI) e cliente existem, com testes de contrato; falta validar em loja, HTTPS e token por loja. Cadastros descendo da nuvem: não existe. |
 | Tabela de preços por empresa (multi-loja) | Uma única tabela de preços. |
-| E-mail, logotipo no cupom, foto do subgrupo | Os campos são guardados; não são usados. |
+| E-mail da loja, foto do subgrupo | Os campos são guardados; não são usados. (O logotipo da loja é impresso no cupom térmico quando a opção está ligada.) |
 | Colunas "Turno 1 a 3" e "Figura" do tipo de pagamento | O manual não explica o uso; omitidas. |
 | Acesso "Transportadoras" da versão web | Citado sem descrição; omitido. |
 | Campos de nota fiscal de compra (BC ICMS, chave de acesso...) | Fora de escopo (dependem de consultor fiscal, segundo o próprio manual). |

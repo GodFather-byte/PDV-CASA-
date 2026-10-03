@@ -11,7 +11,8 @@ sincronização idempotente com a nuvem.
 > caderneta, entrega, estoque, contas, relatórios, utilitários e configurações dos
 > manuais Willyan) está implementado em Python + SQLite + Tkinter e coberto
 > por testes automatizados de regras e de telas. Ainda **não foi validado em loja**: não há
-> emissão fiscal, TEF nem leitura real de balança/gaveta (ver
+> emissão fiscal, TEF nem leitura real de balança, e a impressora térmica e a gaveta só foram testadas com
+> impressora simulada (ver
 > [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a sincronização com a nuvem (API + cliente) ainda não foi testada em loja.
 
 ## Começar
@@ -47,9 +48,10 @@ sistema novo**; o protótipo de console `src/main.py` também é legado.
   cancelamento estorna os movimentos.
 - **Cadastros e operação:** produtos, clientes, operadores, formas de pagamento,
   configurações, turnos, contas, caderneta e entregas.
-- **Relatórios e impressão:** há controladores para relatórios de vendas/gestão e
-  para texto de cupom não fiscal, saída em tela/arquivo/Windows, Leitura X e
-  Redução Z gerenciais. Não há emissão fiscal nem homologação de periféricos.
+- **Relatórios e impressão:** relatórios de vendas/gestão e cupom não fiscal com saída em tela, arquivo,
+  impressora do Windows ou **impressora térmica ESC/POS** (fila com reenvio automático, gaveta, vias e
+  logotipo; ver [Impressão térmica](#impressão-térmica)), Leitura X e Redução Z gerenciais. Não há emissão
+  fiscal nem homologação de periféricos.
 - **Dados para nuvem:** `SyncController` monta lotes identificados por UUID e
   registra apenas confirmações explícitas do servidor.
 - **Qualidade:** a suíte cobre regras de caixa, estoque, cadastro, formatação,
@@ -82,10 +84,58 @@ São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
 - Relatórios: "Mesas e comandas" mostra a posição como `5` ou `C2`; o filtro *Modalidade* separa `mesa` de `comanda`.
 - A **nuvem** ainda recebe a comanda como venda de mesa (o contrato de sincronização não mudou).
 
+## Impressão térmica
+
+O caixa imprime em impressora térmica ESC/POS (Epson TM, Bematech, Elgin, Tanca e compatíveis; 58 mm ou 80 mm). Cupom,
+pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno e Leituras X/Z saem por ela. Todos são
+**não fiscais**.
+
+**Configurar** (Configurações > Máquinas):
+
+1. *Impressão de cupons e relatórios* = **Impressora térmica (ESC/POS)** e *Colunas da fita* = 48 (80 mm) ou 32 (58 mm).
+2. *Conexão* e *endereço*:
+
+   | Conexão | Endereço | Observação |
+   |---|---|---|
+   | Rede (TCP/IP) | `192.168.0.50` ou `192.168.0.50:9100` | Não instala nada; a porta padrão é 9100. |
+   | Serial (COM) | `COM3` ou `COM3:19200` | Velocidade padrão 9600; exige `pip install pyserial`. |
+   | Windows RAW | nome da impressora instalada | Exige `pip install pywin32`. |
+   | Arquivo/dispositivo | `C:\saida.prn` ou `\\.\COM3` | Grava os bytes; serve para conferir sem impressora. |
+3. *Página de código* (CP850 é o padrão; troque se os acentos saírem errados), *cortar o papel*, *gaveta ligada à
+   impressora* e *pino da gaveta* (0 ou 1).
+4. Confira em Utilitários > **Fila de impressão** > *Imprimir página de teste*.
+
+**Como imprime**
+
+- **Fila:** o documento é gravado no banco na hora e uma thread o envia. Impressora desligada, sem papel ou fora da
+  rede não trava o caixa: o documento espera e sai sozinho quando ela volta (novas tentativas após 5, 10, 20, 40 e 60 s,
+  e depois a cada minuto; passada cerca de uma hora vira *erro* e aguarda o operador). A ordem de cada destino (caixa e
+  cozinha/bar) é preservada. Os já impressos ou cancelados saem da lista depois de 7 dias; pendentes e com erro nunca
+  são apagados sozinhos.
+- **Indicador:** o alto do caixa mostra *Impressora: ok*, *Impressora fora? N na fila* ou *N com erro (reenviar)*. Clicar
+  nele abre a **fila**, onde se reenvia, cancela e limpa (também em Impressora > Fila de impressão, no caixa, e em
+  Utilitários).
+- **Gaveta:** abre pelo pulso da própria impressora (com *Gaveta ligada à impressora* marcada) quando alguma forma de
+  pagamento da venda tem a marca *Fica na gaveta* (dinheiro, cheque e ticket, de fábrica) ou quando há troco, e também
+  na sangria e na tecla **F11**. Cartão e Pix não abrem a gaveta.
+- **Vias:** o cupom sai com o maior *Nº de vias* (1 a 3) entre as formas de pagamento usadas (Manutenção de Cadastros >
+  Tipos de Pagamento), com corte entre as vias; a gaveta abre uma vez só.
+- **Logotipo:** informe o caminho de um BMP em Configurações > Loja e ligue *Imprimir o logotipo da loja no cupom*
+  (Configurações > Máquinas). Vale BMP sem compressão de 1, 4, 8, 24 ou 32 bits; imagem mais larga que o papel é
+  reduzida. Só o cupom, a pré-conta e o pedido de entrega levam o logotipo. Arquivo ausente ou inválido não impede a
+  venda: o cupom sai sem logotipo e o motivo fica no log (`logotipo_invalido`).
+- **2ª via:** Impressora > Reimprimir último cupom (ou por número) reimprime o cupom marcado como 2ª via.
+- **Cozinha/bar:** a *impressora remota* em rede usa a mesma fila (a opção *Pasta de arquivos* só grava os pedidos).
+
+**Limites:** não há ECF, NFC-e, SAT nem TEF. Nada foi validado em equipamento real: os testes usam uma impressora TCP
+simulada e arquivos. A página de código, o corte, a gaveta e a velocidade serial variam por modelo; use a página de teste.
+
 ## Arquitetura
 
 - `src/controllers/`: regras de negócio do PDV local.
 - `src/database/`: esquema e acesso ao SQLite local.
+- `src/hardware/`: impressora térmica ESC/POS (rede, serial, spooler, arquivo), logotipo BMP e interfaces de
+  balança, gaveta e leitor.
 - `src/core/`: formatação monetária, segurança, erros e utilitários.
 - `src/ui/`: interface Tkinter (`app.py` é a janela principal, `caixa_ui.py` o caixa); telas Flet antigas congeladas.
 - `tests/`: regras de negócio, telas (com um robô que opera as janelas modais) e o teste de fumaça.
