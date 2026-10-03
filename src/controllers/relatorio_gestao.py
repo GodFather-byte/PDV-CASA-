@@ -91,7 +91,7 @@ class RelatoriosGestao:
         return rel
 
     def posicao_estoque_periodo(self, f: dict) -> Relatorio:
-        """Evicommerce 'Estoque': para cada produto, soma de cada tipo de movimento no período."""
+        """Posição do estoque da versão web: para cada produto, soma de cada tipo de movimento no período."""
         onde, p = ["1=1"], []
         if f.get("de"): onde.append("date(m.criado_em) >= ?"); p.append(f["de"])
         if f.get("ate"): onde.append("date(m.criado_em) <= ?"); p.append(f["ate"])

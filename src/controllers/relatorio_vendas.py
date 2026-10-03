@@ -1,4 +1,4 @@
-"""Relatórios de vendas e de caixa (manual ADM seção 6.01 a 6.11 e Evicommerce):
+"""Relatórios de vendas e de caixa (manual ADM seção 6.01 a 6.11 e versão web):
 venda no período, por grupo, entradas/saídas do caixa, fechamentos, comandas, garçons,
 C.M.V., comissões, informativo por dia, por hora e cancelados."""
 from __future__ import annotations
@@ -352,7 +352,7 @@ class RelatoriosVendas:
         rel.add("TOTAL", "", M(total), estilo="total")
         return rel
 
-    # ------------------------------------------------ Evicommerce: informativos
+    # ------------------------------------------------ versão web: informativos
     def informativo_dias(self, f: dict) -> Relatorio:
         onde, p = self._onde_vendas(f)
         rel = Relatorio("Informativo de vendas", [Coluna("Data", 10), Coluna("Dia", 8), Coluna("Cupons", 7, "d"),

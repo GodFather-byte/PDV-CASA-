@@ -1,4 +1,4 @@
-"""Lançamento de contas a pagar/receber (manual ADM 5.1 e Evicommerce 'Contas')."""
+"""Lançamento de contas a pagar/receber (manual ADM 5.1 e versão web 'Contas')."""
 from __future__ import annotations
 
 from src.core import formatacao as fmt

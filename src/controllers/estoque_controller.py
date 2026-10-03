@@ -1,4 +1,4 @@
-"""Lançamentos de estoque (manual ADM 5.2 e Evicommerce): compra, entrada, saída,
+"""Lançamentos de estoque (manual ADM 5.2 e versão web): compra, entrada, saída,
 descarte, contagem/diferença, inicial, pedido (vira compra ao confirmar a entrega) e
 descarte de produtos acabados. Também dá baixa/estorno de vendas.
 

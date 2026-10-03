@@ -1,7 +1,7 @@
 # Especificação: manuais × implementação
 
-Fontes: **MANUAL ADM LOCAL** (administração do Virtual.Net/ViCommerce), **MANUAL CAIXA** (operação de
-venda) e **MANUAL EVICOMMERCE** (versão web). Este documento liga cada seção dos manuais ao código,
+Fontes: **MANUAL ADM LOCAL** (administração do Virtual.Net), **MANUAL CAIXA** (operação de
+venda) e o manual da **versão web**. Este documento liga cada seção dos manuais ao código,
 registra as decisões tomadas onde o manual não definia a regra e lista o que **não** foi feito.
 
 Convenção: `C` = controlador (regra, em `src/controllers/`), `UI` = tela (em `src/ui/`), `T` = teste.
@@ -48,7 +48,7 @@ Convenção: `C` = controlador (regra, em `src/controllers/`), `UI` = tela (em `
 | Troca de turno: valor declarado antes do esperado, sobra/falta verde ou vermelho, imprimir e gerar arquivo | C `turno_controller.fechar` · UI `caixa_dialogos.PainelFechamento` |
 | Leitura X e Redução Z | **Gerenciais, não fiscais** (ver seção 3) |
 
-### MANUAL EVICOMMERCE (web)
+### Manual da versão web
 
 Aproveitado no PDV local: estoque Inicial, Pedido (vira Compra ao confirmar a entrega) e Descarte de
 acabados; contas mensais; transferência entre contas; relatórios Informativo, Horas, Cancelados,
@@ -100,5 +100,5 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 | Tabela de preços por empresa (multi-loja) | Uma única tabela de preços. |
 | E-mail, logotipo no cupom, foto do subgrupo | Os campos são guardados; não são usados. |
 | Colunas "Turno 1 a 3" e "Figura" do tipo de pagamento | O manual não explica o uso; omitidas. |
-| Acesso "Transportadoras" do Evicommerce | Citado sem descrição; omitido. |
+| Acesso "Transportadoras" da versão web | Citado sem descrição; omitido. |
 | Campos de nota fiscal de compra (BC ICMS, chave de acesso...) | Fora de escopo (dependem de consultor fiscal, segundo o próprio manual). |

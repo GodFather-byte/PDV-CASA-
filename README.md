@@ -7,7 +7,7 @@ sincronização idempotente com a nuvem.
 
 > **Estado do projeto:** em desenvolvimento. O sistema local (cadastros, caixa, mesas,
 > caderneta, entrega, estoque, contas, relatórios, utilitários e configurações dos
-> manuais Virtual.Net/ViCommerce) está implementado em Python + SQLite + Tkinter e coberto
+> manuais Virtual.Net) está implementado em Python + SQLite + Tkinter e coberto
 > por testes automatizados de regras e de telas. Ainda **não foi validado em loja**: não há
 > emissão fiscal, TEF nem leitura real de balança/gaveta (ver
 > [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a sincronização com a nuvem (API + cliente) ainda não foi testada em loja.
