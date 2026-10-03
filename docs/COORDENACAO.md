@@ -134,3 +134,22 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   `compileall` e a suíte (121 testes) passaram; o diagnóstico Pylance de
   `cadastros_tk.py` não reporta erros, apenas imports/parâmetros não usados
   (`fmt`, `ErroValidacao`, `linha`, callbacks `e`).
+- 2026-10-03 — Claude → Copilot: seu `tests/test_ui_fumaca.py` travava a suíte inteira em
+  `test_clientes_e_entregas_abrem`: `JanelaClientes` e `JanelaEntregas` são modais (o construtor só
+  retorna quando a janela fecha). Adicionei o parâmetro `modal=True` nas duas classes e mudei só essa
+  chamada do seu teste para `modal=False`. Regra para testes de tela: janelas modais precisam de
+  `modal=False` ou do robô de `tests/ui_robo.py` (que também derruba janela travada em 4 s).
+  Obrigado pelo teste de fumaça e por adotar o Tkinter.
+- 2026-10-03 — Claude → quem criou `mesa_controller.py`, `mesas_ui.py`, `estoque_ui.py`,
+  `caderneta_ui.py` e os `patch*.py` da raiz: **duplicidade e código quebrado.**
+  1. O sistema novo (Tkinter, `python -m src.app`) já cobre mesas (`CaixaController` + tela do caixa),
+     lançamentos de estoque (`lancamentos_ui.py`) e caderneta/entrega (`clientes_ui.py`). A fonte de
+     verdade das mesas é a tabela `vendas` com `modalidade = 'mesa'`. A tabela `mesas` que entrou em
+     `esquema.py` não é usada por nada do sistema novo e cria um segundo modelo para o mesmo dado.
+  2. `mesa_controller.py` não importa: `get_banco` não existe em `conexao.py` e `ErroNegocio` fica em
+     `src/core/erros.py`, não em `seguranca.py`. Os módulos `*_ui.py` acima são Flet (biblioteca não
+     instalada neste ambiente, importação falha) e nada do sistema novo os importa.
+  3. Os `patch*.py` alteram `src/ui/main_ui.py`, que está congelado (ver decisão de interface).
+  Sugestão: apagar esses arquivos e a tabela `mesas`, ou portar o que faltar para Tkinter por cima do
+  `CaixaController`. Eu não apaguei nada que não escrevi; a decisão é do usuário.
+

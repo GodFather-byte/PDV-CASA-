@@ -112,10 +112,11 @@ class JanelaCaixa(tk.Toplevel):
 
         corpo = ttk.Frame(self, padding=12)
         corpo.pack(fill="both", expand=True)
-        self.painel_mesas = ttk.LabelFrame(corpo, text="Mesas abertas (Enter chama a mesa, T transfere para outra)", padding=8)
+        self.painel_mesas = ttk.LabelFrame(corpo, text="Mesas abertas", padding=8)
         self.grade_mesas = tema.Grade(self.painel_mesas, [("pos", "Mesa", 60, "center"), ("sit", "Situação", 130, "w"),
                                                            ("tot", "Total", 90, "e")], altura=14)
         self.grade_mesas.pack(fill="both", expand=True)
+        ttk.Label(self.painel_mesas, text="Enter chama a mesa; T transfere outras para ela", wraplength=210, foreground=tema.COR["suave"]).pack(anchor="w", pady=(6, 0))
         self.grade_mesas.tag("enviada", foreground=tema.COR["aviso"])
         self.grade_mesas.tag("parada", foreground=tema.COR["perigo"])
         self.grade = tema.Grade(corpo, [("cod", "Código", 120, "w"), ("prod", "Produto", 330, "w"), ("un", "Un", 50, "w"),
@@ -168,10 +169,18 @@ class JanelaCaixa(tk.Toplevel):
 
     # ============================================================== estado
     def _relogio(self) -> None:
-        if not self.winfo_exists():
-            return
-        self.lbl_hora.configure(text=fmt.agora_dt().strftime("%d/%m/%Y  %H:%M:%S"))
-        self.after(1000, self._relogio)
+        try:
+            self.lbl_hora.configure(text=fmt.agora_dt().strftime("%d/%m/%Y  %H:%M:%S"))
+            self._id_relogio = self.after(1000, self._relogio)
+        except tk.TclError:      # janela já destruída
+            pass
+
+    def destroy(self) -> None:
+        try:
+            self.after_cancel(self._id_relogio)
+        except (AttributeError, tk.TclError, ValueError):
+            pass
+        super().destroy()
 
     def avisar(self, texto: str, cor: str | None = None) -> None:
         self.status.configure(text=texto, foreground=cor or tema.COR["suave"])
@@ -434,7 +443,7 @@ class JanelaCaixa(tk.Toplevel):
     def alternar_mesas(self, mostrar: bool | None = None) -> None:
         self.mesas_visiveis = (not self.mesas_visiveis) if mostrar is None else mostrar
         if self.mesas_visiveis:
-            self.painel_mesas.pack(side="right", fill="y", padx=(10, 0))
+            self.painel_mesas.pack(side="right", fill="y", padx=(10, 0), before=self.grade)
             self.carregar_mesas()
             self.grade_mesas.tree.focus_set()
             self.grade_mesas.selecionar_indice(0)
