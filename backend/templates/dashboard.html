@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evicommerce - Dashboard do PDV</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <!-- Navbar -->
+    <nav class="bg-blue-900 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center">
+                    <span class="font-bold text-xl tracking-wider">EVICOMMERCE <span class="text-blue-300">DASHBOARD</span></span>
+                </div>
+                <div>
+                    <span class="text-sm bg-blue-800 px-3 py-1 rounded-full">Sincronização em Tempo Real</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="mb-8">
+            <h1 class="text-2xl font-bold text-gray-900">Visão Geral das Vendas (Hoje)</h1>
+            <p class="text-gray-500">Acompanhe o faturamento do seu PDV que está offline e enviando dados para a nuvem.</p>
+        </div>
+
+        <!-- KPIs Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Card 1 -->
+            <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+                <div class="flex items-center">
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-500 uppercase tracking-wide">Faturamento Total</p>
+                        <h2 class="text-3xl font-bold text-gray-900 mt-1" id="kpi-receita">R$ 0,00</h2>
+                    </div>
+                    <div class="p-3 bg-blue-100 rounded-full text-blue-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Card 2 -->
+            <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+                <div class="flex items-center">
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-500 uppercase tracking-wide">Cupons Emitidos</p>
+                        <h2 class="text-3xl font-bold text-gray-900 mt-1" id="kpi-cupons">0</h2>
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full text-green-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+                <div class="flex items-center">
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-500 uppercase tracking-wide">Ticket Médio</p>
+                        <h2 class="text-3xl font-bold text-gray-900 mt-1" id="kpi-ticket">R$ 0,00</h2>
+                    </div>
+                    <div class="p-3 bg-purple-100 rounded-full text-purple-600">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Top Produtos Chart -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Top 5 Produtos Mais Vendidos</h3>
+                <div class="relative h-64">
+                    <canvas id="produtosChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Lista Produtos -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Detalhes dos Produtos</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Produto</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qtd</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total (R$)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-produtos" class="divide-y divide-gray-200">
+                            <!-- Injetado via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const formatMoney = (cents) => {
+            return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        };
+
+        let chartInstance = null;
+
+        const loadData = async () => {
+            try {
+                const response = await fetch('/v1/dashboard/resumo');
+                const data = await response.json();
+                
+                document.getElementById('kpi-receita').textContent = formatMoney(data.receita_cent);
+                document.getElementById('kpi-cupons').textContent = data.cupons;
+                document.getElementById('kpi-ticket').textContent = formatMoney(data.ticket_medio_cent);
+
+                const tbody = document.getElementById('tabela-produtos');
+                tbody.innerHTML = '';
+                
+                const labels = [];
+                const values = [];
+
+                data.top_produtos.forEach(p => {
+                    labels.push(p.nome);
+                    values.push(p.qtd);
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="px-4 py-3 text-sm text-gray-800 font-medium">${p.nome}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600 text-right">${p.qtd}</td>
+                        <td class="px-4 py-3 text-sm text-green-600 font-bold text-right">${formatMoney(p.total_cent)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                const ctx = document.getElementById('produtosChart').getContext('2d');
+                if (chartInstance) {
+                    chartInstance.destroy();
+                }
+                chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Quantidade Vendida',
+                            data: values,
+                            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error("Erro ao carregar dashboard:", error);
+            }
+        };
+
+        loadData();
+        setInterval(loadData, 10000); // 10 segundos
+    </script>
+</body>
+</html>
