@@ -103,6 +103,11 @@ Na boate as garotas ganham comissão pelas bebidas. O número de cada garota (15
 Fora de comanda (no balcão, por exemplo) a janela pergunta o número da garota. O 50 nunca vira produto nem entra na venda: a
 comanda da garota continua vazia e some sozinha, e a comissão fica guardada.
 
+- **A comanda mostra o que foi marcado nela:** ao abrir a comanda da garota (ex.: `180`), as comissões marcadas aparecem
+  na lista, em verde (código 50, `COMISSÃO (a pagar)`, valor, hora e operador), e a faixa verde de cima mostra o total a pagar.
+  As pagas neste turno ficam em cinza, para saber se já foi paga; as canceladas somem. É só leitura e não é venda: o
+  Total continua sendo o dos itens. Para pagar ou cancelar, o botão *Comissões*. Comanda de cliente e mesa não mostram nada
+  disso (mas uma comissão lançada por engano no número de um cliente aparece nela, o que ajuda a achar o erro).
 - **Contra erro de digitação:** havendo garotas cadastradas, um número que não está no cadastro (ou de garota inativa) pede
   confirmação, e valor acima de R$ 500,00 também. Lançamento errado se cancela na janela *Comissões*, e fica guardado.
 - **Comissões** (botão na barra do caixa): o que há a pagar a cada garota, com os lançamentos dela. *Pagar a garota escolhida*

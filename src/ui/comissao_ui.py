@@ -134,9 +134,10 @@ def dialogo_pagar(master, numero: int, nome: str, total_cent: int, quantidade: i
 class JanelaComissoes(tk.Toplevel):
     """Comissões a pagar: uma linha por garota e, ao lado, os lançamentos dela. Paga (com recibo) e cancela lançamento."""
 
-    def __init__(self, master, ctx):
+    def __init__(self, master, ctx, ao_mudar=None):
         super().__init__(master)
         self.ctx = ctx
+        self.ao_mudar = ao_mudar or (lambda: None)       # o caixa recarrega a comanda que está na tela
         self.title("Comissões das garotas")
         self.configure(bg=tema.COR["fundo"])
         self.geometry("1000x540")
@@ -204,6 +205,7 @@ class JanelaComissoes(tk.Toplevel):
         sugerida = str(self._garota(avisar=False) or "")
         lancar(self, self.ctx, sugerida, ao_lancar=lambda texto: self.status.configure(text=texto))
         self.atualizar()
+        self.ao_mudar()
 
     def pagar(self) -> None:
         n = self._garota()
@@ -227,6 +229,7 @@ class JanelaComissoes(tk.Toplevel):
         enviar_ou_mostrar(self, self.ctx, "Recibo de comissão", self.ctx.impressao.recibo_comissao(pag, self.ctx.operador.nome),
                           f"recibo_comissao_{n}", tipo="comprovante", abrir_gaveta=pag["tirou_do_caixa"])
         self.atualizar()
+        self.ao_mudar()
 
     def cancelar(self) -> None:
         escolhido = self.itens.selecionado()
@@ -243,3 +246,4 @@ class JanelaComissoes(tk.Toplevel):
         if ok:
             self.status.configure(text=f"Lançamento {valores[0]} cancelado.")
             self.atualizar()
+            self.ao_mudar()

@@ -104,6 +104,16 @@ class ComissaoController:
             params.append(status)
         return [dict(r) for r in self.banco.todos(sql + " ORDER BY c.id", params)]
 
+    def marcadas(self, garota, turno_id: int | None = None) -> list[dict]:
+        """O que aparece quando se abre a comanda da garota: tudo o que está pendente (de qualquer turno) e o que foi pago neste
+        turno, para quem pergunta "já paguei?". Os cancelados não aparecem."""
+        n = self.validar_numero(garota)
+        pago_no_turno = "OR (c.status = 'paga' AND c.pago_turno_id = ?)" if turno_id else ""
+        params: list = [n] + ([turno_id] if turno_id else [])
+        return [dict(r) for r in self.banco.todos(
+            f"""SELECT c.*, o.nome AS operador FROM comissoes_garotas c LEFT JOIN operadores o ON o.id = c.operador_id
+                WHERE c.garota = ? AND (c.status = 'pendente' {pago_no_turno}) ORDER BY c.id""", params)]
+
     def resumo_turno(self, turno_id: int) -> dict:
         """O que foi lançado no turno (sem os cancelados): quantidade, total e o total de cada garota."""
         linhas = [dict(r) for r in self.banco.todos(
@@ -143,8 +153,8 @@ class ComissaoController:
                     turno_id, operador_id, "saida", total, f"Comissão garota {n}{' ' + nome if nome else ''}")
             agora = fmt.agora()
             self.banco.executar(
-                "UPDATE comissoes_garotas SET status = 'paga', paga_em = ?, pago_por = ?, movimento_id = ? "
-                "WHERE garota = ? AND status = 'pendente'", (agora, operador_id, movimento, n))
+                "UPDATE comissoes_garotas SET status = 'paga', paga_em = ?, pago_por = ?, pago_turno_id = ?, movimento_id = ? "
+                "WHERE garota = ? AND status = 'pendente'", (agora, operador_id, turno_id, movimento, n))
             self.banco.log("comissao_paga", f"garota {n} {fmt.fmt_brl(total)} ({len(itens)} lançamentos)"
                            + ("" if tirar_do_caixa else " fora do caixa"), operador_id)
         return {"garota": n, "nome": nome, "total_cent": total, "quantidade": len(itens), "movimento_id": movimento,

@@ -429,6 +429,7 @@ TABELAS = [
         status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','paga','cancelada')),
         paga_em TEXT,
         pago_por INTEGER REFERENCES operadores(id),
+        pago_turno_id INTEGER REFERENCES turnos(id),
         movimento_id INTEGER REFERENCES movimentos_caixa(id),
         cancelada_em TEXT,
         cancelada_por INTEGER REFERENCES operadores(id),

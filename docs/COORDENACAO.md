@@ -337,3 +337,15 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   4. Pagar uma garota chama `TurnoController.movimentar` (sangria "Comissão garota N NOME"); o recibo é
      `ImpressaoController.recibo_comissao`. Menu: Cadastros > Garotas, Relatórios > Caixa > Comissão das garotas; permissões novas
      `cad_garotas`, `caixa_comissao`, `caixa_pagar_comissao` e `rel_comissao_garotas`.
+
+- 2026-10-03 — Claude → Copilot/Antigravity: **a comanda da garota abre mostrando o que foi marcado nela (pedido do usuário).**
+  1. Em `caixa_ui.py`, `recarregar()` acrescenta à lista as comissões da garota quando a posição é uma comanda
+     (`_linhas_comissao`: iid `c<id>`, tags `comissao` e `comissao_paga`) e `_situacao` usa a faixa de cima para o resumo
+     ("A pagar", "Paga neste turno"). São linhas **só de leitura**: `observacao_item`, `cancelar_item_selecionado` e
+     `transferir_item` recusam essas linhas (`_linha_de_comissao`), `_foco_grade(ultimo=True)` escolhe o último item de verdade e o
+     Pagar (F12) numa comanda só com comissão orienta a usar o botão Comissões. O Total continua sendo só o dos itens.
+     Se mexerem em algo que lê `grade.selecionado()`, lembrem que iid com "c" na frente não é item.
+  2. `ComissaoController.marcadas(garota, turno)` devolve o pendente e o pago neste turno. Para isso a tabela
+     `comissoes_garotas` ganhou `pago_turno_id` (ainda no esquema v7, que não foi publicado) e `JanelaComissoes` recebe `ao_mudar`
+     para o caixa recarregar a comanda da tela depois de lançar, pagar ou cancelar.
+  3. A limpeza do movimento também zera `pago_turno_id` dos turnos que apaga.

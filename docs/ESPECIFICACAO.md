@@ -91,7 +91,9 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   fica fora do faturamento, do estoque e da nuvem, e a comanda da garota continua vazia. Situações: pendente, paga e
   cancelada (nada se apaga). Pagar tudo o que está pendente de uma garota registra uma sangria no turno (a conferência da
   gaveta já conta), abre a gaveta e imprime um recibo para assinar; também dá para pagar fora do caixa. O cadastro de
-  garotas (`garotas`) é opcional e serve para mostrar o nome e pedir confirmação de número desconhecido. O código 50 é
+  garotas (`garotas`) é opcional e serve para mostrar o nome e pedir confirmação de número desconhecido. Ao abrir a comanda
+  da garota, a lista mostra as comissões marcadas nela (pendentes de qualquer turno e as pagas neste turno, guardadas por
+  `pago_turno_id`), em linhas só de leitura, e a faixa de cima o total a pagar; o Total da comanda segue sendo só o dos itens. O código 50 é
   reservado: nenhum produto pode usá-lo (código, atalho ou barras). **A confirmar com o dono:** se as garotas são pagas no
   fim da noite com dinheiro da gaveta (é o que fizemos) e se a comissão deve abater consumo da própria garota.
 - **Estoque baixa ao fechar a venda**, não ao lançar o item; cancelar o cupom estorna. Estoque negativo é permitido.

@@ -446,5 +446,70 @@ class TesteLimpezaDoMovimentoComComissoes(BaseComissao):
         self.assertEqual((res["turnos"], res["comissoes"]), (1, 0))
 
 
+class TesteMarcadasNaComanda(BaseComissao):
+    """O que aparece quando se abre a comanda da garota: o pendente e o que foi pago neste turno."""
+
+    def test_pendente_aparece_em_ordem_com_o_nome_do_operador(self):
+        self.lancar(180, 25); self.lancar(180, 30); self.lancar(156, 99)
+        m = self.com.marcadas(180, self.turno)
+        self.assertEqual([(c["valor_cent"], c["status"], c["operador"]) for c in m], [(2500, "pendente", "ADM"), (3000, "pendente", "ADM")])
+
+    def test_sem_turno_so_o_pendente(self):
+        self.lancar(180, 25)
+        self.com.pagar(180, self.turno, self.adm)
+        self.lancar(180, 30)
+        self.assertEqual([c["status"] for c in self.com.marcadas(180)], ["pendente"])
+        self.assertEqual([c["status"] for c in self.com.marcadas(180, self.turno)], ["paga", "pendente"])
+
+    def test_cancelado_nao_aparece(self):
+        errado = self.lancar(180, 999); self.lancar(180, 25)
+        self.com.cancelar(errado, self.adm)
+        self.assertEqual([c["valor_cent"] for c in self.com.marcadas(180, self.turno)], [2500])
+
+    def test_pendente_de_turno_anterior_aparece_mas_a_paga_de_turno_anterior_nao(self):
+        self.lancar(180, 25); self.lancar(156, 40)
+        self.com.pagar(180, self.turno, self.adm)
+        self.turnos.fechar(self.turno, self.adm, 10000)
+        turno2 = self.turnos.abrir(self.adm, 2, 0)
+        self.assertEqual(self.com.marcadas(180, turno2), [])                              # paga no turno 1
+        self.assertEqual([c["valor_cent"] for c in self.com.marcadas(156, turno2)], [4000])   # pendente atravessa o turno
+
+    def test_numero_invalido_e_recusado(self):
+        with self.assertRaises(ErroNegocio):
+            self.com.marcadas(0)
+
+
+class TesteLimpezaDeComissaoPagaEmOutroTurno(BaseComissao):
+    """Comissão lançada num turno que a limpeza mantém e paga em outro que ela apaga não pode quebrar a limpeza."""
+
+    def setUp(self):
+        super().setUp()
+        from src.controllers.utilitario_controller import UtilitarioController
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.banco.cfg_set("pasta_backup", self.pasta.name)
+        self.util = UtilitarioController(self.banco, self.adm)
+
+    def test_lancada_em_turno_que_fica_e_paga_em_turno_apagado(self):
+        self.turnos.fechar(self.turno, self.adm, 10000)
+        self.avancar(days=-10)
+        a = self.turnos.abrir(self.adm, 2, 0)
+        # Caso raro, forçado: uma venda ainda aberta presa ao turno A o impede de ser apagado (mesa aberta normal não tem turno).
+        self.banco.inserir("vendas", {"uuid": "prende-o-turno-a", "modalidade": "mesa", "posicao": 9, "turno_id": a,
+                                      "aberta_em": fmt.agora()})
+        self.lancar(180, 25, a)
+        self.turnos.fechar(a, self.adm, 0)
+        self.avancar(days=2)
+        b = self.turnos.abrir(self.adm, 3, 0)
+        self.com.pagar(180, b, self.adm)                          # paga em B: sangria e pago_turno_id apontam para B
+        self.turnos.fechar(b, self.adm, 0)
+        self.avancar(days=8)
+        self.turno = self.turnos.abrir(self.adm, 4, 0)
+        res = self.util.limpar_movimento(fmt.fmt_data(fmt.somar_dias(fmt.hoje(), -2)))
+        self.assertEqual(res["turnos"], 1)                        # só o B
+        c = self.banco.um("SELECT turno_id, status, pago_turno_id, movimento_id FROM comissoes_garotas")
+        self.assertEqual((c["turno_id"], c["status"], c["pago_turno_id"], c["movimento_id"]), (a, "paga", None, None))
+
+
 if __name__ == "__main__":
     unittest.main()

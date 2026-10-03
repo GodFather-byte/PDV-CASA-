@@ -1440,7 +1440,8 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         self.assertIn("A pagar a ela: R$ 25,00", self.cx.status.cget("text"))
         self.assertEqual(self.cx.var_cod.get(), "")
         self.assertIsNone(self.cx.produto)                                           # o 50 nunca vira produto
-        self.assertEqual(self.cx.grade.total(), 0)
+        self.assertEqual(self.cx.grade.total(), 1)                                   # mas a comissão aparece marcada na comanda
+        self.assertEqual(self.cx.lbl_total.cget("text"), "0,00")                     # e não é venda: o total é só dos itens
         self.sem_travar()
 
     def test_cada_lancamento_soma_no_numero_da_garota(self):
@@ -1849,5 +1850,187 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         dados = saida.read_bytes()
         self.assertIn("Pago fora do caixa.".encode("cp850"), dados)
         self.assertNotIn(b"\x1bp", dados)
+        j.destroy()
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- a comanda mostra o que foi marcado nela
+    def linhas(self):
+        return [[str(c) for c in self.cx.grade.valores(i)] for i in self.cx.grade.tree.get_children()]
+
+    def lancar_item(self, cod, qtd):
+        self.cx.var_cod.set(cod); self.cx._enter_codigo(); self.cx.update()
+        self.cx.var_qtd.set(str(qtd)); self.cx.confirmar_item(); self.cx.update()
+
+    def faixa_visivel(self):
+        return self.cx.faixa.winfo_manager() == "pack"
+
+    def test_comanda_da_garota_abre_mostrando_as_comissoes_marcadas(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 25); self.dar(180, 30)
+        self.posicao("180")
+        linhas = self.linhas()
+        self.assertEqual([(l[0], l[1], l[3], l[4], l[5]) for l in linhas],
+                         [("50", "COMISSÃO (a pagar)", "25,00", "1", "25,00"), ("50", "COMISSÃO (a pagar)", "30,00", "1", "30,00")])
+        self.assertIn("ADM", linhas[0][6])
+        self.assertEqual(self.cx.lbl_total.cget("text"), "0,00")                      # comissão não é venda
+        self.assertTrue(self.faixa_visivel())
+        self.assertIn("COMISSÃO MARCADA NA COMANDA 180 MARIA", self.cx.faixa.cget("text"))
+        self.assertIn("A pagar: R$ 55,00", self.cx.faixa.cget("text"))
+        self.sem_travar()
+
+    def test_a_comissao_lancada_aparece_na_hora_na_comanda_da_tela(self):
+        self.dialogos({"Comissão da garota": self.lancando(valor="25,00")})
+        self.posicao("180")
+        self.assertEqual(self.linhas(), [])
+        self.assertFalse(self.faixa_visivel())
+        self.digitar_codigo("50")
+        self.assertEqual([(l[1], l[3]) for l in self.linhas()], [("COMISSÃO (a pagar)", "25,00")])
+        self.assertIn("A pagar: R$ 25,00", self.cx.faixa.cget("text"))
+        self.sem_travar()
+
+    def test_comanda_que_sumiu_por_estar_vazia_reabre_mostrando_as_comissoes(self):
+        self.dar(180, 25)
+        self.posicao("180")
+        self.posicao("0")                                                             # sai: a comanda vazia é descartada
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas"), 0)
+        self.posicao("180")                                                           # e abre de novo com a comissão à vista
+        self.assertEqual([l[1] for l in self.linhas()], ["COMISSÃO (a pagar)"])
+        self.sem_travar()
+
+    def test_comanda_com_itens_e_comissao_mostra_os_dois_e_o_total_e_so_dos_itens(self):
+        self.posicao("180")
+        self.lancar_item("1", 1)                                                      # SKOL, R$ 8,00
+        self.dar(180, 25)
+        self.cx.recarregar()
+        linhas = self.linhas()
+        self.assertEqual([l[1] for l in linhas], ["SKOL", "COMISSÃO (a pagar)"])
+        self.assertEqual(self.cx.lbl_total.cget("text"), "8,80")                      # 8,00 + 10% de serviço, sem a comissão
+        self.assertTrue(self.faixa_visivel())
+        self.sem_travar()
+
+    def test_comissao_paga_neste_turno_fica_cinza_e_a_de_turno_anterior_nao_aparece(self):
+        self.dar(180, 25)
+        self.com.pagar(180, self.turno, self.ctx.operador_id)
+        self.posicao("180")
+        self.assertEqual([(l[1], l[3]) for l in self.linhas()], [("COMISSÃO (paga)", "25,00")])
+        iid = self.cx.grade.tree.get_children()[0]
+        self.assertIn("comissao_paga", self.cx.grade.tree.item(iid, "tags"))
+        self.assertIn("A pagar: R$ 0,00", self.cx.faixa.cget("text"))
+        self.assertIn("Paga neste turno: R$ 25,00", self.cx.faixa.cget("text"))
+        self.dar(156, 10)                                                             # pendente do turno que vai fechar
+        self.posicao("0")
+        self.ctx.turnos.fechar(self.turno, self.ctx.operador_id, 10000)
+        self.turno = self.ctx.turnos.abrir(self.ctx.operador_id, 2, 0)
+        self.posicao("180")
+        self.assertEqual(self.linhas(), [])                                           # a paga do turno anterior saiu da tela
+        self.assertFalse(self.faixa_visivel())
+        self.posicao("156")
+        self.assertEqual([l[1] for l in self.linhas()], ["COMISSÃO (a pagar)"])       # a pendente continua, em qualquer turno
+        self.sem_travar()
+
+    def test_comissao_cancelada_some_da_comanda(self):
+        errado = self.dar(180, 999)
+        self.dar(180, 25)
+        self.com.cancelar(errado, self.ctx.operador_id)
+        self.posicao("180")
+        self.assertEqual([l[3] for l in self.linhas()], ["25,00"])
+        self.sem_travar()
+
+    def test_mesa_com_o_mesmo_numero_da_garota_nao_mostra_a_comissao(self):
+        self.dar(5, 10)                                                               # garota 5: não tem nada a ver com a mesa 5
+        self.posicao("M5")
+        self.lancar_item("1", 1)
+        self.assertEqual([l[1] for l in self.linhas()], ["SKOL"])
+        self.assertFalse(self.faixa_visivel())
+        self.sem_travar()
+
+    def test_comissao_marcada_por_engano_numa_comanda_de_cliente_fica_a_vista(self):
+        self.dar(3, 10)                                                               # número errado: era da garota 130
+        self.posicao("3")
+        self.lancar_item("1", 1)
+        self.assertEqual([l[1] for l in self.linhas()], ["SKOL", "COMISSÃO (a pagar)"])
+        self.assertTrue(self.faixa_visivel())
+        self.sem_travar()
+
+    def test_comanda_sem_nenhuma_comissao_segue_como_antes(self):
+        self.posicao("7")
+        self.lancar_item("1", 2)
+        self.assertEqual([l[1] for l in self.linhas()], ["SKOL"])
+        self.assertFalse(self.faixa_visivel())
+        self.assertEqual(self.cx.comissao_marcada, [])
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- a linha da comissão é só leitura
+    def test_linha_de_comissao_nao_se_muda_pela_lista_de_itens(self):
+        marcada = self.dar(180, 25)
+        self.posicao("180")
+        self.cx.grade.selecionar(f"c{marcada}")
+        avisos = []
+        self.dialogos({"Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
+        self.cx.observacao_item()
+        self.cx.cancelar_item_selecionado()
+        self.cx.transferir_item()
+        self.assertEqual(len(avisos), 3)
+        self.assertTrue(all(any("botão Comissões" in t for t in a) for a in avisos), avisos)
+        self.assertEqual(self.com.pendente(180), 2500)                                # nada mudou
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM itens_venda"), 0)
+        self.sem_travar()
+
+    def test_cancelar_item_vai_para_o_ultimo_item_e_nao_para_a_comissao(self):
+        self.posicao("180")
+        self.lancar_item("1", 1); self.lancar_item("2", 1)
+        self.dar(180, 25)
+        self.cx.recarregar()
+        self.cx._foco_grade(ultimo=True)
+        escolhida = self.cx.grade.selecionado()
+        self.assertTrue(str(escolhida).isdigit(), escolhida)
+        self.assertEqual(self.cx.grade.valores(escolhida)[1], "AGUA")                 # o último item, não a comissão
+        self.sem_travar()
+
+    def test_pagar_na_comanda_que_so_tem_comissao_orienta_a_usar_o_botao(self):
+        self.dar(180, 25)
+        self.posicao("180")
+        avisos = []
+        self.dialogos({"Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
+        self.cx.pagar()
+        self.assertTrue(any("só tem comissão marcada" in t for t in avisos[0]), avisos)
+        self.posicao("7")
+        self.cx.pagar()
+        self.assertTrue(any("Lance ao menos um item" in t for t in avisos[1]), avisos)       # comanda comum: aviso de sempre
+        self.sem_travar()
+
+    # ---------------------------------------------------------------- a janela das comissões atualiza a comanda da tela
+    def test_pagar_pela_janela_atualiza_a_comanda_que_esta_na_tela(self):
+        self.dar(180, 25)
+        self.posicao("180")
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.dialogos({"Pagar comissão": "Pagar"})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.pagar()
+        self.assertEqual([l[1] for l in self.linhas()], ["COMISSÃO (paga)"])
+        self.assertIn("A pagar: R$ 0,00", self.cx.faixa.cget("text"))
+        j.destroy()
+        self.sem_travar()
+
+    def test_cancelar_pela_janela_atualiza_a_comanda_que_esta_na_tela(self):
+        errado = self.dar(180, 999)
+        self.dar(180, 25)
+        self.posicao("180")
+        self.dialogos({"Cancelar comissão": "Sim"})
+        j = self.abrir_comissoes()
+        j.grade.selecionar(180); j._mostrar_itens()
+        j.itens.selecionar(errado)
+        j.cancelar()
+        self.assertEqual([l[3] for l in self.linhas()], ["25,00"])
+        j.destroy()
+        self.sem_travar()
+
+    def test_lancar_pela_janela_atualiza_a_comanda_que_esta_na_tela(self):
+        self.posicao("156")
+        self.dialogos({"Comissão da garota": self.lancando(numero=156, valor="40")})
+        j = self.abrir_comissoes()
+        j.lancar()
+        self.assertEqual([l[3] for l in self.linhas()], ["40,00"])
         j.destroy()
         self.sem_travar()

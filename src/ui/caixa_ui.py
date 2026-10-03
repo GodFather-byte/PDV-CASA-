@@ -38,6 +38,8 @@ class JanelaCaixa(tk.Toplevel):
         self.mesas_visiveis = False
         self.painel_fixo = ctx.banco.cfg_bool("painel_mesas_fixo", True)
         self.indice_barra: int | None = None
+        self.comissao_marcada: list[dict] = []     # comissões marcadas na comanda da tela (só se for comanda de garota)
+        self._itens_na_grade = 0                   # quantas linhas da lista são itens da venda (o resto é comissão)
         self.leitor = bool(ctx.config.maquina()["leitor_optico"])
         self.title(f"Caixa - {ctx.config.nome_loja()}")
         self.configure(bg=tema.COR["fundo"])
@@ -135,6 +137,8 @@ class JanelaCaixa(tk.Toplevel):
                                         ("preco", "Preço", 90, "e"), ("qtd", "Quantidade", 90, "e"), ("tot", "Total", 100, "e"),
                                         ("obs", "Observação", 200, "w")], altura=14)
         self.grade.pack(fill="both", expand=True)
+        self.grade.tag("comissao", foreground="#0b7a6b")          # comissão marcada na comanda da garota: só leitura
+        self.grade.tag("comissao_paga", foreground="#8a94a6")
 
         e = self.ent_codigo
         e.bind("<Return>", self._enter_codigo)
@@ -227,11 +231,15 @@ class JanelaCaixa(tk.Toplevel):
         v = self.venda()
         self.grade.limpar()
         total = 0
+        self.comissao_marcada = []
+        self._itens_na_grade = 0
         if v:
             for it in self.ctx.caixa.itens(v["id"]):
                 nome = it["nome"] + (f"  [{' / '.join(it['partes_nomes'])}]" if it["partes_nomes"] else "")
                 self.grade.adicionar([it["codigo"], nome, it["unidade"], fmt.fmt_num(it["preco_unit_cent"]),
                                       fmt.fmt_qtd(it["quantidade"]), fmt.fmt_num(it["total_cent"]), it["observacao"] or ""], iid=it["id"])
+            self._itens_na_grade = self.grade.total()
+            self._linhas_comissao(v, t)
             total = v["total_cent"]
             self.grade.tree.yview_moveto(1.0)
         self.lbl_total.configure(text=fmt.fmt_num(total))
@@ -240,6 +248,28 @@ class JanelaCaixa(tk.Toplevel):
         self.lbl_leitor.configure(text="LEITOR ÓPTICO ATIVO" if self.leitor else "")
         if self.mesas_visiveis:
             self.carregar_mesas()
+
+    def _linhas_comissao(self, v: dict, turno: dict | None) -> None:
+        """Comanda de garota: o que está marcado nela (comissão a pagar e a paga neste turno) aparece na lista, em cor própria e
+        só para leitura. Comissão não é venda: o total da comanda continua sendo só o dos itens."""
+        if v["modalidade"] != "mesa" or not v["comanda"]:
+            return
+        self.comissao_marcada = self.ctx.comissoes.marcadas(v["posicao"], turno["id"] if turno else None)
+        codigo = self.ctx.comissoes.codigo() or "COM"
+        for c in self.comissao_marcada:
+            paga = c["status"] == "paga"
+            quando = f"{fmt.fmt_datahora(c['criado_em'])[11:16]} {c['operador'] or ''}".strip()
+            self.grade.adicionar([codigo, "COMISSÃO (paga)" if paga else "COMISSÃO (a pagar)", "", fmt.fmt_num(c["valor_cent"]), "1",
+                                  fmt.fmt_num(c["valor_cent"]), quando],
+                                 iid=f"c{c['id']}", tags=("comissao_paga" if paga else "comissao",))
+
+    def _linha_de_comissao(self, iid) -> bool:
+        """True (e avisa) se a linha escolhida da lista é uma comissão marcada, que não é item da venda."""
+        if iid is not None and str(iid).startswith("c"):
+            tema.aviso(self, "Esta linha é uma comissão marcada na comanda da garota.\n"
+                             "Para pagar ou cancelar, use o botão Comissões.")
+            return True
+        return False
 
     def _situacao(self, v: dict | None) -> None:
         if v is None:
@@ -268,6 +298,15 @@ class JanelaCaixa(tk.Toplevel):
                        f"Taxa {fmt.fmt_num(v['taxa_cent'])}")
                 cor = "#1f5fb3"
             self.faixa.configure(text=txt, bg=cor)
+            self.faixa.pack(fill="x", before=self.barra)
+        elif self.comissao_marcada:
+            a_pagar = sum(c["valor_cent"] for c in self.comissao_marcada if c["status"] == "pendente")
+            paga = sum(c["valor_cent"] for c in self.comissao_marcada if c["status"] == "paga")
+            nome = self.ctx.comissoes.nome(v["posicao"])
+            txt = f"COMISSÃO MARCADA NA COMANDA {v['posicao']}{' ' + nome if nome else ''}     A pagar: {fmt.fmt_brl(a_pagar)}"
+            if paga:
+                txt += f"     Paga neste turno: {fmt.fmt_brl(paga)}"
+            self.faixa.configure(text=txt, bg="#0b7a6b")
             self.faixa.pack(fill="x", before=self.barra)
         else:
             self.faixa.pack_forget()
@@ -415,7 +454,7 @@ class JanelaCaixa(tk.Toplevel):
 
     def observacao_item(self) -> None:
         s = self.grade.selecionado()
-        if s is None:
+        if s is None or self._linha_de_comissao(s):
             return
         if not self.ctx.banco.valor("SELECT usa_observacao FROM produtos WHERE id = (SELECT produto_id FROM itens_venda WHERE id = ?)", (int(s),)):
             tema.aviso(self, "Este produto não permite observações (marque 'Permite observações' no cadastro).")
@@ -467,7 +506,7 @@ class JanelaCaixa(tk.Toplevel):
 
     def cancelar_item_selecionado(self) -> None:
         s = self.grade.selecionado()
-        if s is None:
+        if s is None or self._linha_de_comissao(s):
             return
         if not self.modo_cancelar and not self._autorizar("caixa_cancelamento", "exigir_senha_cancelamento", "Cancelar item exige autorização:"):
             return
@@ -488,7 +527,10 @@ class JanelaCaixa(tk.Toplevel):
     def _foco_grade(self, ultimo: bool = False) -> None:
         if self.grade.total():
             self.grade.tree.focus_set()
-            self.grade.selecionar_indice(10 ** 9 if ultimo else max(self.grade.indice(), 0))
+            if ultimo and self._itens_na_grade:
+                self.grade.selecionar_indice(self._itens_na_grade - 1)       # o último ITEM: as comissões são só leitura
+            else:
+                self.grade.selecionar_indice(10 ** 9 if ultimo else max(self.grade.indice(), 0))
 
     # ============================================================== mesas e comandas
     def _mostrar_painel(self) -> None:
@@ -662,7 +704,7 @@ class JanelaCaixa(tk.Toplevel):
     def transferir_item(self) -> None:
         s = self.grade.selecionado()
         v = self.venda()
-        if s is None or v is None or v["modalidade"] != "mesa":
+        if s is None or v is None or v["modalidade"] != "mesa" or self._linha_de_comissao(s):
             return
         qtd_atual = self.ctx.banco.valor("SELECT quantidade FROM itens_venda WHERE id = ?", (int(s),))
         comum, outra = self._exemplos()
@@ -686,7 +728,9 @@ class JanelaCaixa(tk.Toplevel):
     def pagar(self) -> None:
         v = self.venda()
         if v is None or (not self.ctx.caixa.itens(v["id"]) and v["modalidade"] != "caderneta"):
-            tema.aviso(self, "Lance ao menos um item antes de pagar.")
+            so_comissao = v is not None and any(c["status"] == "pendente" for c in self.comissao_marcada)
+            tema.aviso(self, "Esta comanda só tem comissão marcada.\nPara pagar à garota, use o botão Comissões."
+                       if so_comissao else "Lance ao menos um item antes de pagar.")
             return
         itens = self.ctx.caixa.itens(v["id"])
         if v["modalidade"] == "caderneta" and itens:
@@ -817,11 +861,12 @@ class JanelaCaixa(tk.Toplevel):
         v = self.venda()
         sugerida = str(v["posicao"]) if v and v["modalidade"] == "mesa" and v["comanda"] else ""
         comissao_ui.lancar(self, self.ctx, sugerida, ao_lancar=lambda texto: self.avisar(texto, tema.COR["ok"]))
+        self.recarregar()                       # a comissão nova já aparece na comanda da garota
         self.ent_codigo.focus_set()
 
     def comissoes(self) -> None:
         """Botão Comissões: o que há a pagar a cada garota, pagamento com recibo e cancelamento de lançamento."""
-        JanelaComissoes(self, self.ctx)
+        JanelaComissoes(self, self.ctx, ao_mudar=self.recarregar)
         self.ent_codigo.focus_set()
 
     def repique(self) -> None:
