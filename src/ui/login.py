@@ -61,13 +61,20 @@ class JanelaLogin(tk.Toplevel):
             if not self.pedir_licenca(estado.mensagem):
                 return
             estado = licenca.estado(self.ctx.banco)
+        senha = self.var_senha.get()
         try:
-            self.operador = self.ctx.acesso.autenticar(self.var_usuario.get(), self.var_senha.get())
+            operador = self.ctx.acesso.autenticar(self.var_usuario.get(), senha)
         except ErroNegocio as e:
             self.lbl_msg.configure(text=str(e), fg="#ffb4b4")
             self.var_senha.set("")
             self.ent_senha.focus_set()
             return
+        if self.ctx.acesso.precisa_trocar_senha(operador, senha) and not self.trocar_senha(operador):
+            self.lbl_msg.configure(text="Troque a senha para entrar no sistema.", fg="#ffb4b4")
+            self.var_senha.set("")
+            self.ent_senha.focus_set()
+            return
+        self.operador = operador
         if licenca.exigida(self.ctx.banco):
             licenca.registrar_uso(self.ctx.banco)
         if estado.bloqueia:
@@ -76,6 +83,26 @@ class JanelaLogin(tk.Toplevel):
         elif estado.avisa:
             tema.mensagem(self, estado.mensagem, "Licença", "aviso")
         self.destroy()
+
+    def trocar_senha(self, operador) -> bool:
+        """Senha igual ao nome (a de fábrica é ADM/ADM): pede uma nova, duas vezes. Devolve False se o usuário desistir."""
+        nova = tema.pedir_texto(
+            self, "Troque a senha", f"A senha de {operador.nome} é igual ao nome e qualquer um pode adivinhá-la.\n"
+            "Digite uma senha nova (até 10 letras ou números):", senha=True, largura=22,
+            validar=lambda v: self.ctx.acesso.validar_nova_senha(operador, v))
+        if nova is None:
+            return False
+
+        def conferir(v: str) -> str:
+            if v.upper() != nova.upper():
+                raise ErroNegocio("As senhas não conferem.")
+            return v
+        if tema.pedir_texto(self, "Troque a senha", "Digite a senha nova de novo:", senha=True, largura=22,
+                            validar=conferir) is None:
+            return False
+        self.ctx.acesso.trocar_senha(operador, nova)
+        tema.mensagem(self, "Senha trocada. Use a senha nova nas próximas entradas.", "Senha")
+        return True
 
     def pedir_licenca(self, motivo: str = "") -> bool:
         """Pede o código de licença e o ativa. Devolve True se a licença ficou liberada para entrar."""

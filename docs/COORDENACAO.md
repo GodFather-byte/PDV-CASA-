@@ -38,7 +38,8 @@ usado só pelo protótipo de console até ser aposentado.
 
 ## Contrato de sincronização PDV → nuvem
 
-`POST {api_url}` com o cabeçalho `Authorization: Bearer <token>` (o `api_token` de Configurações > Nuvem; no servidor é o `PDV_API_TOKEN`) e corpo JSON:
+`POST {api_url}` com o cabeçalho `Authorization: Bearer <token>` (o `api_token` de Configurações > Nuvem: o token DA LOJA,
+criado na nuvem com `python -m backend.lojas criar <chave_loja> "<nome>"`) e corpo JSON:
 
 ```json
 {
@@ -68,7 +69,9 @@ Campos: `posicao` é inteiro (0 fora de mesa e entrega) ou `null`; `operador` e 
 Resposta: `200` com `{"aceitas": ["uuid", …]}`, só com as `uuid` que a nuvem JÁ TEM gravadas (novas ou repetidas).
 O PDV marca como sincronizadas apenas essas `uuid`, e somente se o status da venda ainda for o que foi no lote
 (`SyncController.confirmar(uuids, enviados)`): cancelar a venda com o lote a caminho a mantém pendente para o
-próximo envio. Outros códigos: `401` token ausente ou errado, `503` servidor sem `PDV_API_TOKEN`, `422` payload inválido.
+próximo envio. Outros códigos: `401` token ausente ou errado; `403` token de outra loja (a `chave_loja` do lote não é a do
+token), loja desativada ou token do administrador (`PDV_API_TOKEN` só consulta o painel); `503` servidor sem nenhuma loja
+e sem `PDV_API_TOKEN`; `422` payload inválido.
 
 Regras do servidor (`backend/main.py`):
 
@@ -76,6 +79,8 @@ Regras do servidor (`backend/main.py`):
 - **A venda só avança**: se a `uuid` já existe e o lote traz `cancelada` sobre `fechada`, o status é atualizado;
   status igual ou anterior não muda nada (um lote atrasado nunca desfaz um cancelamento).
 - Uma `uuid` que já pertence a outra `chave_loja` não é confirmada.
+- **A loja é a do token** (tabela `lojas` da nuvem, só com o SHA-256 do token). O painel (`/v1/dashboard/resumo`) com token
+  de loja mostra só ela (pedir outra `chave_loja` dá `403`); com o `PDV_API_TOKEN`, todas ou a pedida.
 
 Regras do PDV (`src/sync/sincronizador.py`): a cada rodada lê `api_url`, `api_token`, `chave_loja` e
 `sync_intervalo_seg` de Configurações > Nuvem; com falhas seguidas a espera dobra (até 10 min) e tudo vai para
@@ -389,3 +394,45 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   6. **Sem mudança de esquema** (segue na v8): as chaves novas só entram em `CONFIG_PADRAO` (INSERT OR IGNORE). Testes novos:
      `test_comissao_na_tela.py`, `test_fechamento_assinado.py` e `test_boate_extras.py`; o `BaseUI` agora manda o histórico de
      impressão dos testes para uma pasta temporária (antes caía em `impressao/`).
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **dois bugs de dinheiro corrigidos no caixa (esquema v9).**
+  1. **Juntar mesas apagava o adiantamento:** `CaixaController._mover_itens` apagava a venda de origem e o `ON DELETE CASCADE` levava
+     os pagamentos dela (o cliente pagou R$ 10, deu Esc, a mesa foi juntada a outra: os R$ 10 sumiam). Agora pagamentos e repiques
+     vão para o destino; o repique ligado à origem também fazia a transferência falhar com `FOREIGN KEY constraint failed`.
+  2. **Adiantamento caía no turno errado:** o pagamento contava no turno em que a conta FECHAVA. Comanda com adiantamento no turno 1
+     e fechada no turno 2 dava sobra no 1 e falta no 2, com os dois caixas certos. `pagamentos_venda.turno_id` (v9; a migração
+     preenche com o turno da venda) guarda o turno em que o dinheiro entrou, e `turno_controller.RECEBIDO_NO_TURNO` é o filtro
+     usado por `resumo` (fechamento e Leitura X) e `dinheiro_esperado`. Regras: o troco sai primeiro dos pagamentos do turno atual
+     (`liquidar`); `remover_pagamento` recusa pagamento de turno fechado; cancelar conta com adiantamento de turno anterior grava
+     a devolução como saída do turno atual (`_devolver_adiantamentos`, só formas `na_gaveta`); a limpeza não apaga turno que um
+     pagamento ainda referencia. Pagamento antigo sem turno (mesa aberta na migração) conta onde a venda fechar, como antes.
+  3. `CaixaController.adicionar_pagamento` agora exige turno aberto e grava `turno_id`. O adaptador legado `venda_controller` não
+     foi tocado: o pagamento dele fica com `turno_id` NULL e conta no turno da venda. Contrato da nuvem sem mudança.
+     Testes: `tests/test_adiantamentos.py` (15).
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **senhas, testes de impressora e CI.**
+  1. **Senha igual ao nome (ADM/ADM de fábrica) obriga a trocar na entrada:** `AcessoController.precisa_trocar_senha`,
+     `validar_nova_senha` e `trocar_senha`; `JanelaLogin.trocar_senha` pede a nova duas vezes, e desistir não entra. O formato da
+     senha virou `seguranca.FORMATO_SENHA` (usado também por `entidades.py`). Testes de tela que entram como ADM pela janela de
+     login agora trocam a senha antes (`autenticar("adm", "adm")` direto no controlador continua valendo).
+  2. **5 senhas erradas seguidas bloqueiam por 5 minutos** o login daquele operador e a senha de supervisor (contador no `config`,
+     chaves `tentativas:login:<id>` e `tentativas:supervisor`, então reabrir o sistema não zera). `pedir_senha_supervisor`
+     mostra a mensagem do bloqueio. Sem mudança de esquema.
+  3. **Testes do spooler fora do Windows:** `ctypes.get_last_error` só existe no Windows; `_erro_windows` e `_enum` não quebram
+     mais nos testes que simulam o spooler. A suíte inteira passa (716 testes) também no Linux.
+  4. **CI** em `.github/workflows/testes.yml`: Windows e Linux, Python 3.10 e 3.12, com as dependências da API para os testes da
+     nuvem não ficarem pulados. No Linux as telas rodam no `xvfb-run` com tela de 24 bits (com 8 bits o Tk cai).
+     Testes novos: `tests/test_acesso.py` (8) e dois em `test_ui.py`.
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **nuvem separada por loja** (com autorização do usuário para mexer em `backend/`
+  e `src/sync/`). Antes um único `PDV_API_TOKEN` valia para todas as lojas e a `chave_loja` vinha do próprio lote: quem
+  tinha o token enviava vendas como qualquer loja e via o painel de todas.
+  1. `backend/main.py`: tabela `lojas` (chave, nome, SHA-256 do token, ativa) criada pelo `create_all`; `autenticar` devolve a
+     loja do token ou o administrador (`PDV_API_TOKEN`). `/v1/sincronizar` só aceita token de loja e recusa (`403`) lote com
+     outra `chave_loja`; o painel com token de loja fica preso a ela.
+  2. `backend/lojas.py`: `criar`, `listar`, `novo-token`, `desativar`, `ativar` (linha de comando). O token só aparece na criação.
+  3. `src/sync/sincronizador.py`: no `401`/`403` a mensagem traz o motivo da nuvem (ex.: "Loja desativada na nuvem.").
+  4. `backend/models.py` apagado: ninguém importava, e era um segundo modelo com dinheiro em `Float`.
+  **Para quem já usa a nuvem:** criar cada loja com `python -m backend.lojas criar` e colocar o token novo no PDV dela; o
+  `PDV_API_TOKEN` antigo passa a servir só para o painel. Testes: `tests/test_nuvem.py` (43).
+

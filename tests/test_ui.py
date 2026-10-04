@@ -177,12 +177,45 @@ class TesteMenu(BaseUI):
 
     def test_login_valida_senha_e_ignora_caixa_alta(self):
         from src.ui.login import JanelaLogin
+        self.ctx.acesso.trocar_senha(self.ctx.operador, "Segredo1")
         j = JanelaLogin(self.root, self.ctx, "Loja")
         j.var_usuario.set("adm"); j.var_senha.set("errada"); j.entrar()
         self.assertIsNone(j.operador)
         self.assertEqual(j.lbl_msg.cget("text"), "Senha Incorreta")
-        j.var_senha.set("AdM"); j.entrar()
+        j.var_senha.set("sEGREDO1"); j.entrar()
         self.assertEqual(j.operador.nome, "ADM")
+
+    def test_senha_de_fabrica_obriga_a_trocar_antes_de_entrar(self):
+        from src.ui.login import JanelaLogin
+        respostas = iter(["adm", "Nova123", "nova123"])       # 1ª: igual ao nome (recusada na própria janela)
+        titulos = []
+
+        def responder(w):
+            titulos.append(w.title())
+            campos = entradas(w)
+            if campos:
+                campos[0].delete(0, "end"); campos[0].insert(0, next(respostas))
+            clicar(w, "OK")
+        self.robo.quando("Dialogo", responder, vezes=4)        # nova senha (2 tentativas), confirmação e o aviso final
+        j = JanelaLogin(self.root, self.ctx, "Loja")
+        j.var_usuario.set("adm"); j.var_senha.set("ADM"); j.entrar()
+        self.assertEqual(j.operador.nome, "ADM")
+        self.assertEqual(titulos, ["Troque a senha", "Troque a senha", "Troque a senha", "Senha"])
+        from src.core.erros import ErroNegocio
+        self.ctx.acesso.autenticar("ADM", "NOVA123")
+        with self.assertRaises(ErroNegocio):
+            self.ctx.acesso.autenticar("ADM", "ADM")
+        self.sem_travar()
+
+    def test_desistir_da_troca_nao_entra(self):
+        from src.ui.login import JanelaLogin
+        self.robo.quando("Dialogo", lambda w: clicar(w, "Cancelar"))
+        j = JanelaLogin(self.root, self.ctx, "Loja")
+        j.var_usuario.set("adm"); j.var_senha.set("adm"); j.entrar()
+        self.assertIsNone(j.operador)
+        self.assertIn("Troque a senha", j.lbl_msg.cget("text"))
+        self.ctx.acesso.autenticar("ADM", "ADM")                # a senha não mudou
+        self.sem_travar()
 
 
 class TesteFluxosCaixa(BaseUI):
@@ -557,9 +590,11 @@ class TesteFluxoDeEntrada(BaseUI):
         app = self._app()
         vistos = []
 
+        self.ctx.acesso.trocar_senha(self.ctx.acesso.autenticar("ADM", "ADM"), "Segredo1")
+
         def logar(w):
             vistos.append("login")
-            w.var_usuario.set("adm"); w.var_senha.set("ADM"); w.entrar()
+            w.var_usuario.set("adm"); w.var_senha.set("Segredo1"); w.entrar()
         self.robo.quando("JanelaLogin", logar, vezes=1)
         # no 2º login (depois da saída) o usuário fecha a janela: o programa encerra
         self.robo.quando("JanelaLogin", lambda w: (vistos.append("login2"), w.destroy()), vezes=1)
@@ -737,11 +772,12 @@ class TesteLoginComLicenca(BaseUI):
         self.addCleanup(fmt.definir_relogio, None)
         fmt.definir_relogio(lambda: datetime(2026, 10, 3, 21, 0, 0))
         self.banco.cfg_set("licenca_exigir", "S")
+        self.ctx.acesso.trocar_senha(self.ctx.operador, "Segredo1")    # a senha de fábrica abriria a troca obrigatória
 
     def codigo(self, dias=30, hoje=date(2026, 10, 3)):
         return self.licenca.gerar_licenca(self.SEMENTE, "LOJA-1", dias, hoje)
 
-    def entrar(self, senha="adm", codigo=None):
+    def entrar(self, senha="segredo1", codigo=None):
         from src.ui.login import JanelaLogin
         j = JanelaLogin(self.root, self.ctx, "Loja")
         j.var_usuario.set("adm"); j.var_senha.set(senha)

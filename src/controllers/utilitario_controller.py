@@ -73,9 +73,11 @@ class UtilitarioController:
                 self.banco.executar(f"UPDATE caderneta SET venda_id = NULL WHERE venda_id IN ({marcas})", lote)
                 self.banco.executar(f"UPDATE repiques SET venda_id = NULL WHERE venda_id IN ({marcas})", lote)
                 self.banco.executar(f"DELETE FROM vendas WHERE id IN ({marcas})", lote)
+            # Fica o turno que ainda tem venda ou que recebeu o adiantamento de uma conta fechada depois do corte.
             turnos = [r[0] for r in self.banco.todos(
                 """SELECT t.id FROM turnos t WHERE t.status = 'fechado' AND date(t.aberto_em) < ?
-                   AND NOT EXISTS (SELECT 1 FROM vendas v WHERE v.turno_id = t.id)""", (data,))]
+                   AND NOT EXISTS (SELECT 1 FROM vendas v WHERE v.turno_id = t.id)
+                   AND NOT EXISTS (SELECT 1 FROM pagamentos_venda p WHERE p.turno_id = t.id)""", (data,))]
             comissoes = 0
             for t in turnos:
                 # Comissões das garotas: a paga aponta para a sangria que vai ser apagada; as pagas e canceladas saem com o

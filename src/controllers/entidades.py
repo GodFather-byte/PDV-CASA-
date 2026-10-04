@@ -119,7 +119,7 @@ def _antes_produto(banco, d, id_):
 def _antes_operador(banco, d, id_):
     if "senha" in d:
         if d["senha"]:
-            if not re.fullmatch(r"[A-Za-z0-9]{1,10}", d["senha"]):
+            if not seguranca.FORMATO_SENHA.fullmatch(d["senha"]):
                 raise ErroValidacao("A senha deve ter de 1 a 10 caracteres alfanuméricos.", {"senha": "inválida"})
             d["senha"] = seguranca.gerar_hash(d["senha"])
         else:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import atexit
 import copy
+import io
 import logging
 import os
 import shutil
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from contextlib import redirect_stdout
 from unittest import mock
 
 from src.controllers.caixa_controller import CaixaController
@@ -27,9 +29,29 @@ os.environ["PDV_NUVEM_DB_URL"] = "sqlite:///" + (Path(_PASTA) / "nuvem.db").as_p
 os.environ["PDV_API_TOKEN"] = "token-de-teste"
 try:
     from fastapi.testclient import TestClient
+    from backend import lojas
     from backend import main as nuvem
 except (ImportError, RuntimeError):      # o backend é opcional: sem fastapi/httpx só roda o cliente
-    TestClient = nuvem = None
+    TestClient = nuvem = lojas = None
+
+ADMIN = {"Authorization": "Bearer token-de-teste"}                  # PDV_API_TOKEN: só o painel de todas as lojas
+TOKENS = {"LOJA-1": "token-da-loja-1", "LOJA-2": "token-da-loja-2"}
+
+
+def cabecalho(loja="LOJA-1"):
+    return {"Authorization": f"Bearer {TOKENS[loja]}"}
+
+
+def preparar_lojas():
+    """A nuvem de teste é compartilhada: garante as duas lojas, ativas e com os tokens conhecidos."""
+    db = nuvem.SessionLocal()
+    try:
+        db.query(nuvem.Loja).delete()
+        for chave, token in TOKENS.items():
+            db.add(nuvem.Loja(chave_loja=chave, nome=chave, token_hash=nuvem.hash_token(token), ativa=True))
+        db.commit()
+    finally:
+        db.close()
 
 
 def _limpar():
@@ -74,10 +96,11 @@ class BasePDV(BaseTeste):
 
 @unittest.skipIf(TestClient is None, "fastapi/httpx não instalados")
 class TesteApi(BasePDV):
-    H = {"Authorization": "Bearer token-de-teste"}
+    H = cabecalho()
 
     def setUp(self):
         super().setUp()
+        preparar_lojas()
         self.http = TestClient(nuvem.app)
 
     def post(self, lote, headers=None):
@@ -143,11 +166,39 @@ class TesteApi(BasePDV):
         lote = SyncController(self.banco).montar_lote()
         self.assertEqual(self.post(lote, headers={}).status_code, 401)
         self.assertEqual(self.post(lote, headers={"Authorization": "Bearer errado"}).status_code, 401)
-        self.assertEqual(self.post(lote, headers={"Authorization": "token-de-teste"}).status_code, 401)
+        self.assertEqual(self.post(lote, headers={"Authorization": TOKENS["LOJA-1"]}).status_code, 401)   # sem "Bearer"
         self.assertEqual(self.http.post("/v1/sincronizar", json={"lixo": 1}).status_code, 401)   # sem token nem valida o corpo
         with mock.patch.dict(os.environ):
             os.environ.pop("PDV_API_TOKEN")
-            self.assertEqual(self.post(lote).status_code, 503)
+            self.assertEqual(self.post(lote).status_code, 200)              # a loja não depende do token do administrador
+            db = nuvem.SessionLocal()
+            db.query(nuvem.Loja).delete()
+            db.commit()
+            db.close()
+            self.assertEqual(self.post(lote).status_code, 503)              # nem loja nem administrador: servidor sem configuração
+
+    def test_token_de_uma_loja_nao_envia_vendas_de_outra(self):
+        self.vender()
+        lote = SyncController(self.banco).montar_lote()                      # chave_loja = LOJA-1
+        r = self.post(lote, headers=cabecalho("LOJA-2"))
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("LOJA-2", r.json()["detail"])
+        self.assertEqual(self.na_nuvem(lote["vendas"][0]["uuid"])[0], [])
+
+    def test_token_do_administrador_nao_envia_vendas(self):
+        self.vender()
+        lote = SyncController(self.banco).montar_lote()
+        self.assertEqual(self.post(lote, headers=ADMIN).status_code, 403)
+
+    def test_loja_desativada_e_recusada(self):
+        self.vender()
+        lote = SyncController(self.banco).montar_lote()
+        db = nuvem.SessionLocal()
+        lojas.definir_ativa(db, "LOJA-1", False)
+        db.close()
+        r = self.post(lote)
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("desativada", r.json()["detail"])
 
     def test_payload_invalido_e_recusado(self):
         self.vender()
@@ -184,7 +235,7 @@ class TesteApi(BasePDV):
         self.assertEqual(len(self.post(lote).json()["aceitas"]), 1)
         outra = copy.deepcopy(lote)
         outra["chave_loja"] = "LOJA-2"
-        self.assertEqual(self.post(outra).json()["aceitas"], [])
+        self.assertEqual(self.post(outra, headers=cabecalho("LOJA-2")).json()["aceitas"], [])
 
     def test_saude_nao_exige_token(self):
         self.assertEqual(self.http.get("/v1/saude").json(), {"status": "ok"})
@@ -192,10 +243,11 @@ class TesteApi(BasePDV):
 
 @unittest.skipIf(TestClient is None, "fastapi/httpx não instalados")
 class TestePainelDoDono(BasePDV):
-    H = {"Authorization": "Bearer token-de-teste"}
+    H = ADMIN
 
     def setUp(self):
         super().setUp()
+        preparar_lojas()
         self.http = TestClient(nuvem.app)
         db = nuvem.SessionLocal()                       # a nuvem de teste é compartilhada: começa vazia
         for modelo in (nuvem.VendaPagamento, nuvem.VendaItem, nuvem.Venda):
@@ -204,11 +256,11 @@ class TestePainelDoDono(BasePDV):
         db.close()
 
     def enviar(self, lote):
-        r = self.http.post("/v1/sincronizar", json=lote, headers=self.H)
+        r = self.http.post("/v1/sincronizar", json=lote, headers=cabecalho(lote["chave_loja"]))
         self.assertEqual(r.status_code, 200, r.text)
 
-    def resumo(self, **params):
-        return self.http.get("/v1/dashboard/resumo", params=params, headers=self.H)
+    def resumo(self, headers=None, **params):
+        return self.http.get("/v1/dashboard/resumo", params=params, headers=self.H if headers is None else headers)
 
     def test_dados_do_painel_exigem_o_token(self):
         self.vender()
@@ -217,7 +269,8 @@ class TestePainelDoDono(BasePDV):
         self.assertEqual(self.http.get("/v1/dashboard/resumo", headers={"Authorization": "Bearer errado"}).status_code, 401)
         with mock.patch.dict(os.environ):
             os.environ.pop("PDV_API_TOKEN")
-            self.assertEqual(self.resumo().status_code, 503)
+            self.assertEqual(self.resumo().status_code, 401)                   # sem PDV_API_TOKEN não há administrador
+            self.assertEqual(self.resumo(headers=cabecalho()).status_code, 200)
         self.assertEqual(self.resumo().status_code, 200)
 
     def test_pagina_do_painel_e_publica_mas_nao_traz_dados_nem_usa_innerhtml(self):
@@ -370,6 +423,13 @@ class TesteSincronizador(BasePDV):
         self.assertIn("token", r["mensagem"])
         self.assertEqual((self.sincronizado(v), SyncController(self.banco).contagem_rejeitadas()), (0, 0))
 
+    def test_loja_errada_ou_desativada_mostra_o_motivo_da_nuvem(self):
+        v = self.vender()
+        r = self.cliente(lambda lote: RespostaFalsa(403, {"detail": "Loja desativada na nuvem."})).enviar_pendentes()
+        self.assertEqual(r["estado"], "erro")
+        self.assertIn("Loja desativada na nuvem.", r["mensagem"])
+        self.assertEqual(self.sincronizado(v), 0)
+
     def test_422_poe_so_a_venda_invalida_em_quarentena(self):
         v1, v2, v3 = self.vender(), self.vender(), self.vender()
         detalhe = {"detail": [{"type": "string_type", "loc": ["body", "vendas", 1, "posicao"], "msg": "Input should be a valid string"}]}
@@ -486,3 +546,86 @@ class TesteSincronizador(BasePDV):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(TestClient is None, "fastapi/httpx não instalados")
+class TesteSeparacaoDasLojas(BasePDV):
+    """O token identifica a loja: cada uma só envia e só vê o que é dela."""
+
+    def setUp(self):
+        super().setUp()
+        preparar_lojas()
+        self.http = TestClient(nuvem.app)
+        db = nuvem.SessionLocal()
+        for modelo in (nuvem.VendaPagamento, nuvem.VendaItem, nuvem.Venda):
+            db.query(modelo).delete()
+        db.commit()
+        db.close()
+        sync = SyncController(self.banco)
+        self.vender()                                                        # R$ 10,00 na LOJA-1
+        lote_a = sync.montar_lote()
+        self.assertEqual(self.http.post("/v1/sincronizar", json=lote_a, headers=cabecalho()).status_code, 200)
+        sync.confirmar([v["uuid"] for v in lote_a["vendas"]])                # o próximo lote só leva a venda nova
+        self.vender(qtd=3)                                                   # R$ 30,00 enviados como LOJA-2
+        lote_b = sync.montar_lote()
+        lote_b["chave_loja"] = "LOJA-2"
+        self.assertEqual(self.http.post("/v1/sincronizar", json=lote_b, headers=cabecalho("LOJA-2")).status_code, 200)
+
+    def resumo(self, headers, **params):
+        return self.http.get("/v1/dashboard/resumo", params=params, headers=headers)
+
+    def test_cada_loja_ve_so_o_proprio_painel(self):
+        self.assertEqual(self.resumo(cabecalho("LOJA-1")).json()["receita_cent"], 1000)
+        self.assertEqual(self.resumo(cabecalho("LOJA-2")).json()["receita_cent"], 3000)
+        self.assertEqual(self.resumo(cabecalho("LOJA-1"), chave_loja="LOJA-1").status_code, 200)
+        self.assertEqual(self.resumo(cabecalho("LOJA-1"), chave_loja="LOJA-2").status_code, 403)
+
+    def test_administrador_ve_todas_ou_a_pedida(self):
+        self.assertEqual(self.resumo(ADMIN).json()["receita_cent"], 4000)
+        self.assertEqual(self.resumo(ADMIN, chave_loja="LOJA-2").json()["receita_cent"], 3000)
+
+
+@unittest.skipIf(TestClient is None, "fastapi/httpx não instalados")
+class TesteCadastroDeLojas(unittest.TestCase):
+    def setUp(self):
+        self.db = nuvem.SessionLocal()
+        self.addCleanup(self.db.close)
+        self.db.query(nuvem.Loja).filter(nuvem.Loja.chave_loja.like("CAD-%")).delete(synchronize_session=False)
+        self.db.commit()
+        self.http = TestClient(nuvem.app)
+
+    def test_criar_mostra_o_token_uma_vez_e_guarda_so_o_hash(self):
+        token = lojas.criar(self.db, "CAD-1", "Boate Teste")
+        self.assertGreaterEqual(len(token), 40)
+        loja = self.db.query(nuvem.Loja).filter_by(chave_loja="CAD-1").one()
+        self.assertNotEqual(loja.token_hash, token)
+        self.assertEqual(loja.token_hash, nuvem.hash_token(token))
+        r = self.http.get("/v1/dashboard/resumo", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(r.status_code, 200)
+
+    def test_novo_token_invalida_o_antigo(self):
+        antigo = lojas.criar(self.db, "CAD-2", "Boate Teste")
+        novo = lojas.novo_token(self.db, "CAD-2")
+        self.assertNotEqual(antigo, novo)
+        self.assertEqual(self.http.get("/v1/dashboard/resumo", headers={"Authorization": f"Bearer {antigo}"}).status_code, 401)
+        self.assertEqual(self.http.get("/v1/dashboard/resumo", headers={"Authorization": f"Bearer {novo}"}).status_code, 200)
+
+    def test_validacoes(self):
+        lojas.criar(self.db, "CAD-3", "Boate Teste")
+        for chave, nome in (("CAD-3", "Repetida"), ("", "Sem chave"), ("CAD 4", "Com espaço"), ("CAD-5", "")):
+            with self.subTest(chave=chave), self.assertRaises(lojas.ErroLoja):
+                lojas.criar(self.db, chave, nome)
+        with self.assertRaises(lojas.ErroLoja):
+            lojas.novo_token(self.db, "CAD-NAO-EXISTE")
+
+    def test_linha_de_comando(self):
+        saida = io.StringIO()
+        with mock.patch.object(lojas, "SessionLocal", return_value=self.db), mock.patch.object(self.db, "close"), \
+                redirect_stdout(saida):
+            self.assertEqual(lojas.main(["criar", "CAD-6", "Boate Linha"]), 0)
+            self.assertEqual(lojas.main(["desativar", "CAD-6"]), 0)
+            self.assertEqual(lojas.main(["listar"]), 0)
+            self.assertEqual(lojas.main(["comando-errado"]), 2)
+        self.assertIn("Token (guarde agora", saida.getvalue())
+        self.assertRegex(saida.getvalue(), r"CAD-6\s+INATIVA\s+Boate Linha")
+

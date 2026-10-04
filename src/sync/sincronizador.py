@@ -81,7 +81,12 @@ class Sincronizador:
             n = self.sync.confirmar([u for u in aceitas if isinstance(u, str)], enviados)
             return {"estado": "ok", "enviadas": n, "enviados": len(enviados), "restantes": self.sync.contagem_pendentes()}
         if codigo in (401, 403):
-            return self._erro("A nuvem recusou o token da API. Confira Configurações > Nuvem.")
+            try:
+                motivo = str(resposta.json().get("detail") or "")[:200]
+            except (ValueError, AttributeError):
+                motivo = ""
+            return self._erro("A nuvem recusou o token da API" + (f" ({motivo})" if motivo else "")
+                              + ". Confira o token e a chave da loja em Configurações > Nuvem.")
         if codigo == 422:
             return self._quarentena(resposta, lote)
         return self._erro(f"Erro da nuvem (HTTP {codigo}): {str(getattr(resposta, 'text', ''))[:200]}")

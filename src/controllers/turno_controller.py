@@ -7,6 +7,14 @@ from src.core import formatacao as fmt
 from src.core import licenca
 from src.core.erros import ErroNegocio
 
+# Pagamento que conta no turno `?` (aliases p = pagamentos_venda, v = vendas). Vale o turno em que o dinheiro ENTROU:
+# o adiantamento de uma mesa fica no turno que o recebeu, mesmo que a conta feche no seguinte, e a mesa ainda aberta
+# já conta (o dinheiro está na gaveta). Venda cancelada sai da conta só no turno do cancelamento, onde o valor foi
+# devolvido; o que entrou num turno anterior continua nele, e a devolução é uma saída do turno atual
+# (CaixaController.cancelar_venda). Pagamento antigo sem turno (anterior à v9) conta no turno da venda, como antes.
+RECEBIDO_NO_TURNO = ("COALESCE(p.turno_id, v.turno_id) = ? "
+                     "AND (v.status <> 'cancelada' OR COALESCE(p.turno_id, v.turno_id) <> v.turno_id)")
+
 
 class TurnoController:
     def __init__(self, banco, terminal: int | None = None):
@@ -86,9 +94,9 @@ class TurnoController:
         b = self.banco
         t = self.obter(turno_id)
         na_gaveta = b.valor(
-            """SELECT COALESCE(SUM(p.valor_cent - p.troco_cent), 0) FROM pagamentos_venda p
-               JOIN vendas v ON v.id = p.venda_id JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id
-               WHERE v.turno_id = ? AND v.status = 'fechada' AND t.na_gaveta = 1""", (turno_id,), 0)
+            f"""SELECT COALESCE(SUM(p.valor_cent - p.troco_cent), 0) FROM pagamentos_venda p
+                JOIN vendas v ON v.id = p.venda_id JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id
+                WHERE {RECEBIDO_NO_TURNO} AND t.na_gaveta = 1""", (turno_id,), 0)
         movimentos = {r["tipo"]: r["total"] for r in b.todos(
             "SELECT tipo, COALESCE(SUM(valor_cent), 0) AS total FROM movimentos_caixa WHERE turno_id = ? GROUP BY tipo", (turno_id,))}
         return t["valor_inicial_cent"] + na_gaveta + movimentos.get("entrada", 0) - movimentos.get("saida", 0)
@@ -121,11 +129,11 @@ class TurnoController:
             return b.valor(f"SELECT COALESCE(SUM({coluna}), 0) FROM vendas WHERE {filtro}", (turno_id,), 0)
 
         recebimentos = [dict(r) for r in b.todos(
-            """SELECT t.id AS tipo_id, t.tipo, t.na_gaveta, SUM(p.valor_cent - p.troco_cent) AS valor
-               FROM pagamentos_venda p JOIN vendas v ON v.id = p.venda_id
-               JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id
-               WHERE v.turno_id = ? AND v.status = 'fechada'
-               GROUP BY t.id ORDER BY t.ordem, t.tipo""", (turno_id,))]
+            f"""SELECT t.id AS tipo_id, t.tipo, t.na_gaveta, SUM(p.valor_cent - p.troco_cent) AS valor
+                FROM pagamentos_venda p JOIN vendas v ON v.id = p.venda_id
+                JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id
+                WHERE {RECEBIDO_NO_TURNO}
+                GROUP BY t.id ORDER BY t.ordem, t.tipo""", (turno_id,))]
         total_recebido = sum(r["valor"] for r in recebimentos)
         na_gaveta = sum(r["valor"] for r in recebimentos if r["na_gaveta"])
         tc = b.valor(f"SELECT COUNT(*) FROM vendas WHERE {com_itens}", (turno_id,), 0)
@@ -152,9 +160,9 @@ class TurnoController:
             "venda_caderneta": b.valor(
                 f"SELECT COALESCE(SUM(total_cent),0) FROM vendas WHERE {com_itens} AND modalidade = 'caderneta'", (turno_id,), 0),
             "pagtos_caderneta": b.valor(
-                """SELECT COALESCE(SUM(p.valor_cent - p.troco_cent),0) FROM pagamentos_venda p
-                   JOIN vendas v ON v.id = p.venda_id WHERE v.turno_id = ? AND v.status = 'fechada'
-                   AND v.modalidade = 'caderneta'""", (turno_id,), 0),
+                f"""SELECT COALESCE(SUM(p.valor_cent - p.troco_cent),0) FROM pagamentos_venda p
+                    JOIN vendas v ON v.id = p.venda_id WHERE {RECEBIDO_NO_TURNO}
+                    AND v.modalidade = 'caderneta'""", (turno_id,), 0),
             "entradas": entradas, "saidas": saidas,
             "tc": tc,
             "tm": fmt.dividir_cent(venda_total, tc),

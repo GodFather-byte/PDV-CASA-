@@ -30,9 +30,10 @@ Para abrir o sistema (Windows: também há o atalho `iniciar_pdv.bat`):
 python -m src.app
 ```
 
-Usuário inicial: **ADM**, senha **ADM** (nível 4; troque a senha e crie os operadores em
-Manutenção de Cadastros > Operadores). Operadores de nível 0 entram direto no caixa. O
-primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
+Usuário inicial: **ADM**, senha **ADM** (nível 4). Na primeira entrada o sistema obriga a trocar essa senha (vale para
+qualquer operador cuja senha seja igual ao nome); depois crie os operadores em Manutenção de Cadastros > Operadores.
+Cinco senhas erradas seguidas bloqueiam aquele usuário (ou a senha de supervisor) por 5 minutos. Operadores de nível 0
+entram direto no caixa. O primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
 
 O sistema local usa só a biblioteca padrão (Tkinter e SQLite). Quem usa a sincronização, a balança ou a
 impressão RAW do Windows precisa de `pip install -r requirements.txt`. A pasta `src/ui/` ainda contém telas Flet antigas
@@ -281,20 +282,24 @@ O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de 
 1. No servidor (`pip install -r backend/requirements.txt`), na raiz do repositório:
 
    ```powershell
-   $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"
+   $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"      # token do administrador (painel de todas as lojas)
+   python -m backend.lojas criar BOATE-CENTRO "Boate Centro"  # uma vez por loja: mostra o token DESSA loja
    python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
    ```
 
-   O painel do dono abre em `http://servidor:8000/` e pede o mesmo token.
-2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000/v1/sincronizar`), o token e a chave
-   da loja.
+   Cada loja tem o próprio token, e a nuvem identifica a loja por ele: o token de uma loja não envia vendas em nome de
+   outra nem vê o painel dela. O token aparece só na criação (a nuvem guarda apenas o hash); `python -m backend.lojas
+   novo-token BOATE-CENTRO` troca um token vazado e `desativar`/`ativar` bloqueiam e liberam a loja. O painel do dono
+   abre em `http://servidor:8000/`: com o token da loja mostra só ela; com o `PDV_API_TOKEN`, todas.
+2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000/v1/sincronizar`), o token da loja e a
+   chave da loja (a mesma usada no `criar`).
 3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`).
    Ele registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e só confirma o que a API aceitou.
 
 O painel inicial do PDV mostra as vendas aguardando envio e as recusadas pela nuvem (em quarentena). O contrato está em
 [`docs/COORDENACAO.md`](docs/COORDENACAO.md) e é verificado por `tests/test_nuvem.py`.
 
-Antes de operar comercialmente ainda é necessário: HTTPS (proxy reverso ou túnel) e token por loja, teste em loja com a
+Antes de operar comercialmente ainda é necessário: HTTPS (proxy reverso ou túnel), teste em loja com a
 rotina real do caixa, backup e restauração testados, hardware fiscal/periféricos e homologação no ambiente da loja.
 
 ## Licença mensal e executável
