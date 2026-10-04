@@ -66,6 +66,7 @@ CAMPOS_CONFIG = [
     ("exigir_senha_gaveta", "Exigir senha de supervisor para abrir a gaveta", "sn", "Caixa"),
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),
     ("exigir_senha_cancelamento", "Exigir senha de supervisor para cancelamentos", "sn", "Caixa"),
+    ("exigir_motivo_cancelamento", "Exigir o motivo para cancelar item ou venda", "sn", "Caixa"),
     ("exigir_senha_desconto", "Exigir senha de supervisor para desconto", "sn", "Caixa"),
     ("exigir_senha_comissao", "Exigir senha de supervisor para lançar comissão das garotas", "sn", "Caixa"),
     ("codigo_comissao", "Código que lança a comissão das garotas no caixa (vazio = desligado)", "texto", "Caixa"),

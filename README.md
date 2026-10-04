@@ -180,6 +180,9 @@ dois controles. Outras ideias, que mudam regras ou o banco, estão em `docs/ESPE
 - **Alerta de sangria** (Configurações > Caixa > *Avisar para fazer sangria quando o dinheiro da gaveta passar de*, em R$; 0
   desliga): ao fechar uma venda, se o dinheiro esperado na gaveta passou do limite, a barra de estado fica laranja pedindo a
   sangria (F7). Só avisa que passou: não mostra quanto há, para o operador seguir contando a gaveta sem ver o esperado.
+- **Motivo do cancelamento** (Configurações > Caixa > *Exigir o motivo para cancelar item ou venda*, desligado de fábrica):
+  ligado, o caixa pede o motivo ao cancelar um item ou a venda inteira e não aceita em branco. O motivo sai no fechamento
+  e na Leitura X, em *Itens cancelados* e *Cupons cancelados*.
 - **Sem programação nova:** *taxa de comanda perdida* e *consumação mínima na entrada* se fazem cadastrando um produto
   (ex.: `TAXA COMANDA PERDIDA`) e lançando-o na comanda.
 

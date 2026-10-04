@@ -282,7 +282,10 @@ class CaixaController:
             self.recalcular(venda_id)
         return item_id
 
-    def cancelar_item(self, item_id: int) -> None:
+    def cancelar_item(self, item_id: int, motivo: str = "") -> None:
+        motivo = (motivo or "").strip()
+        if not motivo and self.banco.cfg_bool("exigir_motivo_cancelamento", False):
+            raise ErroNegocio("Informe o motivo do cancelamento.")
         item = self.banco.um("SELECT * FROM itens_venda WHERE id = ?", (item_id,))
         if item is None or item["cancelado"]:
             raise ErroNegocio("Item não encontrado ou já cancelado.")
@@ -291,7 +294,8 @@ class CaixaController:
             self.banco.executar("UPDATE itens_venda SET cancelado = 1, cancelado_em = ? WHERE id = ?",
                                 (fmt.agora(), item_id))
             self.recalcular(item["venda_id"])
-            self.banco.log("item_cancelado", f"venda {item['venda_id']} item {item_id}", self.operador_id)
+            self.banco.log("item_cancelado", f"venda {item['venda_id']} item {item_id}" + (f" motivo: {motivo}"[:200] if motivo else ""),
+                           self.operador_id)
 
     def definir_observacao(self, item_id: int, texto: str | None) -> None:
         item = self.banco.um("SELECT venda_id FROM itens_venda WHERE id = ?", (item_id,))
@@ -516,6 +520,9 @@ class CaixaController:
 
     # ============================================================ cancelar
     def cancelar_venda(self, venda_id: int, motivo: str = "") -> None:
+        motivo = (motivo or "").strip()
+        if not motivo and self.banco.cfg_bool("exigir_motivo_cancelamento", False):
+            raise ErroNegocio("Informe o motivo do cancelamento.")
         """Venda aberta: some se estiver vazia; senão vira cupom cancelado. Cupom fechado:
         só no turno ainda aberto; estorna estoque e caderneta."""
         v = self.obter(venda_id)
