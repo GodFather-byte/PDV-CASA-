@@ -13,6 +13,11 @@
 #define Nome "WillPDV"
 #define Exe "WillPDV.exe"
 
+; Sem o executável o Inno só diria "No files found": explica o que fazer antes.
+#if !FileExists(SourcePath + "..\dist\WillPDV\" + Exe)
+  #error Falta gerar o programa: abra o Prompt de Comando na pasta do projeto e rode  python build_pdv.py --sem-instalador  (cria a pasta dist\WillPDV). Depois compile este arquivo de novo.
+#endif
+
 [Setup]
 ; O AppId identifica o programa no Windows: NUNCA troque, senão a atualização vira uma segunda instalação.
 AppId={{D44B21FE-DB95-446D-956E-5EAAD7642753}
