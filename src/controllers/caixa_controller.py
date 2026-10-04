@@ -209,9 +209,13 @@ class CaixaController:
                 self.cancelar_venda(v["id"], "saída liberada sem consumo")
             quando = fmt.agora()
             rotulo = self.rotular_posicao(comanda, numero)
+            # Nº do ticket de saída: sequência própria, guardada na configuração (a limpeza do movimento não a reinicia).
+            ticket = self.banco.cfg_int("ultimo_ticket_saida", 0) + 1
+            self.banco.cfg_set("ultimo_ticket_saida", str(ticket))
             self.banco.log("saida_liberada", json.dumps({"turno_id": turno["id"], "comanda": int(comanda), "posicao": numero,
-                                                         "rotulo": rotulo}), self.operador_id)
-        return {"nome": nome, "rotulo": rotulo, "quando": quando, "turno": turno["numero"]}
+                                                         "rotulo": rotulo, "ticket": ticket}), self.operador_id)
+        return {"nome": nome, "rotulo": rotulo, "quando": quando, "turno": turno["numero"], "comanda": bool(comanda),
+                "numero": numero, "ticket": ticket}
 
     def saidas_liberadas(self, turno_id: int) -> list[dict]:
         """As saídas sem consumo liberadas no turno, com a hora e quem liberou."""

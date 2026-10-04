@@ -54,13 +54,26 @@ class TesteSaidaSemConsumo(BaseCaixa):
         cfg.salvar_config({"codigo_saida": ""})
         self.assertFalse(self.caixa.eh_codigo_saida("1002"))
 
-    def test_comprovante_tem_a_casa_a_comanda_a_data_e_a_hora(self):
-        self.banco.atualizar("loja", 1, {"nome_fantasia": "Boate Estrela"})
-        info = self.caixa.liberar_saida(True, 180)
-        texto = ImpressaoController(self.banco).comprovante_saida(info, "ADM")
-        for trecho in ("BOATE ESTRELA", "COMPROVANTE DE SAÍDA", "COMANDA 180", "03/10/2026", "21:00", "SEM CONSUMO", "ADM"):
+    def test_ticket_de_saida_no_modelo_da_casa(self):
+        self.banco.atualizar("loja", 1, {"nome_fantasia": "Boate Estrela", "razao_social": "Estrela Diversoes LTDA"})
+        imp = ImpressaoController(self.banco)
+        texto = imp.comprovante_saida(self.caixa.liberar_saida(True, 180), "ADM")
+        for trecho in ("TICKET DE SAIDA", "BOATE ESTRELA", "ESTRELA DIVERSOES LTDA", "FAVOR ENTREGAR ESTE TICKET NA SAIDA",
+                       "DATA: 03/10/2026", "HORA: 21:00:00", "OPERADOR: ADM", "TICKET: 000001", "POSICAO DE ORIGEM: 180",
+                       "CARTAO: 180  LIBERADO"):
             self.assertIn(trecho, texto)
+        self.assertNotIn("CASA VERDE", texto.upper())
+        segundo = imp.comprovante_saida(self.caixa.liberar_saida(False, 5), "ADM")
+        self.assertIn("TICKET: 000002", segundo)                       # numeração sequencial
+        self.assertIn("MESA: M5  LIBERADO", segundo)
 
+    def test_ticket_cabe_na_fita_de_58mm(self):
+        self.banco.atualizar("loja", 1, {"nome_fantasia": "Boate Estrela"})
+        self.banco.executar("UPDATE maquinas SET colunas_fita = 32")
+        texto = ImpressaoController(self.banco).comprovante_saida(self.caixa.liberar_saida(True, 180), "ADM")
+        self.assertTrue(all(len(l) <= 32 for l in texto.splitlines()), texto)
+        self.assertIn("FAVOR ENTREGAR ESTE", texto)
+        self.assertIn("TICKET NA SAIDA", texto)
 
 try:
     from tests.test_comissao_na_tela import BaseNaTela
@@ -76,8 +89,8 @@ if BaseNaTela is not None:
             self.robo.quando("Visualizador", lambda w: (impressos.append(w.texto), w.destroy()))
             self.digitar_codigo("1002")
             self.assertEqual(len(impressos), 1)
-            self.assertIn("COMPROVANTE DE SAÍDA", impressos[0])
-            self.assertIn("COMANDA 180", impressos[0])
+            self.assertIn("TICKET DE SAIDA", impressos[0])
+            self.assertIn("CARTAO: 180  LIBERADO", impressos[0])
             self.assertIn("Saída liberada", self.status())
             self.assertEqual(self.ctx.caixa.mesas(), [])
             self.sem_travar()
@@ -100,7 +113,7 @@ if BaseNaTela is not None:
             self.dialogos({"Saída sem consumo": lambda w: (entradas(w)[0].insert(0, "55"), clicar(w, "OK"))})
             self.robo.quando("Visualizador", lambda w: (impressos.append(w.texto), w.destroy()))
             self.digitar_codigo("1002")
-            self.assertIn("COMANDA 55", impressos[0])
+            self.assertIn("CARTAO: 55  LIBERADO", impressos[0])
             self.sem_travar()
 
 

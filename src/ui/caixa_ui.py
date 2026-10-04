@@ -1102,8 +1102,8 @@ class JanelaCaixa(tk.Toplevel):
         if self.venda_id and not self.ctx.banco.valor("SELECT 1 FROM vendas WHERE id = ? AND status IN ('aberta','conta_enviada')",
                                                       (self.venda_id,)):
             self.venda_id = None
-        enviar_ou_mostrar(self, self.ctx, "Comprovante de saída", self.ctx.impressao.comprovante_saida(info, self.ctx.operador.nome),
-                          f"saida_{info['rotulo']}", tipo="comprovante")
+        enviar_ou_mostrar(self, self.ctx, "Ticket de saída", self.ctx.impressao.comprovante_saida(info, self.ctx.operador.nome),
+                          f"saida_{info['rotulo']}", tipo="saida")
         self.recarregar()
         self.avisar(f"Saída liberada: {info['nome']} sem consumo.", tema.COR["ok"])
         self.ent_codigo.focus_set()
