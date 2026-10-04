@@ -1,7 +1,7 @@
 """Cadastro das lojas da nuvem. Cada loja tem o próprio token; o token aparece UMA vez e só o hash fica guardado.
 
     python -m backend.lojas criar BOATE-CENTRO "Boate Centro"   # mostra o token da loja
-    python -m backend.lojas listar
+    python -m backend.lojas listar                              # todas as lojas e até quando pagaram (avisa as vencidas)
     python -m backend.lojas novo-token BOATE-CENTRO             # troca o token (o antigo para de funcionar)
     python -m backend.lojas desativar BOATE-CENTRO              # bloqueia envio e painel (ex.: assinatura vencida)
     python -m backend.lojas ativar BOATE-CENTRO
@@ -75,6 +75,20 @@ def definir_assinatura(db: Session, chave: str, ate: date | None) -> None:
     db.commit()
 
 
+def situacao_assinatura(licenca_ate: str | None, hoje: date | None = None) -> str:
+    """'paga até 30/11/2026', com o alerta do que precisa de atenção: VENCIDA ou quantos dias faltam (7 ou menos)."""
+    if not licenca_ate:
+        return "sem assinatura"
+    ate = date.fromisoformat(licenca_ate)
+    dias = (ate - (hoje or date.today())).days
+    texto = f"paga até {ate.strftime('%d/%m/%Y')}"
+    if dias <= 0:
+        return texto + " (VENCIDA)"
+    if dias <= 7:
+        return texto + f" (vence em {dias} dia{'s' if dias > 1 else ''})"
+    return texto
+
+
 def listar(db: Session) -> list[Loja]:
     return db.query(Loja).order_by(Loja.chave_loja).all()
 
@@ -106,8 +120,8 @@ def main(argv: list[str] | None = None) -> int:
         elif comando == "listar" and not resto:
             lojas = listar(db)
             for loja in lojas:
-                paga = f"paga até {loja.licenca_ate}" if loja.licenca_ate else "sem assinatura"
-                print(f"{loja.chave_loja:<24} {'ativa  ' if loja.ativa else 'INATIVA'}  {paga:<22} {loja.nome}")
+                print(f"{loja.chave_loja:<24} {'ativa  ' if loja.ativa else 'INATIVA'}  {situacao_assinatura(loja.licenca_ate):<38} "
+                      f"{loja.nome}")
             if not lojas:
                 print("Nenhuma loja cadastrada.")
         else:

@@ -111,19 +111,20 @@ class TesteFitaDoFechamento(BaseConferencia):
                          "21:00 C3 1x AGUA", "por NOITE", "TRANSFERÊNCIAS (1)", "21:00 M5>C7 inteira", "por ADM"):
             self.assertIn(esperado, texto)
         self.assertRegex(texto, r"Total em aberto +21,45")                 # 3,85 + 8,80 + 8,80
-        self.assertTrue(linhas[-1] == "=" * 40 and "RESULTADO" in texto)
+        self.assertTrue(linhas[-1] == "=" * 40)
+        self.assertRegex(texto, r"SOBROU|FALTOU|CAIXA CONFERIDO")
 
     def test_sem_ocorrencias_so_a_linha_das_posicoes_abertas(self):
         res = self.turnos.fechar(self.turno, self.adm, 10000)
         texto = ImpressaoController(self.banco).fechamento(res)
-        self.assertRegex(texto, r"Posições em aberto +nenhuma")
-        for ausente in ("POSIÇÕES EM ABERTO", "CANCELADOS", "TRANSFERÊNCIAS"):
+        self.assertRegex(texto, r"Nenhuma mesa ou comanda aberta +OK")
+        for ausente in ("POSIÇÕES EM ABERTO (", "CANCELADOS", "TRANSFERÊNCIAS"):
             self.assertNotIn(ausente, texto)
 
     def test_secao_longa_e_cortada_com_e_mais_n(self):
         transf = {"quando": "2026-10-03 21:00:00", "por": "ADM", "tipo": "mesa", "origem": "1", "destino": "C2", "valor_cent": 100}
         linhas = linhas_fita({"transferencias": [transf] * (LIMITE_FITA + 5)}, 40)
-        self.assertIn(f"TRANSFERÊNCIAS ({LIMITE_FITA + 5})", linhas)
+        self.assertTrue(any(f" TRANSFERÊNCIAS ({LIMITE_FITA + 5}) " in l for l in linhas), linhas[:5])
         self.assertIn("  ... e mais 5", linhas)
         self.assertEqual(sum(1 for l in linhas if "M1>C2 inteira" in l), LIMITE_FITA)
 

@@ -60,9 +60,9 @@ class TesteSobraEFalta(BaseFechamento):
 
     def test_o_resultado_numerico_continua_na_fita(self):
         texto = self.fita(ESPERADO + 120)
-        self.assertRegex(texto, r"RESULTADO \(sobra/falta\) +1,20")
-        self.assertRegex(texto, r"Valor esperado +108,80")
-        self.assertRegex(texto, r"Valor final \(declarado\) +110,00")
+        self.assertIn("SOBROU R$ 1,20", texto)
+        self.assertRegex(texto, r"ESPERADO NA GAVETA +108,80")
+        self.assertRegex(texto, r"DECLARADO PELO CAIXA +110,00")
 
     def letra_grande(self, declarado, frase):
         dados = texto_para_escpos(self.fita(declarado), **_ESTILOS["fechamento"])
@@ -85,13 +85,14 @@ class TesteAssinaturas(BaseFechamento):
 
     def test_traz_o_caixa_responsavel_e_o_gerente_no_fim(self):
         texto = self.fita(ESPERADO)
-        linhas = texto.splitlines()
+        linhas = [l.strip() for l in texto.splitlines()]
         self.assertIn("Caixa responsável: ADM", linhas)
         self.assertEqual(linhas[-1], "=" * 40)
-        self.assertEqual(linhas[-2], "Gerente / quem recebe o caixa")
+        i_gerente = linhas.index("Gerente / quem recebe o caixa")
+        self.assertGreater(i_gerente, linhas.index("Caixa responsável: ADM"))   # o gerente assina por último
         i_caixa = linhas.index("Caixa responsável: ADM")
         self.assertEqual(linhas[i_caixa - 1], "_" * 40)                        # a linha para assinar vem acima do nome
-        self.assertEqual(linhas[-3], "_" * 40)
+        self.assertEqual(linhas[i_gerente - 1], "_" * 40)
         self.assertGreater(len(self.linhas_de_assinatura(texto)), 1)
 
     def test_sem_diferenca_nao_pede_justificativa(self):
@@ -196,7 +197,8 @@ class TesteViaDaGarotaNoTexto(BaseFechamento):
         self.lancar(180, 25)
         segunda = self.lancar(180, 30)
         texto = self.via(segunda)
-        for trecho in ("COMISSÃO LANÇADA", "VIA DA GAROTA", "Garota: 180 MARIA", "Lançamento nº 2", "Operador: ADM"):
+        for trecho in ("COMISSÃO LANÇADA", "VIA DA GAROTA", "Garota: 180 MARIA", "Lançamento nº 2", "Operador: ADM",
+                       "SALDO A RECEBER"):
             self.assertIn(trecho, texto)
         self.assertRegex(texto, r"Valor desta comissão +30,00")
         self.assertRegex(texto, r"nº 1 +25,00")

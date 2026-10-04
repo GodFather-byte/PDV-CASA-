@@ -161,8 +161,13 @@ def _curto(rotulo: str | None) -> str:
     return rotulo if rotulo[:1] in "Cc" else f"M{rotulo}"
 
 
+def faixa(titulo: str, w: int) -> str:
+    """Título de seção da fita, centralizado entre traços: '-------- VENDAS POR TIPO --------'."""
+    return f" {titulo} ".center(w, "-")[:w]
+
+
 def _secao(titulo: str, itens: list, formata, w: int, limite: int = LIMITE_FITA) -> list[str]:
-    linhas = ["-" * w, f"{titulo} ({len(itens)})"]
+    linhas = ["", faixa(f"{titulo} ({len(itens)})", w)]
     for it in itens[:limite]:
         linhas += formata(it)
     if len(itens) > limite:
@@ -191,7 +196,7 @@ def linhas_fita(res: dict, w: int = 40) -> list[str]:
         saida += _secao("POSIÇÕES EM ABERTO", abertas, posicao, w)
         saida.append(_lr("  Total em aberto", M(sum(p["total_cent"] for p in abertas)), w))
     else:
-        saida += ["-" * w, _lr("Posições em aberto", "nenhuma", w)]
+        saida += ["", faixa("POSIÇÕES EM ABERTO", w), _lr("  Nenhuma mesa ou comanda aberta", "OK", w)]
 
     def cupom(c):
         linhas = [_lr(f"  {c['cupom']} {c['local']}", M(c["total_cent"]), w)]

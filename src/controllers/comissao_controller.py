@@ -38,7 +38,7 @@ class ComissaoController:
 
     # --------------------------------------------------------------- pontos
     # A casa marca a comissão em pontos: 0,1 = R$ 5,00, 0,2 = R$ 10,00, 0,3 = R$ 15,00... (comissao_em_pontos, padrão S;
-    # o valor de cada 0,1 fica em comissao_valor_ponto). Com N, digita-se o valor em reais, como antes.
+    # o valor de cada 0,1 fica em comissao_valor_ponto). No caixa digita-se 1, 2, 3 para 0,1, 0,2, 0,3. Com N, em reais.
     def em_pontos(self) -> bool:
         return self.banco.cfg_bool("comissao_em_pontos", True)
 
@@ -51,16 +51,22 @@ class ComissaoController:
         return cent if cent > 0 else 500
 
     def rotulo_valor(self) -> str:
-        return f"Pontos (0,1 = {fmt.fmt_brl(self.valor_ponto_cent())})" if self.em_pontos() else "Valor (R$)"
+        return f"Pontos (1 = 0,1 = {fmt.fmt_brl(self.valor_ponto_cent())})" if self.em_pontos() else "Valor (R$)"
 
     def para_centavos(self, texto) -> int:
-        """O que o operador digitou no campo da comissão, em centavos: pontos (0,3 -> R$ 15,00) ou reais."""
+        """O que o operador digitou no campo da comissão, em centavos. Em pontos, o número sem vírgula conta em décimos, como
+        a casa fala: 1 = 0,1 (R$ 5,00), 2 = 0,2, 3 = 0,3, 10 = 1,0. Com vírgula vale o ponto escrito (0,3 = 0,3). Em reais,
+        o valor em reais."""
         if not self.em_pontos():
             return fmt.para_centavos(texto)
-        pontos = fmt.para_qtd(texto)
-        decimos = round(pontos * 10, 6)
-        if decimos != int(decimos):
-            raise ErroNegocio(f"Use pontos de 0,1 em 0,1 (0,1 = {fmt.fmt_brl(self.valor_ponto_cent())}).")
+        t = ("" if texto is None else str(texto)).strip()
+        if t.isdigit():
+            decimos = int(t)
+        else:
+            pontos = fmt.para_qtd(t)
+            decimos = round(pontos * 10, 6)
+            if decimos != int(decimos):
+                raise ErroNegocio(f"Use pontos de 0,1 em 0,1 (digite 1 para 0,1 = {fmt.fmt_brl(self.valor_ponto_cent())}).")
         return int(decimos) * self.valor_ponto_cent()
 
     def em_pontos_texto(self, cent: int) -> str:

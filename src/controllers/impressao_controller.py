@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 from src.controllers import conferencia_turno
+from src.controllers.conferencia_turno import faixa
 from src.controllers.caixa_controller import CaixaController
 from src.controllers.config_controller import ConfigController
 from src.controllers.relatorio_controller import RelatorioController
@@ -30,7 +31,8 @@ _ESTILOS = {
     "cupom": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL",)},
     "pre_conta": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL",)},
     "entrega": {"negrito_linhas": 1, "grande_prefixos": ("TOTAL", "LEVAR TROCO")},
-    "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado", "SOBROU", "FALTOU", "CAIXA CONFERIDO")},
+    "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("ESPERADO NA GAVETA", "DECLARADO", "SOBROU", "FALTOU",
+                                                           "CAIXA CONFERIDO", "TOTAL RECEBIDO")},
     "pedido": {"negrito_linhas": 1},
     "comprovante": {"negrito_linhas": 1, "grande_prefixos": ("Valor",)},
     # Ticket de saída (1002): título e nome da casa em negrito; aviso, data/hora e a comanda liberada em letra alta.
@@ -48,6 +50,16 @@ M, Q = fmt.fmt_num, fmt.fmt_qtd
 def _lr(esq: str, dir_: str, w: int) -> str:
     esq = esq[: max(w - len(dir_) - 1, 1)]
     return esq.ljust(w - len(dir_)) + dir_
+
+
+def _q(q) -> str:
+    """Quantidade sem zeros inúteis: 3 e não 3,000; 1,25 continua 1,25."""
+    q = float(q or 0)
+    return str(int(q)) if q == int(q) else Q(q).rstrip("0").rstrip(",")
+
+
+def _titulo(texto: str, w: int) -> list[str]:
+    return ["=" * w, texto.center(w), "=" * w]
 
 
 class ImpressaoController:
@@ -79,14 +91,23 @@ class ImpressaoController:
 
     # ------------------------------------------------------------ cupons
     def _corpo_itens(self, venda_id: int, w: int) -> list[str]:
-        out = []
+        """Itens em colunas: QTD, DESCRIÇÃO, UNIT. e TOTAL (sem a coluna UNIT. na fita de 58mm). Nome comprido vai numa
+        linha só dele e os números na de baixo, para nada ser cortado."""
+        com_unit = w >= 40
+        largura_nome = w - 4 - 10 - (9 if com_unit else 0)
+        cab = "QTD " + "DESCRIÇÃO".ljust(largura_nome) + ("UNIT.".rjust(9) if com_unit else "") + "TOTAL".rjust(10)
+        out = [cab[:w], "-" * w]
         for it in self.caixa.itens(venda_id):
-            out.append(f"{it['codigo'][-6:]} {it['nome']}"[:w])
+            numeros = (M(it["preco_unit_cent"]).rjust(9) if com_unit else "") + M(it["total_cent"]).rjust(10)
+            qtd = _q(it["quantidade"]).ljust(4)
+            if len(it["nome"]) <= largura_nome - 1:
+                out.append(qtd + it["nome"].ljust(largura_nome) + numeros)
+            else:
+                out += [(qtd + it["nome"])[:w], " " * (4 + largura_nome) + numeros]
             if it["partes_nomes"]:
-                out += [f"  1/{it['partes']} {n}"[:w] for n in it["partes_nomes"]]
-            out.append(_lr(f"  {Q(it['quantidade'])} {it['unidade']} x {M(it['preco_unit_cent'])}", M(it["total_cent"]), w))
+                out += [f"    1/{it['partes']} {n}"[:w] for n in it["partes_nomes"]]
             if it["observacao"]:
-                out.append(f"  * {it['observacao']}"[:w])
+                out.append(f"    * {it['observacao']}"[:w])
         return out
 
     def _totais(self, v: dict, w: int) -> list[str]:
@@ -97,7 +118,7 @@ class ImpressaoController:
             out.append(_lr("Serviço (+)", M(v["servico_cent"]), w))
         if v["taxa_cent"]:
             out.append(_lr("Taxa de entrega (+)", M(v["taxa_cent"]), w))
-        out.append(_lr("TOTAL", M(v["total_cent"]), w))
+        out.append(_lr("TOTAL", f"R$ {M(v['total_cent'])}", w))
         return out
 
     def _origem(self, v: dict) -> str:
@@ -113,19 +134,19 @@ class ImpressaoController:
         w = self.largura()
         v = self.caixa.obter(venda_id)
         op = self.banco.valor("SELECT nome FROM operadores WHERE id = ?", (v["operador_id"],), "")
-        linhas = self.cabecalho(w) + ["=" * w]
         titulo = "CUPOM NÃO FISCAL" + (" - CANCELADO" if v["status"] == "cancelada" else "")
+        linhas = self.cabecalho(w) + _titulo(titulo, w)
         if segunda_via:
-            linhas.append("** SEGUNDA VIA - REIMPRESSAO **".center(w))
-        linhas += [titulo.center(w), _lr(f"Cupom {v['cupom'] or '-'}", self._origem(v), w),
-                   _lr(fmt.fmt_datahora(v["fechada_em"] or v["aberta_em"]), f"Op: {op}", w), "-" * w]
+            linhas.append("** SEGUNDA VIA - REIMPRESSÃO **".center(w))
+        linhas += [_lr(f"Cupom: {v['cupom'] or '-'}", self._origem(v), w),
+                   _lr(fmt.fmt_datahora(v["fechada_em"] or v["aberta_em"])[:16], f"Operador: {op}", w), "-" * w]
         if v["cliente_id"]:
             c = self.banco.um("SELECT nome FROM clientes WHERE id = ?", (v["cliente_id"],))
             linhas.append(f"Cliente: {c['nome']}"[:w])
         linhas += self._corpo_itens(venda_id, w) + ["-" * w] + self._totais(v, w)
         pags = self.caixa.pagamentos(venda_id)
         if pags:
-            linhas.append("-" * w)
+            linhas += ["", faixa("PAGAMENTO", w)]
             linhas += [_lr(p["tipo"], M(p["valor_cent"]), w) for p in pags]
             if v["troco_cent"]:
                 linhas.append(_lr("Troco", M(v["troco_cent"]), w))
@@ -136,20 +157,21 @@ class ImpressaoController:
         if v["mensagem"]:
             linhas.append(f"Msg: {v['mensagem']}"[:w])
         rodape = self.banco.cfg("mensagem_rodape") or "Obrigado e volte sempre!"
-        linhas += ["=" * w, rodape.center(w)]
+        linhas += ["=" * w, rodape.center(w), "=" * w]
         return "\n".join(linhas)
 
     def pre_conta(self, venda_id: int) -> str:
         """Conta enviada à mesa ou comanda para o cliente conferir antes de pagar."""
         w = self.largura()
         v = self.caixa.obter(venda_id)
-        titulo = "CONTA DA COMANDA (NÃO É CUPOM FISCAL)" if v.get("comanda") else "CONTA DA MESA (NÃO É CUPOM FISCAL)"
-        linhas = self.cabecalho(w) + ["=" * w, titulo.center(w),
-                                      _lr(self._origem(v), fmt.fmt_datahora(fmt.agora()), w), "-" * w]
+        titulo = "CONTA DA COMANDA" if v.get("comanda") else "CONTA DA MESA"
+        linhas = self.cabecalho(w) + _titulo(titulo, w) + [("(confira antes de pagar - não é cupom fiscal)" if w >= 46
+                                                             else "(não é cupom fiscal)").center(w),
+                                                            _lr(self._origem(v), fmt.fmt_datahora(fmt.agora())[:16], w), "-" * w]
         linhas += self._corpo_itens(venda_id, w) + ["-" * w] + self._totais(v, w)
         if v["pessoas"] > 1:
             linhas.append(_lr(f"Por pessoa ({v['pessoas']})", M(fmt.dividir_cent(v["total_cent"], v["pessoas"])), w))
-        return "\n".join(linhas)
+        return "\n".join(linhas + ["=" * w])
 
     def pedido_entrega(self, venda_id: int) -> str:
         w = self.largura()
@@ -197,45 +219,63 @@ class ImpressaoController:
 
     # ------------------------------------------------- turno e relatórios
     def fechamento(self, resumo: dict) -> str:
+        """Fita da troca de turno, em blocos: a conta da gaveta e o resultado primeiro (o que o gerente confere), depois as
+        formas de pagamento, as vendas e a conferência (sangrias, produtos, cancelamentos, comissões). Linha zerada de recurso
+        que a casa não usa não aparece."""
         w = self.largura()
         t = resumo["turno"]
-        linhas = self.cabecalho(w) + ["=" * w, "FECHAMENTO DE TURNO".center(w),
-                                      _lr(f"Turno {t['numero']}", f"Cupons {resumo['cupom_inicial']} a {resumo['cupom_final']}", w),
-                                      f"Abertura  : {fmt.fmt_datahora(t['aberto_em'])}",
-                                      f"Fechamento: {fmt.fmt_datahora(t.get('fechado_em') or fmt.agora())}", "-" * w,
-                                      _lr("Valor inicial (+)", M(resumo["valor_inicial"]), w), "Recebimentos:"]
-        linhas += [_lr(f"  {r['tipo']}{'' if r.get('na_gaveta', 1) else ' *'}", M(r["valor"]), w) for r in resumo["recebimentos"]]
-        if any(not r.get("na_gaveta", 1) for r in resumo["recebimentos"]):
-            linhas.append("  * fora da gaveta")
+        encerrado = "valor_final" in resumo               # a Leitura X é parcial: sem declaração, resultado e assinatura
+        caixa = self.banco.valor("SELECT nome FROM operadores WHERE id = ?", (t.get("operador_id"),), "")
+        linhas = self.cabecalho(w) + _titulo("FECHAMENTO DE TURNO" if encerrado else "PARCIAL DO TURNO (LEITURA X)", w)
+        linhas += [_lr(f"Turno: {t['numero']}", f"Caixa: {caixa}" if caixa else "", w),
+                   _lr("Abertura:", fmt.fmt_datahora(t["aberto_em"])[:16], w),
+                   _lr("Fechamento:" if encerrado else "Emitida em:", fmt.fmt_datahora(t.get("fechado_em") or fmt.agora())[:16], w),
+                   _lr("Cupons:", f"{resumo['cupom_inicial']} a {resumo['cupom_final']}" if resumo["cupom_final"] else "nenhum", w)]
+
+        # 1) A conta da gaveta: de onde vem o valor esperado.
+        na_gaveta = sum(r["valor"] for r in resumo["recebimentos"] if r.get("na_gaveta", 1))
+        linhas += ["", faixa("CONFERÊNCIA DA GAVETA", w), _lr("Fundo de caixa (+)", M(resumo["valor_inicial"]), w),
+                   _lr("Recebido em dinheiro (+)", M(na_gaveta), w)]
+        if resumo["entradas"]:
+            linhas.append(_lr("Suprimentos (+)", M(resumo["entradas"]), w))
+        if resumo["saidas"]:
+            linhas.append(_lr("Sangrias e saídas (-)", M(resumo["saidas"]), w))
+        linhas += [_lr("", "-" * 12, w), _lr("ESPERADO NA GAVETA", M(resumo["esperado"]), w)]
+        if encerrado:
+            linhas.append(_lr("DECLARADO PELO CAIXA", M(resumo["valor_final"]), w))
+            linhas += self._sobra_ou_falta(resumo["resultado"], w)
+
+        # 2) Formas de pagamento.
+        linhas += ["", faixa("FORMAS DE PAGAMENTO", w)]
+        if not resumo["recebimentos"]:
+            linhas.append("  Nenhum recebimento")
+        for r in resumo["recebimentos"]:
+            linhas.append(_lr(r["tipo"] + ("" if r.get("na_gaveta", 1) else " (fora da gaveta)"), M(r["valor"]), w))
+        linhas.append(_lr("TOTAL RECEBIDO", M(resumo["total_recebido"]), w))
+        if resumo.get("fora_da_gaveta"):
+            linhas.append(_lr("  Fora da gaveta (cartão/Pix)", M(resumo["fora_da_gaveta"]), w))
         if resumo.get("adiantamentos_abertos"):
             linhas.append(_lr("  Adiant. contas abertas", M(resumo["adiantamentos_abertos"]), w))
         if resumo.get("recebido_turno_anterior"):
-            linhas.append(_lr("  Pago em turno anterior", M(resumo["recebido_turno_anterior"]), w))
-        for rotulo, chave in (("Troco", "troco"), ("C. Vale emitido", "vale_emitido"), ("Venda (+)", "venda"),
-                              ("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa (+)", "taxa"),
-                              ("Repique", "repique"), ("Venda caderneta", "venda_caderneta"),
-                              ("Pagtos caderneta (+)", "pagtos_caderneta"), ("Entradas financ. (+)", "entradas"),
-                              ("Saídas financ. (-)", "saidas")):
-            liga = {"desconto": "usar_desconto", "venda_caderneta": "usar_caderneta", "pagtos_caderneta": "usar_caderneta"}
-            if chave in liga and not resumo[chave] and not self.banco.cfg_bool(liga[chave], False):
-                continue                     # recurso que a casa não usa (boate): a linha zerada só polui a fita
-            linhas.append(_lr(rotulo, M(resumo[chave]), w))
-        linhas += ["-" * w, _lr("TC (cupons)", str(resumo["tc"]), w), _lr("TM", M(resumo["tm"]), w),
-                   _lr("Pessoas", str(resumo["pessoas"]), w), _lr("Valor por pessoa", M(resumo["valor_por_pessoa"]), w),
-                   "-" * w]
-        if resumo.get("fora_da_gaveta"):
-            linhas.append(_lr("Fora da gaveta (cartão/Pix)", M(resumo["fora_da_gaveta"]), w))
-        linhas.append(_lr("Valor esperado", M(resumo["esperado"]), w))
-        encerrado = "valor_final" in resumo               # a Leitura X é parcial: sem declaração, resultado e assinatura
-        if encerrado:
-            linhas += [_lr("Valor final (declarado)", M(resumo["valor_final"]), w),
-                       _lr("RESULTADO (sobra/falta)", M(resumo["resultado"]), w)]
-            linhas += self._sobra_ou_falta(resumo["resultado"], w)
+            linhas.append(_lr("Pago em turno anterior", M(resumo["recebido_turno_anterior"]), w))
+
+        # 3) Vendas.
+        linhas += ["", faixa("VENDAS", w), _lr("Produtos", M(resumo["venda"]), w)]
+        liga = {"desconto": "usar_desconto", "venda_caderneta": "usar_caderneta", "pagtos_caderneta": "usar_caderneta"}
+        for rotulo, chave in (("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa de entrega (+)", "taxa"),
+                              ("Repique (caixinha)", "repique"), ("Troco devolvido", "troco"), ("Contra-vale emitido", "vale_emitido"),
+                              ("Venda caderneta", "venda_caderneta"), ("Pagtos caderneta (+)", "pagtos_caderneta")):
+            if resumo[chave] or (chave in liga and self.banco.cfg_bool(liga[chave], False)) or chave == "servico":
+                linhas.append(_lr(rotulo, M(resumo[chave]), w))
+        linhas += [_lr("Cupons emitidos", str(resumo["tc"]), w), _lr("Ticket médio", M(resumo["tm"]), w)]
+        if resumo["pessoas"] and resumo["pessoas"] != resumo["tc"]:
+            linhas += [_lr("Pessoas", str(resumo["pessoas"]), w), _lr("Valor por pessoa", M(resumo["valor_por_pessoa"]), w)]
+
         linhas += self._movimentos_do_turno(t["id"], w)
         linhas += conferencia_turno.linhas_fita(resumo, w)      # posições abertas, cancelamentos, transferências
         if encerrado:
             linhas += self._assinaturas(resumo, w)
-        return "\n".join(linhas + ["=" * w])
+        return "\n".join(linhas + ["", "=" * w, f"Impresso em {fmt.fmt_datahora(fmt.agora())[:16]}".center(w), "=" * w])
 
     @staticmethod
     def _sobra_ou_falta(resultado: int, w: int) -> list[str]:
@@ -246,14 +286,14 @@ class ImpressaoController:
             texto = f"FALTOU R$ {M(-resultado)}"
         else:
             texto = "CAIXA CONFERIDO (sem diferença)"
-        return ["-" * w, texto.center(w)]
+        return ["=" * w, texto.center(w), "=" * w]
 
     def _movimentos_do_turno(self, turno_id: int, w: int) -> list[str]:
         """Cada sangria (saída) e suprimento (entrada) do turno, com a hora, o motivo e quem fez."""
         movimentos = self.caixa.turnos.movimentos(turno_id)
         if not movimentos:
             return []
-        linhas = ["-" * w, f"SANGRIAS E SUPRIMENTOS ({len(movimentos)})"]
+        linhas = ["", faixa(f"SANGRIAS E SUPRIMENTOS ({len(movimentos)})", w)]
         for m in movimentos[:LIMITE_MOVIMENTOS]:
             tipo = "Saída" if m["tipo"] == "saida" else "Entrada"
             linhas.append(_lr(f"  {fmt.fmt_datahora(m['criado_em'])[11:16]} {tipo}", M(m["valor_cent"]), w))
@@ -268,18 +308,20 @@ class ImpressaoController:
         """Rodapé da passagem de caixa: justificativa (se houve diferença) e as linhas de assinatura."""
         t = resumo["turno"]
         quem = self.banco.valor("SELECT nome FROM operadores WHERE id = ?", (t.get("fechado_por") or t.get("operador_id"),), "")
-        linhas = ["-" * w]
+        linhas = ["", faixa("ASSINATURAS", w)]
         if resumo["resultado"] != 0:
             linhas += ["Justificativa da diferença:", "", "_" * w, "", "_" * w]
-        linhas += ["", "", "_" * w, f"Caixa responsável: {quem}".strip()[:w], "", "", "_" * w, "Gerente / quem recebe o caixa"]
+        linhas += ["", "", "_" * w, f"Caixa responsável: {quem}".strip().center(w)[:w], "", "", "_" * w,
+                   "Gerente / quem recebe o caixa".center(w)]
         return linhas
 
     def comprovante_movimento(self, tipo: str, valor_cent: int, descricao: str, operador: str) -> str:
         w = self.largura()
         titulo = "SANGRIA" if tipo == "saida" else "ENTRADA DE CAIXA"
-        return "\n".join(self.cabecalho(w) + ["=" * w, titulo.center(w), fmt.fmt_datahora(fmt.agora()),
-                                              _lr("Valor", M(valor_cent), w), f"Motivo: {descricao}"[:w * 2],
-                                              f"Operador: {operador}", "", "_" * w, "Assinatura".center(w)])
+        return "\n".join(self.cabecalho(w) + _titulo(titulo, w) + [
+            _lr("Data:", fmt.fmt_datahora(fmt.agora())[:16], w), _lr("Operador:", operador or "", w), "-" * w,
+            _lr("Valor", f"R$ {M(valor_cent)}", w), "-" * w, f"Motivo: {descricao}"[:w * 2], "", "", "_" * w,
+            "Assinatura".center(w), "=" * w])
 
     def comprovante_saida(self, info: dict, operador: str) -> str:
         """Ticket de saída do código 1002: o cliente que não consumiu entrega este papel na porta. Só o nome da casa no topo,
@@ -309,11 +351,10 @@ class ImpressaoController:
         w = self.largura()
         quem = f"{lancamento['garota']} {nome}".strip()
         rotulo = "Pontos desta comissão" if comissoes.em_pontos() else "Valor desta comissão"
-        linhas = self.cabecalho(w) + ["=" * w, "COMISSÃO LANÇADA".center(w), "VIA DA GAROTA".center(w),
-                                      fmt.fmt_datahora(lancamento["criado_em"]).center(w), f"Garota: {quem}"[:w], "-" * w,
-                                      _lr(rotulo, comissoes.em_pontos_texto(lancamento["valor_cent"]) if comissoes.em_pontos()
-                                          else M(lancamento["valor_cent"]), w),
-                                      f"Lançamento nº {lancamento['id']}", "-" * w, "Suas comissões a receber:"]
+        linhas = self.cabecalho(w) + _titulo("COMISSÃO LANÇADA", w) + ["VIA DA GAROTA".center(w), f"Garota: {quem}"[:w],
+            _lr(f"Lançamento nº {lancamento['id']}", fmt.fmt_datahora(lancamento["criado_em"])[:16], w),
+            "-" * w, _lr(rotulo, comissoes.em_pontos_texto(lancamento["valor_cent"]) if comissoes.em_pontos()
+                         else M(lancamento["valor_cent"]), w), "", faixa("SALDO A RECEBER", w)]
         recentes = pendentes[-LIMITE_VIA_COMISSAO:]
         if len(pendentes) > len(recentes):
             linhas.append(f"  (+ {len(pendentes) - len(recentes)} lançamentos anteriores)")
@@ -321,7 +362,7 @@ class ImpressaoController:
             d = fmt.fmt_datahora(i["criado_em"])
             linhas.append(_lr(f"  {d[:5]} {d[11:16]}  nº {i['id']}", M(i["valor_cent"]), w))
         linhas += ["-" * w, _lr(f"TOTAL A RECEBER ({len(pendentes)})", M(sum(i["valor_cent"] for i in pendentes)), w),
-                   f"Operador: {operador}", "Guarde esta via para conferir o acerto.".center(w)]
+                   "-" * w, f"Operador: {operador}", "Guarde esta via para conferir o acerto.".center(w), "=" * w]
         return "\n".join(linhas)
 
     def imprimir_via_comissao(self, lancamento_id: int, operador: str) -> str | None:
@@ -341,14 +382,14 @@ class ImpressaoController:
         """Recibo da comissão paga a uma garota (não fiscal): cada lançamento, o total e a linha da assinatura."""
         w = self.largura()
         quem = f"{pag['garota']} {pag['nome']}".strip()
-        linhas = self.cabecalho(w) + ["=" * w, "RECIBO DE COMISSÃO".center(w), fmt.fmt_datahora(pag["pago_em"]).center(w),
-                                      f"Garota: {quem}"[:w], "-" * w]
+        linhas = self.cabecalho(w) + _titulo("RECIBO DE COMISSÃO", w) + [
+            f"Garota: {quem}"[:w], _lr("Pago em:", fmt.fmt_datahora(pag["pago_em"])[:16], w), "-" * w]
         for i in pag["lancamentos"]:
             d = fmt.fmt_datahora(i["criado_em"])
             linhas.append(_lr(f"{d[:5]} {d[11:16]}  lançamento {i['id']}", M(i["valor_cent"]), w))
         linhas += ["-" * w, _lr(f"TOTAL PAGO ({pag['quantidade']})", M(pag["total_cent"]), w),
                    "Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.",
-                   f"Operador: {operador}", "", "_" * w, "Assinatura da garota".center(w)]
+                   f"Operador: {operador}", "", "", "_" * w, "Assinatura da garota".center(w), "=" * w]
         return "\n".join(linhas)
 
     def leitura_x(self, turno_id: int) -> str:

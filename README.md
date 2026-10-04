@@ -275,6 +275,9 @@ Convenções obrigatórias entre as camadas:
 
 ## Sincronização com a nuvem
 
+> Passo a passo completo para colocar a nuvem no ar (servidor, HTTPS, backup), cadastrar boates e acompanhar as
+> licenças: [`docs/NUVEM.md`](docs/NUVEM.md).
+
 O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de forma idempotente por UUID:
 
 1. No servidor (`pip install -r backend/requirements.txt`), na raiz do repositório:
