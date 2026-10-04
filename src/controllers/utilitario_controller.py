@@ -66,6 +66,9 @@ class UtilitarioController:
                                   "causa (veja logs/sync.log) e rode 'python -m src.app --sync --reenviar' antes de limpar.")
         copia = self.backup()
         with self.banco.transacao():
+            # A numeração dos cupons continua de onde parou (turno_controller.proximo_cupom), mesmo sem as vendas apagadas.
+            self.banco.cfg_set("ultimo_cupom_emitido", self.banco.valor(
+                "SELECT MAX(COALESCE(MAX(cupom), 0), ?) FROM vendas", (self.banco.cfg_int("ultimo_cupom_emitido", 0),), 0))
             ids = [r[0] for r in self.banco.todos(f"SELECT id FROM vendas WHERE {alvo}", (data,))]
             for i in range(0, len(ids), 500):
                 lote = ids[i:i + 500]

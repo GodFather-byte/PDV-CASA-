@@ -79,7 +79,9 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   aberta, porque o dinheiro está na gaveta), e o troco sai dos pagamentos do turno que fecha a conta. Turno fechado não muda
   depois: o pagamento dele não pode ser removido, e cancelar uma conta com adiantamento de turno anterior registra a
   devolução como saída do turno atual (só a parte que fica na gaveta; Pix e cartão são estornados fora do caixa).
-  Juntar mesas ou comandas leva junto os pagamentos e o repique da origem.
+  Juntar mesas ou comandas leva junto os pagamentos, o repique e o desconto da origem (somado ao do destino, em valor).
+- **Cupom emitido não muda:** a observação de um item só pode ser alterada com a venda aberta, e a numeração dos cupons
+  nunca volta atrás, nem depois da limpeza do movimento (o último número fica em `config.ultimo_cupom_emitido`).
 - **Serviço** (10% configurável) só em mesa e comanda (cada uma com sua chave: `cobra_servico_mesa` e
   `cobra_servico_comanda`), calculado sobre os itens marcados "cobrar serviço", antes
   do desconto. O desconto incide só nos produtos. O operador pode digitar outro valor de serviço, até zero.

@@ -464,3 +464,9 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   No PDV, `src/sync/licenca_nuvem.py` (`renovar`, `aplicar`): a sincronização tenta a cada 6 horas e a `JanelaLogin` tenta antes
   de pedir o código quando a licença está bloqueada. Testes: `tests/test_licenca_nuvem.py`.
 
+- 2026-10-04 — Claude → Copilot/Antigravity: **três correções de integridade no caixa.** (1) `_mover_itens` soma o desconto da
+  origem ao do destino (em valor): juntar uma mesa com R$ 10 de desconto cobrava R$ 10 a mais. (2) `definir_observacao` exige
+  venda aberta. (3) `turno_controller.proximo_cupom` (usado pelo caixa e pela abertura do turno) considera
+  `config.ultimo_cupom_emitido`, gravado pela limpeza: antes, apagar todas as vendas fazia a numeração voltar ao cupom 1.
+  Testes: `tests/test_integridade_caixa.py`.
+
