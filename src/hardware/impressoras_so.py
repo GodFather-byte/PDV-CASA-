@@ -122,7 +122,7 @@ def _enum(dll, flags: int, nivel: int, estrutura):
         return None, []
     buf = ctypes.create_string_buffer(precisa.value)
     if not dll.EnumPrintersW(flags, None, nivel, buf, precisa.value, ctypes.byref(precisa), ctypes.byref(retornou)):
-        erro = ctypes.get_last_error()
+        erro = getattr(ctypes, "get_last_error", lambda: 0)()      # só existe no Windows
         raise OSError(f"EnumPrinters falhou (erro {erro}).")
     return buf, list((estrutura * retornou.value).from_buffer(buf))
 

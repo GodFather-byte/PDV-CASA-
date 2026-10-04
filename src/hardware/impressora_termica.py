@@ -180,7 +180,8 @@ class _DocInfo1(ctypes.Structure):
 
 
 def _erro_windows() -> str:
-    codigo = ctypes.get_last_error()
+    # get_last_error e FormatError só existem no Windows; fora dele (testes que simulam o spooler) não há código.
+    codigo = getattr(ctypes, "get_last_error", lambda: 0)()
     return f"{ctypes.FormatError(codigo).strip()} [erro {codigo}]" if codigo else "erro desconhecido"
 
 
