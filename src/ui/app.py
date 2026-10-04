@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.controllers.acesso_controller import GRUPOS_MENU
+from src.controllers.config_controller import modulos_desligados
 from src.controllers.fila_impressao_controller import ServicoFilaImpressao
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
@@ -200,9 +201,10 @@ class App:
         linha("estoque_sem", "Produtos sem estoque", "#ff6b6b")
         linha("estoque_ponto", "Produtos em ponto de pedido", "#ffd24d")
         linha("estoque_normal", "Produtos com estoque normal", "#5be39a")
-        titulo("Contas:")
-        linha("contas_anteriores", "Contas anteriores não quitadas")
-        linha("contas_hoje", "Contas de hoje não quitadas")
+        if self.banco.cfg_bool("usar_contas", False):
+            titulo("Contas:")
+            linha("contas_anteriores", "Contas anteriores não quitadas")
+            linha("contas_hoje", "Contas de hoje não quitadas")
         titulo("Vendas:")
         linha("vendas_dia", "Número de vendas no dia")
         linha("venda_media", "Venda média por cupom do dia")
@@ -296,7 +298,7 @@ class App:
             return self.abrir_caixa()
         ctx = self.ctx
         m = tk.Menu(self.root, tearoff=0, font=tema.FONTE)
-        permitidos = {x["modulo"] for x in ctx.acesso.modulos_permitidos(ctx.operador, grupo)}
+        permitidos = {x["modulo"] for x in ctx.acesso.modulos_permitidos(ctx.operador, grupo)} - modulos_desligados(self.banco)
         if grupo == "Cadastros":
             for chave, rotulo in CADASTROS:
                 mod = MODULO_CADASTRO.get(chave, f"cad_{chave}")

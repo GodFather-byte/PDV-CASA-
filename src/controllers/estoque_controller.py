@@ -227,7 +227,7 @@ class EstoqueController:
                 total = (valores or {}).get(it["id"], it["valor_cent"])
                 self.banco.executar(
                     "UPDATE itens_estoque SET valor_cent = ?, preco_unit_cent = ? WHERE id = ?",
-                    (total, fmt.dividir_cent(total, it["quantidade"]), it["id"]))
+                    (total, fmt.dividir_cent(max(total - it["desconto_cent"], 0), it["quantidade"]), it["id"]))
             self.banco.executar("UPDATE lancamentos_estoque SET tipo = 'compra' WHERE id = ?", (lanc_id,))
             for it in self.itens(lanc_id):
                 p = self.produtos.por_id(it["produto_id"])

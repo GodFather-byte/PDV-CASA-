@@ -12,6 +12,14 @@ SQL_BASE = """SELECT c.*, sp.nome AS subplano, pl.id AS plano_id, pl.nome AS pla
               LEFT JOIN fornecedores f ON f.id = c.fornecedor_id"""
 
 
+def _data(texto: str | None) -> str | None:
+    """Data digitada inválida vira aviso ao operador, não 'erro inesperado'."""
+    try:
+        return fmt.para_data_iso(texto)
+    except ValueError as e:
+        raise ErroNegocio(f"Data inválida: {texto} (use dd/mm/aaaa).") from e
+
+
 class ContasController:
     def __init__(self, banco, operador_id: int | None = None):
         self.banco = banco
@@ -32,9 +40,9 @@ class ContasController:
             raise ErroNegocio("O número de meses deve ficar entre 1 e 120.")
         if parcelas_cent is not None and (len(parcelas_cent) != meses or min(parcelas_cent) <= 0):
             raise ErroNegocio(f"Valor pequeno demais para dividir em {meses} parcelas.")
-        entrada = fmt.para_data_iso(dt_entrada) or fmt.hoje()
-        venc = fmt.para_data_iso(dt_vencimento) or entrada
-        quit_ = fmt.para_data_iso(dt_quitacao)
+        entrada = _data(dt_entrada) or fmt.hoje()
+        venc = _data(dt_vencimento) or entrada
+        quit_ = _data(dt_quitacao)
         if quit_ and quit_ < entrada:
             raise ErroNegocio("A quitação não pode ser anterior à data de entrada.")
         ids = []
@@ -66,14 +74,16 @@ class ContasController:
             raise ErroNegocio("Informe um valor maior que zero.")
         for k in ("dt_entrada", "dt_vencimento", "dt_quitacao"):
             if k in dados:
-                dados[k] = fmt.para_data_iso(dados[k])
+                dados[k] = _data(dados[k])
         self.obter(conta_id)
         self.banco.atualizar("contas", conta_id, dados)
 
     def quitar(self, conta_id: int, data: str | None = None) -> None:
-        self.obter(conta_id)
-        self.banco.executar("UPDATE contas SET dt_quitacao = ?, previsao = 0 WHERE id = ?",
-                            (fmt.para_data_iso(data) or fmt.hoje(), conta_id))
+        c = self.obter(conta_id)
+        quando = _data(data) or fmt.hoje()
+        if quando < c["dt_entrada"]:
+            raise ErroNegocio("A quitação não pode ser anterior à data de entrada.")
+        self.banco.executar("UPDATE contas SET dt_quitacao = ?, previsao = 0 WHERE id = ?", (quando, conta_id))
 
     def desfazer_quitacao(self, conta_id: int) -> None:
         self.banco.executar("UPDATE contas SET dt_quitacao = NULL WHERE id = ?", (conta_id,))

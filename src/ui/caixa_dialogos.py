@@ -74,6 +74,11 @@ def imprimir_fechamento(master, ctx, res: dict) -> int:
     return vias
 
 
+# Linhas do fechamento de módulos opcionais: zeradas e com o módulo desligado (boate), não aparecem.
+_LINHAS_OPCIONAIS = {"entregas_pendentes": "usar_delivery", "venda_caderneta": "usar_caderneta",
+                     "pagtos_caderneta": "usar_caderneta"}
+
+
 class PainelFechamento(tk.Toplevel):
     """Resumo do turno (sobra/zero em verde, falta em vermelho) com Imprimir e Gerar arquivo texto."""
 
@@ -103,6 +108,8 @@ class PainelFechamento(tk.Toplevel):
                  ("Comissões das garotas", M(com["total_cent"]) if com.get("quantidade") else "nenhuma"),
                  ("Saídas sem consumo (1002)", len(res.get("saidas_liberadas") or ())),
                  ("Produtos vendidos", f"{len(res.get('produtos_vendidos') or ())} (lista na conferência)")]
+        if not res["entregas"] and not ctx.banco.cfg_bool("usar_delivery", False):    # casa sem delivery: linhas zeradas somem
+            dados = [d for d in dados if d[0] not in ("Entregas", "Perc. entrega")]
         for i, (r, v) in enumerate(dados):
             ttk.Label(esq, text=r).grid(row=i, column=0, sticky="w")
             ttk.Label(esq, text=str(v), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(20, 0))
@@ -126,6 +133,8 @@ class PainelFechamento(tk.Toplevel):
                               ("Pagtos caderneta (+)", "pagtos_caderneta"), ("Entradas financ. (+)", "entradas"),
                               ("Saídas financ. (-)", "saidas"), ("Fora da gaveta (cartão/Pix)", "fora_da_gaveta"),
                               ("Valor esperado", "esperado")):
+            if not res[chave] and chave in _LINHAS_OPCIONAIS and not ctx.banco.cfg_bool(_LINHAS_OPCIONAIS[chave], False):
+                continue
             i += 1
             v = res[chave] if chave == "entregas_pendentes" else M(res[chave])
             ttk.Label(dir_, text=rotulo, font=tema.FONTE_B if chave == "esperado" else tema.FONTE).grid(row=i, column=0, sticky="w")
