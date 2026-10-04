@@ -614,3 +614,8 @@ class TesteComissaoEmPontos(BaseComissao):
         via = ImpressaoController(self.banco).via_comissao(lanc, [lanc], "Bia", "ADM")
         self.assertIn("Pontos desta comissão", via)
         self.assertIn("0,3 (R$ 15,00)", via)
+
+    def test_pontos_saem_em_letra_grande_na_termica(self):
+        from src.controllers.impressao_controller import _ESTILOS
+        self.assertIn("Pontos desta", _ESTILOS["via_comissao"]["grande_prefixos"])
+

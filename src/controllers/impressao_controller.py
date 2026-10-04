@@ -33,7 +33,7 @@ _ESTILOS = {
     "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado", "SOBROU", "FALTOU", "CAIXA CONFERIDO")},
     "pedido": {"negrito_linhas": 1},
     "comprovante": {"negrito_linhas": 1, "grande_prefixos": ("Valor",)},
-    "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "TOTAL A RECEBER")},
+    "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "Pontos desta", "TOTAL A RECEBER")},
     "relatorio": {"negrito_linhas": 1},
 }
 
@@ -298,7 +298,8 @@ class ImpressaoController:
         rotulo = "Pontos desta comissão" if comissoes.em_pontos() else "Valor desta comissão"
         linhas = self.cabecalho(w) + ["=" * w, "COMISSÃO LANÇADA".center(w), "VIA DA GAROTA".center(w),
                                       fmt.fmt_datahora(lancamento["criado_em"]).center(w), f"Garota: {quem}"[:w], "-" * w,
-                                      _lr(rotulo, comissoes.em_pontos_texto(lancamento["valor_cent"]), w),
+                                      _lr(rotulo, comissoes.em_pontos_texto(lancamento["valor_cent"]) if comissoes.em_pontos()
+                                          else M(lancamento["valor_cent"]), w),
                                       f"Lançamento nº {lancamento['id']}", "-" * w, "Suas comissões a receber:"]
         recentes = pendentes[-LIMITE_VIA_COMISSAO:]
         if len(pendentes) > len(recentes):

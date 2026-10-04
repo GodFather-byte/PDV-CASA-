@@ -706,6 +706,7 @@ class TesteFluxoDeEntrada(BaseUI):
 
     def _app(self):
         from src.ui.app import App
+        self.ctx.config.cadastrar_loja({"nome_fantasia": "Casa"})   # casa já cadastrada: o primeiro acesso tem teste próprio
         self.root.destroy()
         app = App(self.banco)
         self.root = app.root
