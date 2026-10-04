@@ -304,6 +304,29 @@ class TestePainelDoDono(BasePDV):
         self.assertNotIn("innerHTML", r.text)                         # nome de produto vem do PDV: nunca como HTML
         self.assertNotIn("R$ 11,00", r.text)
 
+    def test_admin_ve_as_lojas_com_licenca_e_ultimo_envio(self):
+        db = nuvem.SessionLocal()
+        try:
+            db.query(nuvem.Loja).filter_by(chave_loja="LOJA-2").one().licenca_ate = "2000-01-31"
+            db.commit()
+        finally:
+            db.close()
+        self.vender()
+        self.enviar(SyncController(self.banco).montar_lote())
+        r = self.http.get("/v1/admin/lojas", headers=ADMIN)
+        self.assertEqual(r.status_code, 200, r.text)
+        lojas = {l["chave_loja"]: l for l in r.json()["lojas"]}
+        self.assertEqual(set(lojas), {"LOJA-1", "LOJA-2"})
+        self.assertEqual((lojas["LOJA-1"]["vendas_recebidas"], lojas["LOJA-1"]["situacao"]), (1, "sem assinatura"))
+        self.assertIsNotNone(lojas["LOJA-1"]["ultima_venda"])
+        self.assertEqual(lojas["LOJA-2"]["vendas_recebidas"], 0)
+        self.assertEqual(lojas["LOJA-2"]["situacao"], "paga até 31/01/2000 (VENCIDA)")
+        self.assertLess(lojas["LOJA-2"]["dias_restantes"], 0)
+
+    def test_token_de_loja_nao_ve_a_lista_de_lojas(self):
+        self.assertEqual(self.http.get("/v1/admin/lojas", headers=cabecalho()).status_code, 403)
+        self.assertEqual(self.http.get("/v1/admin/lojas").status_code, 401)
+
     def test_resumo_do_dia_conta_so_vendas_fechadas_com_itens(self):
         self.vender(), self.vender(mesa=3, qtd=2)
         cancelada = self.vender()

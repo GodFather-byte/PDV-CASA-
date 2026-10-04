@@ -20,7 +20,7 @@ from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from backend.main import Loja, SessionLocal, hash_token
+from backend.main import Loja, SessionLocal, hash_token, situacao_assinatura
 
 CHAVE_VALIDA = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
@@ -73,20 +73,6 @@ def definir_assinatura(db: Session, chave: str, ate: date | None) -> None:
     """Até quando a loja pagou (None cancela). A nuvem passa a emitir licença até essa data para o PDV dela."""
     _obter(db, chave).licenca_ate = ate.isoformat() if ate else None
     db.commit()
-
-
-def situacao_assinatura(licenca_ate: str | None, hoje: date | None = None) -> str:
-    """'paga até 30/11/2026', com o alerta do que precisa de atenção: VENCIDA ou quantos dias faltam (7 ou menos)."""
-    if not licenca_ate:
-        return "sem assinatura"
-    ate = date.fromisoformat(licenca_ate)
-    dias = (ate - (hoje or date.today())).days
-    texto = f"paga até {ate.strftime('%d/%m/%Y')}"
-    if dias <= 0:
-        return texto + " (VENCIDA)"
-    if dias <= 7:
-        return texto + f" (vence em {dias} dia{'s' if dias > 1 else ''})"
-    return texto
 
 
 def listar(db: Session) -> list[Loja]:
