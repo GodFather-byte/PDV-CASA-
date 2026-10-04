@@ -1,0 +1,255 @@
+# Nuvem do WillPDV: como colocar no ar e acompanhar as lojas
+
+A nuvem é a parte que fica com **você**, o fornecedor. Ela faz quatro coisas:
+
+| O quê | Para quê |
+|---|---|
+| Recebe as vendas dos caixas | Painel do dono da boate no celular, de qualquer lugar |
+| Guarda até quando cada loja pagou | O caixa renova a licença **sozinho** quando a loja está em dia |
+| Avisa sobre versão nova | Aparece uma faixa no caixa: "Nova versão disponível" |
+| Bloqueia uma loja | Desativou: a loja para de enviar e de ver o painel |
+
+O caixa **não depende** da nuvem para vender: sem internet ele continua funcionando e manda tudo depois.
+
+Tudo o que é da nuvem está na pasta `backend/` do projeto.
+
+---
+
+## 1. Testar no seu computador (10 minutos)
+
+Antes de alugar servidor, veja funcionando no seu PC (Windows):
+
+```powershell
+cd C:\caminho\do\PDV-CASA-
+pip install -r backend\requirements.txt
+$env:PDV_API_TOKEN = "minha-senha-de-administrador-bem-longa"
+python -m backend.lojas criar BOATE-TESTE "Boate Teste"
+python -m uvicorn backend.main:app --port 8000
+```
+
+- O `criar` mostra o **token da loja**. Copie: ele só aparece uma vez.
+- Abra `http://localhost:8000/` no navegador e entre com o token. Esse é o painel do dono.
+- Para ligar um caixa nesse teste, siga o passo 4 usando o endereço `http://localhost:8000/v1/sincronizar`.
+
+Para parar o servidor, aperte `Ctrl+C`.
+
+---
+
+## 2. Colocar no ar de verdade (servidor na internet)
+
+O caminho mais simples e barato é um **VPS com Ubuntu**: Hostinger, DigitalOcean, Contabo, Magalu Cloud etc.
+O plano mais barato (1 GB de RAM) dá conta de muitas lojas. Você também precisa de um **domínio**, por exemplo
+`nuvem.seusite.com.br`, apontado para o IP do servidor (um registro tipo **A** no painel onde comprou o domínio).
+
+Entre no servidor pelo terminal (`ssh root@IP-DO-SERVIDOR`) e rode os blocos abaixo, um de cada vez.
+
+### 2.1 Programas e código
+
+```bash
+apt update && apt install -y python3 python3-venv git
+mkdir -p /opt/willpdv && cd /opt/willpdv
+git clone https://github.com/GodFather-byte/PDV-CASA-.git app
+python3 -m venv /opt/willpdv/venv
+/opt/willpdv/venv/bin/pip install -r app/backend/requirements.txt
+```
+
+> O repositório é privado, então o `git clone` vai pedir usuário e senha do GitHub. No lugar da senha use um
+> **token de acesso pessoal** (GitHub > Settings > Developer settings > Personal access tokens).
+
+### 2.2 A chave da licença (para a renovação automática)
+
+Copie o seu arquivo `licenca_privada.key`, que fica no seu PC em `C:\Users\SEU_USUARIO\.pdv-casa\`, para o servidor.
+Rode isto **no seu PC**:
+
+```powershell
+scp C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key root@IP-DO-SERVIDOR:/opt/willpdv/
+```
+
+Depois, **no servidor**:
+
+```bash
+chmod 600 /opt/willpdv/licenca_privada.key
+```
+
+Sem esse arquivo a nuvem funciona, mas não emite licença: aí você manda o código manual como antes.
+
+### 2.3 Configuração (senhas e caminhos)
+
+```bash
+cat > /opt/willpdv/nuvem.env <<'EOF'
+PDV_API_TOKEN=TROQUE-POR-UMA-SENHA-LONGA-SO-SUA
+PDV_NUVEM_DB_URL=sqlite:////opt/willpdv/nuvem.db
+PDV_LICENCA_CHAVE=/opt/willpdv/licenca_privada.key
+PDV_NUVEM_VIRADA_HORA=6
+EOF
+chmod 600 /opt/willpdv/nuvem.env
+```
+
+- `PDV_API_TOKEN` é a **sua** senha de administrador. Com ela o painel mostra todas as lojas.
+- `PDV_NUVEM_VIRADA_HORA=6` faz a noite da boate contar como um dia só (das 6h às 6h).
+
+### 2.4 Deixar a nuvem ligada sempre (reinicia sozinha se cair ou se o servidor reiniciar)
+
+```bash
+cat > /etc/systemd/system/willpdv.service <<'EOF'
+[Unit]
+Description=WillPDV - nuvem
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/willpdv/app
+EnvironmentFile=/opt/willpdv/nuvem.env
+ExecStart=/opt/willpdv/venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload && systemctl enable --now willpdv
+systemctl status willpdv --no-pager
+```
+
+### 2.5 HTTPS (cadeado) com o Caddy
+
+O Caddy coloca o cadeado de graça e renova sozinho. Sem HTTPS, o token da loja trafega aberto na internet.
+
+```bash
+apt install -y caddy
+cat > /etc/caddy/Caddyfile <<'EOF'
+nuvem.seusite.com.br {
+    reverse_proxy 127.0.0.1:8000
+}
+EOF
+systemctl reload caddy
+```
+
+Troque `nuvem.seusite.com.br` pelo seu domínio. Para testar, abra `https://nuvem.seusite.com.br/v1/saude`: tem
+que aparecer `{"status":"ok"}`.
+
+### 2.6 Backup diário da nuvem
+
+```bash
+mkdir -p /opt/willpdv/backup
+cat > /etc/cron.daily/willpdv-backup <<'EOF'
+#!/bin/sh
+/opt/willpdv/venv/bin/python -c "import sqlite3,datetime; o=sqlite3.connect('/opt/willpdv/nuvem.db'); d=sqlite3.connect('/opt/willpdv/backup/nuvem-'+datetime.date.today().isoformat()+'.db'); o.backup(d)"
+find /opt/willpdv/backup -name 'nuvem-*.db' -mtime +30 -delete
+EOF
+chmod +x /etc/cron.daily/willpdv-backup
+```
+
+Isso guarda uma cópia por dia e apaga as que têm mais de 30 dias. De vez em quando baixe uma cópia para o seu PC.
+
+---
+
+## 3. Cadastrar uma boate nova
+
+Sempre **no servidor**, dentro da pasta do programa:
+
+```bash
+cd /opt/willpdv/app
+set -a; . /opt/willpdv/nuvem.env; set +a
+/opt/willpdv/venv/bin/python -m backend.lojas criar BOATE-ESTRELA "Boate Estrela"
+```
+
+Guarde o **token** que aparecer: ele vai no caixa da boate e não aparece de novo.
+
+Use **o mesmo nome de loja** (`BOATE-ESTRELA`) na licença manual (`tools.gerar_licenca emitir --loja BOATE-ESTRELA`).
+
+> Dica: para não repetir as duas primeiras linhas toda vez, crie um atalho:
+> `echo 'alias lojas="cd /opt/willpdv/app && set -a && . /opt/willpdv/nuvem.env && set +a && /opt/willpdv/venv/bin/python -m backend.lojas"' >> ~/.bashrc`
+> e abra o terminal de novo. Daí em diante basta `lojas listar`, `lojas criar ...` e assim por diante.
+
+---
+
+## 4. Ligar o caixa da boate na nuvem
+
+No caixa, entre em **Configurações > Configurações > aba Nuvem**:
+
+| Campo | O que colocar |
+|---|---|
+| Chave da loja (licença) | `BOATE-ESTRELA` |
+| Endereço da API de sincronização | `https://nuvem.seusite.com.br/v1/sincronizar` |
+| Token da API | o token que o `criar` mostrou |
+
+Na instalação, marque **"Enviar as vendas para a nuvem em segundo plano"**: o envio passa a abrir sozinho junto com o
+Windows. Se o caixa já estiver instalado, rode o instalador de novo e marque essa opção.
+
+Para conferir se está enviando, olhe a tela inicial do caixa: o quadro **Nuvem** mostra as "vendas aguardando envio",
+que deve cair para 0. O histórico do envio fica em `%LOCALAPPDATA%\WILL-PDV\logs\sync.log`.
+
+O dono da boate acompanha as vendas em `https://nuvem.seusite.com.br/`, entrando com o token da loja dele.
+
+---
+
+## 5. Acompanhar e controlar as licenças
+
+Todos estes comandos são rodados no servidor (veja a dica do atalho `lojas` no passo 3):
+
+```bash
+lojas listar                                   # todas as lojas: ativa ou não, e até quando pagou
+lojas assinatura BOATE-ESTRELA 2026-11-30      # a loja pagou até 30/11/2026
+lojas assinatura BOATE-ESTRELA cancelar        # parou de pagar: não renova mais
+lojas desativar BOATE-ESTRELA                  # bloqueia envio e painel na hora
+lojas ativar BOATE-ESTRELA                     # libera de novo
+lojas novo-token BOATE-ESTRELA                 # token vazou: gera outro (o antigo para de funcionar)
+```
+
+O `listar` mostra algo assim:
+
+```
+BOATE-ESTRELA            ativa    paga até 30/11/2026                    Boate Estrela
+BOATE-SOL                ativa    paga até 06/10/2026 (vence em 2 dias)  Boate Sol
+BOATE-LUA                INATIVA  paga até 01/09/2026 (VENCIDA)          Boate Lua
+```
+
+Fique de olho nas marcadas com **vence em** (cobrar) e **VENCIDA**.
+
+**Como a renovação funciona no dia a dia:**
+
+1. A boate paga o mês.
+2. Você roda `lojas assinatura BOATE-ESTRELA <nova data>`.
+3. Em até 6 horas o caixa busca o código novo sozinho. Ao entrar no sistema com a licença vencida, ele também tenta
+   na hora.
+4. Se a boate não pagar, a data não muda. O caixa avisa 7 dias antes, dá 5 dias de carência e nunca trava com o
+   turno aberto.
+
+Uma boate sem internet continua usando o código manual: `python -m tools.gerar_licenca emitir --loja ... --dias 30`.
+
+---
+
+## 6. Avisar as boates sobre uma versão nova
+
+Depois de gerar o instalador novo e deixá-lo num link para baixar (Google Drive, Dropbox, seu site):
+
+```bash
+cd /opt/willpdv/app && set -a && . /opt/willpdv/nuvem.env && set +a
+/opt/willpdv/venv/bin/python -m backend.atualizacoes publicar 1.2.0 --notas "Impressões novas e comissão por pontos." --url https://link-do-instalador
+/opt/willpdv/venv/bin/python -m backend.atualizacoes listar
+```
+
+Com `--critica`, a faixa no caixa fica vermelha. Use para correções de dinheiro ou de dados.
+
+---
+
+## 7. Atualizar a nuvem quando o código mudar
+
+```bash
+cd /opt/willpdv/app && git pull
+/opt/willpdv/venv/bin/pip install -r backend/requirements.txt
+systemctl restart willpdv
+```
+
+Colunas novas no banco da nuvem são criadas sozinhas, sem perder o que já está lá.
+
+---
+
+## Problemas comuns
+
+| Sintoma | O que fazer |
+|---|---|
+| `https://.../v1/saude` não abre | `systemctl status willpdv` e `systemctl status caddy`. Confira se o domínio aponta para o IP do servidor. |
+| Caixa com "vendas aguardando envio" que não baixam | Endereço ou token errado no caixa, ou o envio não está aberto (passo 4). Veja o `sync.log`. |
+| "Este token é da loja X" | A chave da loja no caixa não é a mesma do `criar`. |
+| Licença não renova sozinha | `lojas listar` mostra a data paga? A data precisa ser **depois de hoje**. Confira também se o `licenca_privada.key` está no servidor (passo 2.2). |
+| Ver os erros da nuvem | `journalctl -u willpdv -n 100 --no-pager` |

@@ -598,9 +598,14 @@ class TesteComissaoEmPontos(BaseComissao):
     def test_padrao_e_pontos_de_cinco_reais(self):
         com = self.com
         self.assertTrue(com.em_pontos())
-        self.assertEqual([com.para_centavos(t) for t in ("0,1", "0,2", "0,3", "1", "1,5")], [500, 1000, 1500, 5000, 7500])
-        self.assertEqual(com.rotulo_valor(), "Pontos (0,1 = R$ 5,00)")
-        self.assertEqual(com.em_pontos_texto(1500), "0,3 (R$ 15,00)")
+        self.assertEqual([com.para_centavos(t) for t in ("0,1", "0,2", "0,3", "1,5")], [500, 1000, 1500, 7500])
+        self.assertEqual(com.rotulo_valor(), "Pontos (1 = 0,1 = R$ 5,00)")
+
+    def test_numero_sem_virgula_conta_em_decimos(self):
+        """Na casa: digitou 1 é 0,1 (R$ 5,00), 2 é 0,2 (R$ 10,00), 10 é 1,0 (R$ 50,00)."""
+        self.assertEqual([self.com.para_centavos(t) for t in ("1", "2", "3", " 6 ", "10")], [500, 1000, 1500, 3000, 5000])
+        self.assertEqual(self.com.em_pontos_texto(self.com.para_centavos("2")), "0,2 (R$ 10,00)")
+        self.assertEqual(self.com.em_pontos_texto(1500), "0,3 (R$ 15,00)")
 
     def test_fracao_menor_que_0_1_e_recusada(self):
         with self.assertRaisesRegex(ErroNegocio, "0,1 em 0,1"):

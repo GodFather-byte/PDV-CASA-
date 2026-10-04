@@ -383,7 +383,7 @@ class TesteImpressao(BaseCaixa):
         res = self.turnos.fechar(self.turno, self.adm, 10800)
         texto = self.imp.fechamento(res)
         self.assertIn("FECHAMENTO DE TURNO", texto)
-        self.assertIn("RESULTADO", texto)
+        self.assertIn("CAIXA CONFERIDO", texto)
         self.assertTrue(all(len(l) <= 40 for l in texto.splitlines()))
 
     def test_enviar_grava_arquivo(self):

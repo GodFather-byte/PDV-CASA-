@@ -80,7 +80,17 @@ class TesteEmissaoNaNuvem(BaseChave):
             self.assertEqual(lojas.main(["listar"]), 0)
             self.assertEqual(lojas.main(["assinatura", "LOJA-1", "31/01/2030"]), 1)
             self.assertEqual(lojas.main(["assinatura", "LOJA-1", "cancelar"]), 0)
-        self.assertIn("paga até 2030-01-31", saida.getvalue())
+        self.assertIn("paga até 31/01/2030", saida.getvalue())
+
+    def test_listar_avisa_assinatura_vencida_ou_perto_de_vencer(self):
+        from datetime import date
+        from backend.lojas import situacao_assinatura
+        hoje = date(2026, 10, 4)
+        self.assertEqual(situacao_assinatura(None, hoje), "sem assinatura")
+        self.assertEqual(situacao_assinatura("2026-10-03", hoje), "paga até 03/10/2026 (VENCIDA)")
+        self.assertEqual(situacao_assinatura("2026-10-05", hoje), "paga até 05/10/2026 (vence em 1 dia)")
+        self.assertEqual(situacao_assinatura("2026-10-09", hoje), "paga até 09/10/2026 (vence em 5 dias)")
+        self.assertEqual(situacao_assinatura("2026-11-30", hoje), "paga até 30/11/2026")
         self.db.expire_all()
         self.assertIsNone(self.db.query(nuvem.Loja).filter_by(chave_loja="LOJA-1").one().licenca_ate)
 

@@ -241,11 +241,10 @@ class TesteFechamentoImpresso(BaseRegras):
         texto = ImpressaoController(self.banco).fechamento(res)
         linhas = texto.splitlines()
         self.assertTrue(all(len(l) <= 40 for l in linhas), [l for l in linhas if len(l) > 40])
-        self.assertTrue(any(l.startswith("  Pix *") and l.endswith("20,00") for l in linhas), texto)
-        self.assertTrue(any(l.startswith("  Dinheiro") and "*" not in l for l in linhas), texto)
-        self.assertIn("  * fora da gaveta", linhas)
-        self.assertTrue(any(l.startswith("Fora da gaveta (cartão/Pix)") and l.endswith("20,00") for l in linhas), texto)
-        esperado = next(l for l in linhas if l.startswith("Valor esperado"))
+        self.assertTrue(any(l.startswith("Pix (fora da gaveta)") and l.endswith("20,00") for l in linhas), texto)
+        self.assertTrue(any(l.startswith("Dinheiro") and "fora" not in l for l in linhas), texto)
+        self.assertTrue(any(l.startswith("  Fora da gaveta (cartão/Pix)") and l.endswith("20,00") for l in linhas), texto)
+        esperado = next(l for l in linhas if l.startswith("ESPERADO NA GAVETA"))
         self.assertTrue(esperado.endswith("110,00"), esperado)                 # fundo 100,00 + dinheiro 10,00
 
     def test_so_dinheiro_nao_mostra_aviso_de_fora_da_gaveta(self):

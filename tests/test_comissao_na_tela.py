@@ -740,9 +740,17 @@ class TesteComissaoEmPontosNaTela(BaseNaTela):
         self.robo.quando("Visualizador", lambda w: w.destroy())
         self.posicao("180")
         self.digitar_codigo("50")
-        self.assertEqual(self.cx.lbl_qtd_titulo.cget("text"), "Pontos (0,1 = R$ 5,00)")
+        self.assertEqual(self.cx.lbl_qtd_titulo.cget("text"), "Pontos (1 = 0,1 = R$ 5,00)")
         self.valor("0,3")
         self.assertEqual(self.banco.valor("SELECT valor_cent FROM comissoes_garotas"), 1500)
+        self.sem_travar()
+
+    def test_digitar_2_na_linha_do_caixa_marca_0_2(self):
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.posicao("180")
+        self.digitar_codigo("50")
+        self.valor("2")
+        self.assertEqual(self.banco.valor("SELECT valor_cent FROM comissoes_garotas"), 1000)   # 0,2 = R$ 10,00
         self.sem_travar()
 
     def test_fracao_invalida_avisa_e_nao_grava(self):

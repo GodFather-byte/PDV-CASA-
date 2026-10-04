@@ -51,6 +51,7 @@ Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos:"
 Name: "iniciarcomwindows"; Description: "Abrir o caixa automaticamente ao ligar o computador"; GroupDescription: "Atalhos:"; Flags: unchecked
+Name: "nuvem"; Description: "Enviar as vendas para a nuvem em segundo plano (ao ligar o computador)"; GroupDescription: "Nuvem:"; Flags: unchecked
 
 [Files]
 ; Toda a pasta gerada pelo PyInstaller (o .exe e as bibliotecas ao lado dele).
@@ -60,6 +61,7 @@ Source: "..\dist\WillPDV\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 Name: "{autoprograms}\{#Nome}"; Filename: "{app}\{#Exe}"
 Name: "{autodesktop}\{#Nome}"; Filename: "{app}\{#Exe}"; Tasks: desktopicon
 Name: "{autostartup}\{#Nome}"; Filename: "{app}\{#Exe}"; Tasks: iniciarcomwindows
+Name: "{autostartup}\{#Nome} - envio para a nuvem"; Filename: "{app}\{#Exe}"; Parameters: "--sync"; Tasks: nuvem
 
 [Run]
 ; Abre como o usuário que instalou (não como administrador): os dados ficam no %LOCALAPPDATA% dele.
