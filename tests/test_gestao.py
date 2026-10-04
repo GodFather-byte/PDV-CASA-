@@ -39,6 +39,16 @@ class TesteContas(BaseCaixa):
         with self.assertRaises(ErroNegocio):
             self.contas.incluir(self.sub, "X", self.tipo(), 100, dt_entrada="10/10/2026", dt_quitacao="09/10/2026")
 
+    def test_quitacao_antes_da_entrada_ou_data_invalida(self):
+        cid = self.contas.incluir(self.sub, "X", self.tipo(), 100, "10/10/2026", "05/10/2026")[0]
+        with self.assertRaises(ErroNegocio):
+            self.contas.quitar(cid, "01/10/2026")
+        with self.assertRaises(ErroNegocio):
+            self.contas.incluir(self.sub, "Y", self.tipo(), 100, "31/02/2026")
+        with self.assertRaises(ErroNegocio):
+            self.contas.atualizar(cid, dt_vencimento="xx")
+        self.assertIsNone(self.contas.obter(cid)["dt_quitacao"])
+
     def test_quitar_e_painel(self):
         self.contas.incluir(self.sub, "Vencida", self.tipo(), 100, "01/10/2026", "01/10/2026")
         hoje = self.contas.incluir(self.sub, "Hoje", self.tipo(), 100, "03/10/2026", "01/10/2026")[0]

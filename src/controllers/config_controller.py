@@ -80,7 +80,10 @@ CAMPOS_CONFIG = [
     ("vias_fechamento", "Vias do fechamento do turno (1 a 3)", "int", "Caixa"),
     ("limite_gaveta", "Avisar para fazer sangria quando o dinheiro da gaveta passar de (R$, 0 = não avisar)", "int", "Caixa"),
     ("imprimir_cupom", "Imprimir cupom ao fechar a venda", "sn", "Caixa"),
-    ("taxa_entrega_padrao", "Taxa de entrega padrão (R$)", "texto", "Caixa"),
+    ("usar_delivery", "Delivery: pedidos de entrega (F6), bairros e taxas de entrega", "sn", "Módulos"),
+    ("taxa_entrega_padrao", "Taxa de entrega padrão do delivery (R$)", "texto", "Módulos"),
+    ("usar_caderneta", "Caderneta: venda a prazo para clientes (F5) e cadastro de clientes", "sn", "Módulos"),
+    ("usar_contas", "Contas a pagar/receber, plano de contas e relatórios financeiros", "sn", "Módulos"),
     ("programa_comunicacao", "Programa de comunicação (caminho do executável)", "texto", "Utilitários"),
     ("pasta_backup", "Pasta do backup (vazio = pasta Backup do sistema)", "texto", "Utilitários"),
     ("email_loja", "E-mail da loja", "texto", "E-mail"), ("email_destino", "E-mail de destino dos relatórios", "texto", "E-mail"),
@@ -90,6 +93,24 @@ CAMPOS_CONFIG = [
 ]
 _TIPO_CONFIG = {c[0]: c[2] for c in CAMPOS_CONFIG}
 _OPCOES_CONFIG = {c[0]: [o[0] for o in c[4]] for c in CAMPOS_CONFIG if len(c) > 4}
+
+
+# Módulos opcionais (a boate não usa): o que cada chave "usar_*" desligada esconde dos menus (códigos de módulo de acesso).
+MODULOS_OPCIONAIS = {
+    "usar_contas": {"lanc_contas", "rel_financeiro", "cad_plano_contas", "cad_subplanos"},
+    "usar_delivery": {"cad_bairros"},
+}
+
+
+def modulos_desligados(banco) -> set[str]:
+    """Códigos de módulo escondidos porque a casa não usa o recurso (Configurações > Módulos)."""
+    fora: set[str] = set()
+    for chave, mods in MODULOS_OPCIONAIS.items():
+        if not banco.cfg_bool(chave, False):
+            fora |= mods
+    if not banco.cfg_bool("usar_delivery", False) and not banco.cfg_bool("usar_caderneta", False):
+        fora |= {"cad_clientes", "rel_clientes"}      # clientes só existem para a caderneta e o delivery
+    return fora
 
 
 class ConfigController:

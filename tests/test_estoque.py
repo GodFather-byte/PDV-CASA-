@@ -163,6 +163,13 @@ class TesteEstoque(BaseTeste):
         with self.assertRaises(ErroNegocio):
             self.est.confirmar_pedido(lid)       # já confirmado
 
+    def test_pedido_confirmado_desconta_o_desconto_do_preco_unitario(self):
+        pid = self.novo_produto("RED LABEL", 1500, estoque=True)
+        lid, (item,) = self.lancar("pedido", [(pid, 10, 1000, 200)])     # R$ 10,00 com R$ 2,00 de desconto
+        self.est.confirmar_pedido(lid)
+        self.assertEqual(self.est.itens(lid)[0]["preco_unit_cent"], 80)  # igual ao último preço do produto
+        self.assertEqual(self.prod.por_id(pid)["ult_preco_cent"], 80)
+
     def test_pedido_exige_fornecedor(self):
         with self.assertRaises(ErroNegocio):
             self.est.criar_lancamento("pedido")

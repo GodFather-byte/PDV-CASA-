@@ -3,7 +3,7 @@
   código + Enter -> quantidade + Enter     Enter com código vazio -> barra de tarefas (setas + Enter)
   Esc -> lista de mesas e comandas         Delete na grade -> cancela item        O -> observação do item
   F2 balança  F3 leitor  F4 mesa/comanda  F5 caderneta  F6 entrega  F7 sangria  F8 pré-conta  F9 repique
-  F10 transferir  F11 gaveta  F12 pagar
+  F10 transferir  F11 gaveta  F12 pagar      (F5 e F6 só com a Caderneta e o Delivery ligados em Configurações > Módulos)
 
 Comanda e mesa: no campo da posição digite o número da comanda (ex.: 123) ou M e o número da mesa (ex.: M5). Com
 `posicao_padrao = mesa` é o contrário: 5 é a mesa e C2 a comanda. C2 e M5 também valem direto no campo do código.
@@ -182,6 +182,8 @@ class JanelaCaixa(tk.Toplevel):
                         ("Caderneta (F5)", self.caderneta), ("Impressora", self.impressora), ("Gaveta (F11)", self.gaveta),
                         ("Balança (F2)", self.balanca), ("Fecha Turno", self.fechar_turno), ("Leitor (F3)", self.alternar_leitor),
                         ("Consulta Comanda", self.consultar_comanda), ("Comissões", self.comissoes), ("Sair", self.sair)]
+        desligados = {self.entrega: "usar_delivery", self.caderneta: "usar_caderneta"}   # módulos que a casa não usa
+        self.tarefas = [(r, f) for r, f in self.tarefas if f not in desligados or self.ctx.banco.cfg_bool(desligados[f], False)]
         self.botoes_tarefa = []
         for i, (rotulo, fn) in enumerate(self.tarefas):
             b = ttk.Button(self.barra, text=rotulo, style="Barra.TButton", takefocus=False, command=lambda f=fn: self._exec_barra(f))
@@ -856,6 +858,8 @@ class JanelaCaixa(tk.Toplevel):
         return True
 
     def caderneta(self) -> None:
+        if not self.ctx.banco.cfg_bool("usar_caderneta", False):     # módulo desligado: F5 não faz nada
+            return
         if not self._exigir_venda_vazia():
             return
         j = JanelaClientes(self, self.ctx, "caderneta")
@@ -867,6 +871,8 @@ class JanelaCaixa(tk.Toplevel):
         self.ent_codigo.focus_set()
 
     def entrega(self) -> None:
+        if not self.ctx.banco.cfg_bool("usar_delivery", False):      # módulo desligado: F6 não faz nada
+            return
         escolha = tema.escolher(self, "Delivery", [("novo", "Novo pedido de entrega"), ("lista", "Entregas pendentes (receber / entregador)")],
                                 "Escolha:", altura=3)
         if escolha == "novo":

@@ -38,6 +38,8 @@ class BaseUI(unittest.TestCase):
         self.ctx = Contexto(self.banco)
         self.banco.cfg_set("comissao_em_pontos", "N")     # os testes de tela da comissão digitam reais; pontos têm teste próprio
         self.banco.cfg_set("comissao_paga_do_caixa", "S")  # idem: os testes de pagamento esperam a sangria; o padrão N tem teste
+        for chave in ("usar_delivery", "usar_caderneta", "usar_contas"):   # os testes de tela exercitam todos os módulos;
+            self.banco.cfg_set(chave, "S")                                # o padrão desligado tem teste próprio (test_modulos)
         # Casa já cadastrada: senão o menu abriria a janela do primeiro acesso no meio dos testes (TesteCadastroDaCasa a testa).
         self.banco.atualizar("loja", 1, {"nome_fantasia": "Casa de Teste"})
         self.ctx.operador = self.ctx.acesso.autenticar("adm", "adm")
