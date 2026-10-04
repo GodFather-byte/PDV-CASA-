@@ -341,6 +341,22 @@ rotina real do caixa, backup e restauração testados, hardware fiscal/periféri
 impressao, logs) ficam em `%LOCALAPPDATA%\WILL-PDV` e a licença é sempre exigida; rodando do código-fonte ela só vale com
 `licenca_exigir = S` nas configurações.
 
+### Instalador (Inno Setup)
+
+Na máquina do fornecedor que gera as versões (Windows, uma vez só): instale o Python 3.10+ (64 bits), rode
+`pip install pyinstaller pyserial requests` e instale o [Inno Setup 6](https://jrsoftware.org/isdl.php) (6.3 ou mais
+novo). A cada versão:
+
+1. Suba o número em `src/versao.py`.
+2. Na raiz do repositório: `python build_pdv.py`. Ele gera o executável e, achando o Inno Setup, o instalador
+   `instalador\saida\WillPDV-Setup-<versão>.exe` (o script é `instalador\WillPDV.iss`; dá para abri-lo no Inno Setup e
+   clicar em *Compile*). Ícone opcional: `instalador\willpdv.ico`.
+3. Leve o `WillPDV-Setup-<versão>.exe` ao PC do caixa (pendrive ou link) e execute: Avançar, Avançar, Instalar. Ele
+   instala em `Arquivos de Programas\WillPDV`, cria o atalho e, se marcado, abre o caixa ao ligar o computador.
+
+Para atualizar, rode o instalador novo no mesmo PC (com o turno fechado): ele substitui o programa e mantém as vendas,
+que ficam em `%LOCALAPPDATA%\WILL-PDV`. Desinstalar também não apaga esses dados; faça o backup antes de trocar de PC.
+
 A licença é um código assinado (Ed25519) com a chave da loja e o último dia de validade. O PDV só guarda a chave
 pública; a privada fica com o fornecedor, fora do repositório (`~/.pdv-casa/licenca_privada.key`):
 

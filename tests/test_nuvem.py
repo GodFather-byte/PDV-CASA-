@@ -129,6 +129,25 @@ class TesteApi(BasePDV):
         self.assertEqual((vendas[0].posicao, vendas[0].total_cent, itens, pagamentos), (7, 1100, 1, 1))
         self.assertEqual((vendas[0].chave_loja, vendas[0].status), ("LOJA-1", "fechada"))
 
+    def test_comanda_e_mesa_de_mesmo_numero_chegam_diferentes(self):
+        mesa = self.vender(mesa=5)
+        comanda, _ = self.caixa.abrir_mesa(5, comanda=True)
+        self.caixa.adicionar_item(comanda, self.produto, 1)
+        self.caixa.adicionar_pagamento(comanda, self.tipo("Dinheiro"), self.banco.valor(
+            "SELECT total_cent FROM vendas WHERE id = ?", (comanda,)))
+        self.caixa.fechar(comanda)
+        self.assertEqual(self.post(SyncController(self.banco).montar_lote()).status_code, 200)
+        na_mesa, na_comanda = self.na_nuvem(self.uuid_de(mesa))[0][0], self.na_nuvem(self.uuid_de(comanda))[0][0]
+        self.assertEqual((na_mesa.posicao, na_mesa.comanda), (5, False))
+        self.assertEqual((na_comanda.posicao, na_comanda.comanda), (5, True))
+
+    def test_pdv_antigo_sem_o_campo_comanda_continua_aceito(self):
+        self.vender(mesa=3)
+        lote = SyncController(self.banco).montar_lote()
+        del lote["vendas"][0]["comanda"]
+        self.assertEqual(self.post(lote).status_code, 200)
+        self.assertFalse(self.na_nuvem(lote["vendas"][0]["uuid"])[0][0].comanda)
+
     def test_reenvio_do_mesmo_lote_nao_duplica(self):
         self.vender()
         lote = SyncController(self.banco).montar_lote()

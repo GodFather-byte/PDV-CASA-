@@ -60,6 +60,7 @@ class Venda(Base):
     terminal = Column(Integer)
     modalidade = Column(String)
     posicao = Column(Integer, nullable=True)
+    comanda = Column(Boolean, nullable=False, default=False)   # posicao é a comanda (True) ou a mesa (False)
     status = Column(String)
     aberta_em = Column(String)
     fechada_em = Column(String)
@@ -130,7 +131,7 @@ Base.metadata.create_all(bind=engine)
 def _acrescentar_colunas() -> None:
     """create_all não altera tabela existente: colunas novas de tabelas que já existiam entram aqui."""
     from sqlalchemy import inspect, text
-    novas = {"lojas": {"licenca_ate": "VARCHAR"}}
+    novas = {"lojas": {"licenca_ate": "VARCHAR"}, "vendas": {"comanda": "BOOLEAN NOT NULL DEFAULT 0"}}
     with engine.begin() as con:
         for tabela, colunas in novas.items():
             existentes = {c["name"] for c in inspect(con).get_columns(tabela)}
@@ -201,6 +202,7 @@ class VendaSync(BaseModel):
     terminal: int = Field(ge=1)
     modalidade: Literal["balcao", "mesa", "caderneta", "entrega"]
     posicao: Optional[int] = None
+    comanda: bool = False          # a comanda 5 e a mesa 5 são posições diferentes; PDV antigo não manda (= mesa)
     status: Literal["fechada", "cancelada"]
     aberta_em: str = Field(pattern=DATA_HORA)
     fechada_em: str = Field(pattern=DATA_HORA)
@@ -263,7 +265,7 @@ def sincronizar_vendas(lote: LoteSync, acesso: Acesso = Depends(autenticar), db:
 
             nova = Venda(
                 uuid=req.uuid, chave_loja=lote.chave_loja, cupom=req.cupom, turno=req.turno, terminal=req.terminal,
-                modalidade=req.modalidade, posicao=req.posicao, status=req.status, aberta_em=req.aberta_em,
+                modalidade=req.modalidade, posicao=req.posicao, comanda=req.comanda, status=req.status, aberta_em=req.aberta_em,
                 fechada_em=req.fechada_em, operador=req.operador, subtotal_cent=req.subtotal_cent,
                 desconto_cent=req.desconto_cent, servico_cent=req.servico_cent, taxa_cent=req.taxa_cent,
                 total_cent=req.total_cent, troco_cent=req.troco_cent, vale_cent=req.vale_cent, pessoas=req.pessoas,
