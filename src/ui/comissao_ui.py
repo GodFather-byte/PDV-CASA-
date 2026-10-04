@@ -50,7 +50,7 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
     en.pack(side="left")
     lbl_nome = ttk.Label(linha, text="", font=("Segoe UI", 14, "bold"), foreground=tema.COR["marinho2"])
     lbl_nome.pack(side="left", padx=12)
-    ttk.Label(dlg.corpo, text="Valor da comissão (R$)", style="Rotulo.TLabel").pack(anchor="w", pady=(12, 0))
+    ttk.Label(dlg.corpo, text=f"Comissão: {ctx.comissoes.rotulo_valor()}", style="Rotulo.TLabel").pack(anchor="w", pady=(12, 0))
     valor = tk.StringVar()
     ev = ttk.Entry(dlg.corpo, textvariable=valor, width=14, font=("Segoe UI", 18, "bold"), justify="right")
     ev.pack(anchor="w")
@@ -80,9 +80,9 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
             en.focus_set()
             return
         try:
-            cent = fmt.para_centavos(valor.get())
-        except ValueError:
-            msg.configure(text="Valor inválido.")
+            cent = ctx.comissoes.para_centavos(valor.get())
+        except (ValueError, ErroNegocio) as e:
+            msg.configure(text=str(e) if isinstance(e, ErroNegocio) else "Valor inválido.")
             ev.focus_set()
             return
         if cent <= 0:

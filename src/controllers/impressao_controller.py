@@ -291,11 +291,14 @@ class ImpressaoController:
     def via_comissao(self, lancamento: dict, pendentes: list[dict], nome: str, operador: str) -> str:
         """A via que a garota leva a cada comissão marcada para ela: o valor desta, o que ela tem a receber (todos os lançamentos
         pendentes, os mais recentes) e o total, para acompanhar o próprio acerto (não fiscal)."""
+        from src.controllers.comissao_controller import ComissaoController
+        comissoes = ComissaoController(self.banco)
         w = self.largura()
         quem = f"{lancamento['garota']} {nome}".strip()
+        rotulo = "Pontos desta comissão" if comissoes.em_pontos() else "Valor desta comissão"
         linhas = self.cabecalho(w) + ["=" * w, "COMISSÃO LANÇADA".center(w), "VIA DA GAROTA".center(w),
                                       fmt.fmt_datahora(lancamento["criado_em"]).center(w), f"Garota: {quem}"[:w], "-" * w,
-                                      _lr("Valor desta comissão", M(lancamento["valor_cent"]), w),
+                                      _lr(rotulo, comissoes.em_pontos_texto(lancamento["valor_cent"]), w),
                                       f"Lançamento nº {lancamento['id']}", "-" * w, "Suas comissões a receber:"]
         recentes = pendentes[-LIMITE_VIA_COMISSAO:]
         if len(pendentes) > len(recentes):

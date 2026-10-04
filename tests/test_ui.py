@@ -36,6 +36,7 @@ class BaseUI(unittest.TestCase):
         fmt.definir_relogio(None)
         self.banco = BancoDados(":memory:")
         self.ctx = Contexto(self.banco)
+        self.banco.cfg_set("comissao_em_pontos", "N")     # os testes de tela da comissão digitam reais; pontos têm teste próprio
         self.ctx.operador = self.ctx.acesso.autenticar("adm", "adm")
         cad = CadastroController(self.banco)
         sub = self.banco.valor("SELECT id FROM subgrupos")

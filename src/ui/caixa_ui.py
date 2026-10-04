@@ -959,13 +959,14 @@ class JanelaCaixa(tk.Toplevel):
         garota = str(v["posicao"]) if v and v["modalidade"] == "mesa" and v["comanda"] else ""
         self.modo_comissao = True
         self.lbl_cod_titulo.configure(text="Garota nº")
-        self.lbl_qtd_titulo.configure(text="Valor (R$)")
+        self.lbl_qtd_titulo.configure(text=self.ctx.comissoes.rotulo_valor())
         self.lbl_desc.configure(foreground=COR_COMISSAO)
         self.ent_qtd.configure(state="normal")
         self.var_cod.set(garota)
         self._comissao_nome()
         if garota:
-            self.avisar(f"Comissão da garota {garota}: digite o valor e tecle Enter (Esc cancela).", tema.COR["aviso"])
+            oque = "os pontos" if self.ctx.comissoes.em_pontos() else "o valor"
+            self.avisar(f"Comissão da garota {garota}: digite {oque} e tecle Enter (Esc cancela).", tema.COR["aviso"])
             self.ent_qtd.focus_set()
         else:
             self.avisar("Comissão: digite o número da garota e tecle Enter (Esc cancela).", tema.COR["aviso"])
@@ -1010,13 +1011,14 @@ class JanelaCaixa(tk.Toplevel):
             self.ent_codigo.focus_set()
             return
         try:
-            cent = fmt.para_centavos(self.var_qtd.get())
-        except ValueError:
-            self.avisar("Valor inválido.", tema.COR["perigo"])
+            cent = self.ctx.comissoes.para_centavos(self.var_qtd.get())
+        except (ValueError, ErroNegocio) as e:
+            self.avisar(str(e) if isinstance(e, ErroNegocio) else "Valor inválido.", tema.COR["perigo"])
             self.ent_qtd.focus_set()
             return
         if cent <= 0:
-            self.avisar("Informe o valor da comissão.", tema.COR["perigo"])
+            self.avisar("Informe " + ("os pontos" if self.ctx.comissoes.em_pontos() else "o valor") + " da comissão.",
+                        tema.COR["perigo"])
             self.ent_qtd.focus_set()
             return
         campo = comissao_ui.conferir_lancamento(self, self.ctx, numero, cent)

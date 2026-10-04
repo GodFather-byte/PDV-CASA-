@@ -729,3 +729,26 @@ class TesteModeloDosIconesDasGarotas(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TesteComissaoEmPontosNaTela(BaseNaTela):
+    def setUp(self):
+        super().setUp()
+        self.banco.cfg_set("comissao_em_pontos", "S")
+
+    def test_0_3_na_linha_do_caixa_vira_15_reais(self):
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.posicao("180")
+        self.digitar_codigo("50")
+        self.assertEqual(self.cx.lbl_qtd_titulo.cget("text"), "Pontos (0,1 = R$ 5,00)")
+        self.valor("0,3")
+        self.assertEqual(self.banco.valor("SELECT valor_cent FROM comissoes_garotas"), 1500)
+        self.sem_travar()
+
+    def test_fracao_invalida_avisa_e_nao_grava(self):
+        self.posicao("180")
+        self.digitar_codigo("50")
+        self.valor("0,15")
+        self.assertIn("0,1 em 0,1", self.status())
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM comissoes_garotas"), 0)
+        self.sem_travar()

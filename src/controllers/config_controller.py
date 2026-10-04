@@ -69,6 +69,8 @@ CAMPOS_CONFIG = [
     ("exigir_senha_desconto", "Exigir senha de supervisor para desconto", "sn", "Caixa"),
     ("exigir_senha_comissao", "Exigir senha de supervisor para lançar comissão das garotas", "sn", "Caixa"),
     ("codigo_comissao", "Código que lança a comissão das garotas no caixa (vazio = desligado)", "texto", "Caixa"),
+    ("comissao_em_pontos", "Comissão das garotas em pontos (0,1, 0,2...) em vez de reais", "sn", "Caixa"),
+    ("comissao_valor_ponto", "Quanto vale cada 0,1 ponto de comissão (R$)", "decimal", "Caixa"),
     ("codigo_saida", "Código que libera a saída da comanda sem consumo e imprime o comprovante (vazio = desligado)", "texto",
      "Caixa"),
     ("comissao_na_linha", "Marcar, pagar e cancelar a comissão das garotas na própria tela do caixa (desligado: abre janelas)", "sn", "Caixa"),
