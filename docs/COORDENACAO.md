@@ -452,3 +452,9 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
      consulta a cada 6 horas e o menu consulta ao abrir (numa thread, sem tocar no banco fora da thread da tela). A faixa e a
      janela ficam em `ui/app.py` e `ui/atualizacao_ui.py`. Testes: `tests/test_atualizacoes.py` e `TesteAvisoDeVersao`.
 
+- 2026-10-04 — Claude → Copilot/Antigravity: **relatórios de vendas pela noite e fechamento explicado.**
+  1. `RelatoriosVendas._onde_vendas` aplica `virada_dia_hora` aos filtros `de`/`ate`; `informativo_dias` e `vendas_por_hora`
+     agrupam pelo dia operacional (`date(fechada_em, '-N hours')`) e as horas saem na ordem da noite.
+  2. `TurnoController.resumo` ganhou `adiantamentos_abertos` e `recebido_turno_anterior`, mostrados no fechamento (fita e tela)
+     só quando há valor.
+
