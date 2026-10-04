@@ -872,6 +872,18 @@ class TesteLoginComLicenca(BaseUI):
         aviso.assert_not_called()
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM log_eventos WHERE evento = 'licenca_bloqueio'"), 1)
 
+    def test_licenca_paga_na_nuvem_entra_sem_pedir_o_codigo(self):
+        from src.sync import licenca_nuvem
+
+        def renovar(banco, **kw):
+            self.licenca.ativar(banco, self.codigo())
+            return True
+        with mock.patch.object(licenca_nuvem, "renovar", side_effect=renovar) as nuvem:
+            j, pedir, _ = self.entrar()
+        nuvem.assert_called_once()
+        pedir.assert_not_called()
+        self.assertEqual(j.operador.nome, "ADM")
+
     def test_codigo_invalido_ou_cancelado_nao_deixa_entrar(self):
         j, pedir, _ = self.entrar(codigo="lixo")
         self.assertIsNone(j.operador)

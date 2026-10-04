@@ -117,16 +117,18 @@ class Sincronizador:
         return {"estado": "rejeitadas", "rejeitadas": n, "restantes": self.sync.contagem_pendentes()}
 
     def _verificar_atualizacoes(self) -> None:
-        """Aproveita a rodada para ver se há versão nova do PDV (no máximo a cada 6 horas). Falha aqui nunca para o envio."""
+        """Aproveita a rodada para ver se há versão nova do PDV e renovar a licença pela nuvem (cada um no máximo a cada
+        6 horas). Falha aqui nunca para o envio."""
         if self._http is not None and not hasattr(self._http, "get"):
             return                                   # cliente HTTP de teste que só envia
         try:
-            from src.sync import atualizacoes
+            from src.sync import atualizacoes, licenca_nuvem
             aviso = atualizacoes.verificar(self.banco, self._http)
             if aviso:
                 log.info("Versão nova do PDV disponível: %s%s.", aviso["ultima"], " (CRÍTICA)" if aviso["critica"] else "")
+            licenca_nuvem.renovar(self.banco, self._http)
         except Exception:
-            log.exception("Falha ao consultar atualizações.")
+            log.exception("Falha ao consultar atualizações ou licença.")
 
     # ----------------------------------------------------------------- laço
     def iniciar_loop(self, rodadas: int | None = None, dormir=time.sleep) -> None:

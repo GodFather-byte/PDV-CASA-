@@ -296,6 +296,20 @@ O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de 
 3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`).
    Ele registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e só confirma o que a API aceitou.
 
+### Licença renovada pela nuvem
+
+Com a chave privada do fornecedor no servidor (o mesmo arquivo de `tools.gerar_licenca`, em `PDV_LICENCA_CHAVE` ou
+`~/.pdv-casa/licenca_privada.key`), basta registrar até quando cada loja pagou:
+
+```powershell
+python -m backend.lojas assinatura BOATE-CENTRO 2026-11-30   # pagou até 30/11
+python -m backend.lojas assinatura BOATE-CENTRO cancelar     # não renova mais
+```
+
+O PDV da loja busca o código sozinho (pela sincronização, a cada 6 horas, e na entrada quando a licença está vencida) e o
+ativa se estender o prazo. Se a loja não pagar, a data não avança e a licença vence normalmente, com aviso e carência.
+O código manual (`python -m tools.gerar_licenca emitir`) continua valendo para lojas sem internet.
+
 ### Avisar as lojas sobre uma versão nova
 
 A versão do PDV fica em `src/versao.py` (aparece no canto da tela principal). Para cada entrega:

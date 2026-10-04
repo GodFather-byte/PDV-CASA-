@@ -54,6 +54,8 @@ class JanelaLogin(tk.Toplevel):
     def entrar(self) -> None:
         estado = licenca.estado(self.ctx.banco)
         turno = TurnoController(self.ctx.banco).atual()
+        if estado.bloqueia and self._renovar_pela_nuvem():
+            estado = licenca.estado(self.ctx.banco)
         if estado.bloqueia and not licenca.turno_vale_como_isencao(self.ctx.banco, turno):
             # Com um turno recente aberto a loja continua operando (só avisa); sem ele, exige a renovação.
             self.ctx.banco.log("licenca_bloqueio", estado.mensagem)
@@ -103,6 +105,15 @@ class JanelaLogin(tk.Toplevel):
         self.ctx.acesso.trocar_senha(operador, nova)
         tema.mensagem(self, "Senha trocada. Use a senha nova nas próximas entradas.", "Senha")
         return True
+
+    def _renovar_pela_nuvem(self) -> bool:
+        """Licença bloqueada: antes de pedir o código, tenta a renovação pela nuvem (a loja pode já ter pago)."""
+        from src.sync import licenca_nuvem
+        self.lbl_msg.configure(text="Verificando a licença na nuvem...", fg="white")
+        self.update_idletasks()
+        renovou = licenca_nuvem.renovar(self.ctx.banco, forcar=True, timeout=(3, 5))
+        self.lbl_msg.configure(text="")
+        return renovou
 
     def pedir_licenca(self, motivo: str = "") -> bool:
         """Pede o código de licença e o ativa. Devolve True se a licença ficou liberada para entrar."""

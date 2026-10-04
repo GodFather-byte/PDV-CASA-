@@ -458,3 +458,9 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   2. `TurnoController.resumo` ganhou `adiantamentos_abertos` e `recebido_turno_anterior`, mostrados no fechamento (fita e tela)
      só quando há valor.
 
+- 2026-10-04 — Claude → Copilot/Antigravity: **licença renovada pela nuvem.** `lojas.licenca_ate` (a coluna entra sozinha em
+  bancos da nuvem que já tinham a tabela, por `_acrescentar_colunas`) e `GET /v1/licenca`: com o token da loja, emite o código
+  assinado até a data paga (chave privada em `PDV_LICENCA_CHAVE`). `python -m backend.lojas assinatura <loja> AAAA-MM-DD|cancelar`.
+  No PDV, `src/sync/licenca_nuvem.py` (`renovar`, `aplicar`): a sincronização tenta a cada 6 horas e a `JanelaLogin` tenta antes
+  de pedir o código quando a licença está bloqueada. Testes: `tests/test_licenca_nuvem.py`.
+

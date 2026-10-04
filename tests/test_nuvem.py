@@ -634,5 +634,5 @@ class TesteCadastroDeLojas(unittest.TestCase):
             self.assertEqual(lojas.main(["listar"]), 0)
             self.assertEqual(lojas.main(["comando-errado"]), 2)
         self.assertIn("Token (guarde agora", saida.getvalue())
-        self.assertRegex(saida.getvalue(), r"CAD-6\s+INATIVA\s+Boate Linha")
+        self.assertRegex(saida.getvalue(), r"CAD-6\s+INATIVA\s+sem assinatura\s+Boate Linha")
 
