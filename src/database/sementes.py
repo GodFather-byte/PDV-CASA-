@@ -64,6 +64,7 @@ CONFIG_PADRAO = {
     "exigir_senha_gaveta": "S", "exigir_senha_sangria": "S",
     "exigir_senha_cancelamento": "S", "exigir_senha_desconto": "N",
     "imprimir_cupom": "S", "terminal": "1", "codigo_comissao": "50", "exigir_senha_comissao": "N",
+    "codigo_saida": "1002",     # digitado na comanda sem consumo: libera a saída e imprime o comprovante
     # Comissão na tela do caixa e documentos da boate (chaves novas: bancos existentes ganham o padrão na próxima abertura).
     "comissao_na_linha": "S", "imprimir_via_comissao": "S", "painel_mostra_garotas": "S",
     "imprimir_fechamento_ao_trocar": "S", "vias_fechamento": "1", "limite_gaveta": "0",

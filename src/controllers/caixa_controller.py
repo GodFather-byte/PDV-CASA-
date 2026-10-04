@@ -9,6 +9,7 @@ Regras principais:
 """
 from __future__ import annotations
 
+import json
 import math
 from uuid import uuid4
 
@@ -175,6 +176,49 @@ class CaixaController:
         if v["status"] == "fechada":
             return {"situacao": "paga", "total_cent": v["total_cent"], "cupom": v["cupom"], "quando": v["fechada_em"]}
         return {"situacao": "cancelada", "total_cent": v["total_cent"], "quando": v["fechada_em"] or v["aberta_em"]}
+
+    # ------------------------------------------------- saída sem consumo (1002)
+    def codigo_saida(self) -> str:
+        """O código que, digitado na comanda, libera a saída de quem não consumiu (configuração `codigo_saida`, 1002)."""
+        return (self.banco.cfg("codigo_saida", "1002") or "").strip()
+
+    def eh_codigo_saida(self, texto) -> bool:
+        cod, t = self.codigo_saida(), ("" if texto is None else str(texto)).strip()
+        if not cod or not t:
+            return False
+        if cod.isdigit() and t.isdigit():
+            return int(cod) == int(t)
+        return cod.lower() == t.lower()
+
+    def liberar_saida(self, comanda: bool, numero: int) -> dict:
+        """Libera a saída do cliente cuja comanda (ou mesa) não consumiu nada: fecha a posição vazia e registra a saída no
+        turno (aparece no fechamento). Com consumo ou pagamento lançado, recusa: a conta precisa ser fechada."""
+        self.validar_mesa(numero, comanda)
+        turno = self.turnos.exigir_aberto()
+        nome = nome_posicao(comanda, numero)
+        v = self.banco.um("SELECT * FROM vendas WHERE modalidade = 'mesa' AND comanda = ? AND posicao = ? "
+                          "AND status IN ('aberta','conta_enviada')", (int(comanda), numero))
+        with self.banco.transacao():
+            if v is not None:
+                if self.itens(v["id"]):
+                    a_pagar = self.recalcular(v["id"])["total"]                # com o serviço: o que o cliente deve
+                    raise ErroNegocio(f"A {nome.lower()} tem consumo de {fmt.fmt_brl(a_pagar)}: feche a conta antes de "
+                                      "liberar a saída.")
+                if self.pagamentos(v["id"]):
+                    raise ErroNegocio(f"A {nome.lower()} tem pagamento lançado: feche ou cancele a conta antes de liberar a saída.")
+                self.cancelar_venda(v["id"], "saída liberada sem consumo")
+            quando = fmt.agora()
+            rotulo = self.rotular_posicao(comanda, numero)
+            self.banco.log("saida_liberada", json.dumps({"turno_id": turno["id"], "comanda": int(comanda), "posicao": numero,
+                                                         "rotulo": rotulo}), self.operador_id)
+        return {"nome": nome, "rotulo": rotulo, "quando": quando, "turno": turno["numero"]}
+
+    def saidas_liberadas(self, turno_id: int) -> list[dict]:
+        """As saídas sem consumo liberadas no turno, com a hora e quem liberou."""
+        return [dict(r) for r in self.banco.todos(
+            """SELECT l.quando, json_extract(l.detalhe, '$.rotulo') AS rotulo, o.nome AS operador FROM log_eventos l
+               LEFT JOIN operadores o ON o.id = l.operador_id
+               WHERE l.evento = 'saida_liberada' AND json_extract(l.detalhe, '$.turno_id') = ? ORDER BY l.id""", (turno_id,))]
 
     def definir_pessoas(self, venda_id: int, pessoas: int) -> None:
         self._aberta(venda_id)

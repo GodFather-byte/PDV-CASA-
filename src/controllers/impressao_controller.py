@@ -276,6 +276,18 @@ class ImpressaoController:
                                               _lr("Valor", M(valor_cent), w), f"Motivo: {descricao}"[:w * 2],
                                               f"Operador: {operador}", "", "_" * w, "Assinatura".center(w)])
 
+    def comprovante_saida(self, info: dict, operador: str) -> str:
+        """Papel de saída do código 1002: o cliente mostra na porta. Comanda em destaque, data e hora, sem consumo."""
+        w = self.largura()
+        linhas = self.cabecalho(w) + ["=" * w, "COMPROVANTE DE SAÍDA".center(w), "-" * w,
+                                      info["nome"].upper().center(w), "",
+                                      _lr("Data", fmt.fmt_datahora(info["quando"])[:10], w),
+                                      _lr("Hora", fmt.fmt_datahora(info["quando"])[11:16], w),
+                                      _lr("Consumo", "SEM CONSUMO", w),
+                                      _lr("Turno", str(info["turno"]), w), _lr("Liberado por", operador or "", w),
+                                      "-" * w, "Saída liberada.".center(w), "=" * w]
+        return "\n".join(linhas)
+
     def via_comissao(self, lancamento: dict, pendentes: list[dict], nome: str, operador: str) -> str:
         """A via que a garota leva a cada comissão marcada para ela: o valor desta, o que ela tem a receber (todos os lançamentos
         pendentes, os mais recentes) e o total, para acompanhar o próprio acerto (não fiscal)."""
