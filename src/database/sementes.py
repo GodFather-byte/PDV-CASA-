@@ -68,7 +68,8 @@ CONFIG_PADRAO = {
     "comissao_na_linha": "S", "imprimir_via_comissao": "S", "painel_mostra_garotas": "S",
     "imprimir_fechamento_ao_trocar": "S", "vias_fechamento": "1", "limite_gaveta": "0",
     "chave_loja": "", "licenca_ativa": "1",
-    "virada_dia_hora": "6",     # o "dia" do painel vai das 6h às 6h do dia seguinte (a noite da boate não se divide)
+    "virada_dia_hora": "6",
+    "usar_desconto": "N",       # boate não dá desconto: o campo some do fechamento da conta (Configurações > Caixa liga)     # o "dia" do painel vai das 6h às 6h do dia seguinte (a noite da boate não se divide)
     "api_url": "", "api_token": "", "sync_intervalo_seg": "60",
     "programa_comunicacao": "", "pasta_backup": "",
     "email_loja": "", "email_destino": "", "smtp_servidor": "",

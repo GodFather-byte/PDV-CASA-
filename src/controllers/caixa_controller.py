@@ -283,6 +283,8 @@ class CaixaController:
 
     def definir_desconto(self, venda_id: int, pct: float | None = None, valor_cent: int | None = None) -> dict:
         v = self._aberta(venda_id)
+        if not self.banco.cfg_bool("usar_desconto", False) and (pct or valor_cent):
+            raise ErroNegocio("O desconto está desligado (Configurações > Caixa > Permitir desconto).")
         if pct is not None and valor_cent is not None:
             raise ErroNegocio("Informe o desconto em percentual OU em valor, não os dois.")
         if pct is not None:
