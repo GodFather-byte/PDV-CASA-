@@ -30,9 +30,10 @@ Para abrir o sistema (Windows: também há o atalho `iniciar_pdv.bat`):
 python -m src.app
 ```
 
-Usuário inicial: **ADM**, senha **ADM** (nível 4; troque a senha e crie os operadores em
-Manutenção de Cadastros > Operadores). Operadores de nível 0 entram direto no caixa. O
-primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
+Usuário inicial: **ADM**, senha **ADM** (nível 4). Na primeira entrada o sistema obriga a trocar essa senha (vale para
+qualquer operador cuja senha seja igual ao nome); depois crie os operadores em Manutenção de Cadastros > Operadores.
+Cinco senhas erradas seguidas bloqueiam aquele usuário (ou a senha de supervisor) por 5 minutos. Operadores de nível 0
+entram direto no caixa. O primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
 
 O sistema local usa só a biblioteca padrão (Tkinter e SQLite). Quem usa a sincronização, a balança ou a
 impressão RAW do Windows precisa de `pip install -r requirements.txt`. A pasta `src/ui/` ainda contém telas Flet antigas

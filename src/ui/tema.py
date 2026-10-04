@@ -332,7 +332,11 @@ def pedir_senha_supervisor(master, ctx, modulo: str, motivo: str = ""):
                             largura=22)
         if senha is None:
             return None
-        sup = ctx.acesso.validar_supervisor(senha, modulo)
+        try:
+            sup = ctx.acesso.validar_supervisor(senha, modulo)
+        except ErroNegocio as e:          # bloqueada por senhas erradas demais
+            erro(master, str(e))
+            return None
         if sup is not None:
             return sup
         erro(master, "Senha inválida ou sem permissão para esta operação.")
