@@ -322,15 +322,29 @@ class CaixaController:
                 base = sum(i["total_cent"] for i in itens if i["cobra_servico"])
                 servico = fmt.pct_de(base, float(self.banco.cfg("servico_pct", "10") or 0))
         taxa = v["taxa_cent"]
+        if v["modalidade"] == "mesa" and v.get("comanda"):
+            taxa = self.complemento_consumacao(v["posicao"], subtotal - desconto)      # comanda não tem taxa de entrega
         return {"subtotal": subtotal, "desconto": desconto, "servico": servico, "taxa": taxa,
                 "total": subtotal - desconto + servico + taxa}
+
+    def complemento_consumacao(self, numero_comanda: int, consumo_cent: int) -> int:
+        """Consumação mínima: quanto falta para a comanda chegar ao mínimo (Configurações > Mesas e serviço). É cobrado como
+        um acréscimo no total (guardado em `taxa_cent`, que comanda não usa para entrega). Só vale para comanda COM consumo,
+        dentro da faixa de números configurada: comanda vazia (a da garota, por exemplo) nunca é cobrada."""
+        minimo = self.banco.cfg_int("consumacao_minima", 0) * 100
+        if minimo <= 0 or consumo_cent <= 0 or consumo_cent >= minimo:
+            return 0
+        de, ate = self.banco.cfg_int("consumacao_minima_de", 0), self.banco.cfg_int("consumacao_minima_ate", 0)
+        if numero_comanda < de or (ate and numero_comanda > ate):
+            return 0
+        return minimo - consumo_cent
 
     def recalcular(self, venda_id: int) -> dict:
         v = self.obter(venda_id)
         c = self.calcular(v)
         self.banco.executar(
-            "UPDATE vendas SET subtotal_cent = ?, desconto_cent = ?, servico_cent = ?, total_cent = ? WHERE id = ?",
-            (c["subtotal"], c["desconto"], c["servico"], c["total"], venda_id))
+            "UPDATE vendas SET subtotal_cent = ?, desconto_cent = ?, servico_cent = ?, taxa_cent = ?, total_cent = ? WHERE id = ?",
+            (c["subtotal"], c["desconto"], c["servico"], c["taxa"], c["total"], venda_id))
         return c
 
     def definir_desconto(self, venda_id: int, pct: float | None = None, valor_cent: int | None = None) -> dict:

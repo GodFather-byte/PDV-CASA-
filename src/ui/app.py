@@ -31,6 +31,7 @@ RELATORIOS = [
                 ("cancelados", "Cancelamentos", "rel_informativos")]),
     ("Caixa", [("caixa_mov", "Entradas e saídas financeiras", "rel_caixa"), ("fechamentos", "Fechamentos do caixa", "rel_caixa"),
                ("comandas", "Comandas", "rel_comandas"), ("garcons", "Garçons", "rel_garcons"),
+               ("auditoria_operadores", "Auditoria por operador", "rel_auditoria"),
                ("comissao_garotas", "Comissão das garotas", "rel_comissao_garotas")]),
     ("Gestão", [("cmv", "C.M.V. (custo da mercadoria vendida)", "rel_cmv"),
                 ("comissao_produto", "Comissão por produto", "rel_comissoes"), ("comissao_venda", "Comissão por venda", "rel_comissoes"),

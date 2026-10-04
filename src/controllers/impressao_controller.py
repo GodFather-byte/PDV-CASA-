@@ -117,7 +117,7 @@ class ImpressaoController:
         if v["servico_cent"]:
             out.append(_lr("Serviço (+)", M(v["servico_cent"]), w))
         if v["taxa_cent"]:
-            out.append(_lr("Taxa de entrega (+)", M(v["taxa_cent"]), w))
+            out.append(_lr("Compl. consumação mín. (+)" if v.get("comanda") else "Taxa de entrega (+)", M(v["taxa_cent"]), w))
         out.append(_lr("TOTAL", f"R$ {M(v['total_cent'])}", w))
         return out
 
@@ -262,7 +262,7 @@ class ImpressaoController:
         # 3) Vendas.
         linhas += ["", faixa("VENDAS", w), _lr("Produtos", M(resumo["venda"]), w)]
         liga = {"desconto": "usar_desconto", "venda_caderneta": "usar_caderneta", "pagtos_caderneta": "usar_caderneta"}
-        for rotulo, chave in (("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa de entrega (+)", "taxa"),
+        for rotulo, chave in (("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa de entrega / compl. consumação (+)", "taxa"),
                               ("Repique (caixinha)", "repique"), ("Troco devolvido", "troco"), ("Contra-vale emitido", "vale_emitido"),
                               ("Venda caderneta", "venda_caderneta"), ("Pagtos caderneta (+)", "pagtos_caderneta")):
             if resumo[chave] or (chave in liga and self.banco.cfg_bool(liga[chave], False)) or chave == "servico":

@@ -182,6 +182,14 @@ dois controles. Outras ideias, que mudam regras ou o banco, estão em `docs/ESPE
 - **Motivo do cancelamento** (Configurações > Caixa > *Exigir o motivo para cancelar item ou venda*, desligado de fábrica):
   ligado, o caixa pede o motivo ao cancelar um item ou a venda inteira e não aceita em branco. O motivo sai no fechamento
   e na Leitura X, em *Itens cancelados* e *Cupons cancelados*.
+- **Consumação mínima** (Configurações > Mesas e serviço, desligada de fábrica): informe o valor mínimo por comanda. Na saída,
+  a comanda com consumo abaixo do mínimo paga a diferença, que aparece no cupom e na pré-conta como *Compl. consumação mín.*
+  Comanda sem nenhum item nunca é cobrada, e *vale a partir/até a comanda nº* deixa de fora as comandas das garotas. Mesa e
+  balcão não são afetados. O desconto não burla o mínimo (vale o consumo já com desconto).
+- **Sangria por horário** (Configurações > Caixa > *Horários de sangria*, ex.: `02:00, 04:30`): passou o horário e ninguém fez
+  sangria depois dele neste turno, o caixa avisa na barra de estado ao fechar a próxima venda, junto do aviso por limite.
+- **Auditoria por operador** (Relatórios > Caixa): por operador, cupons, vendido, ticket médio, desconto, cupons e itens
+  cancelados e sangrias, para achar cancelamento ou desconto fora do normal.
 - **Sem programação nova:** *taxa de comanda perdida* e *consumação mínima na entrada* se fazem cadastrando um produto
   (ex.: `TAXA COMANDA PERDIDA`) e lançando-o na comanda.
 
@@ -239,6 +247,22 @@ pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno, reci
 USB), mas a impressão em papel ainda não foi validada: os testes usam impressora TCP simulada, spooler simulado e arquivos. A página de código, o corte, a gaveta e a velocidade serial variam por modelo; use a página de teste.
 A fila só sabe se a impressora aceitou os bytes: falta de papel e tampa aberta não são detectadas (o documento conta
 como impresso; reimprima pela 2ª via).
+
+## Proteção dos dados
+
+- **Backup automático:** ao abrir o caixa (se a última cópia tem 12 h ou mais), a cada **troca de turno** e ao sair. Cada cópia é
+  conferida depois de gravada; uma cópia danificada é descartada e o erro aparece. O painel inicial fica **vermelho** se o
+  último backup tem 24 h ou mais, falhou ou nunca foi feito. Em Configurações > Utilitários, *Cópia extra do backup* grava a
+  cópia também em pendrive, outro disco ou pasta de rede (o backup só no mesmo disco não protege de defeito no disco).
+- **Restaurar backup** (Utilitários): escolhe a cópia; a restauração acontece na próxima abertura do programa e o estado de
+  agora é guardado antes.
+- **Integridade ao abrir:** o banco é conferido; se estiver danificado, o sistema oferece restaurar o último backup válido e
+  guarda o banco ruim ao lado (`loja_offline.db.antes-AAAAMMDD-HHMMSS`), sem apagar nada.
+- **Erros:** erro inesperado em qualquer tela ou thread vai para `logs/pdv.log` (com o traceback) e o operador vê uma mensagem
+  clara. Utilitários > *Pacote de suporte* gera um zip só com os logs (nunca o banco) para enviar ao fornecedor.
+- **Uma janela só:** abrir o PDV duas vezes no mesmo banco é recusado.
+- **Comanda aberta na troca de turno:** continua aberta no turno seguinte; o dinheiro conta no turno em que for **pago**, então
+  o caixa que passou o turno não dá falta e o que recebeu a comanda não dá sobra (teste em `tests/test_protecao.py`).
 
 ## Arquitetura
 

@@ -859,7 +859,12 @@ class JanelaCaixa(tk.Toplevel):
         há: o operador conta a gaveta no fechamento sem ver o esperado."""
         limite = self.ctx.banco.cfg_int("limite_gaveta", 0) * 100
         turno = self.ctx.turnos.atual()
-        if limite <= 0 or turno is None or self.ctx.turnos.dinheiro_esperado(turno["id"]) <= limite:
+        if turno is None:
+            return ""
+        horario = self.ctx.turnos.sangria_do_horario(turno["id"])
+        if horario:
+            return f"ATENÇÃO: está na hora da sangria das {horario}. Faça a sangria (F7)."
+        if limite <= 0 or self.ctx.turnos.dinheiro_esperado(turno["id"]) <= limite:
             return ""
         return f"ATENÇÃO: a gaveta passou de {fmt.fmt_brl(limite)}. Faça uma sangria (F7)."
 

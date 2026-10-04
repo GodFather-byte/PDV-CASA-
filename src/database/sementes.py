@@ -39,6 +39,7 @@ ACESSOS = [
     ("rel_caixa", "Entradas/Saídas financeiras e Fechamentos", "Relatórios", 2),
     ("rel_comandas", "Relatório de Comandas", "Relatórios", 2),
     ("rel_garcons", "Relatório de Garçons", "Relatórios", 2),
+    ("rel_auditoria", "Auditoria por operador (cancelamentos, descontos e sangrias)", "Relatórios", 3),
     ("rel_comissao_garotas", "Relatório de comissão das garotas", "Relatórios", 2),
     ("rel_cmv", "Relatório C.M.V.", "Relatórios", 3),
     ("rel_clientes", "Clientes inativos e Clientes", "Relatórios", 2),
@@ -62,7 +63,7 @@ CONFIG_PADRAO = {
     "controle_garcom": "N", "comissao_garcom_pct": "0",
     "tempo_inatividade_min": "30", "num_turnos": "3", "pergunta_pessoas": "N",
     "exigir_senha_gaveta": "S", "exigir_senha_sangria": "S",
-    "exigir_senha_cancelamento": "S", "exigir_motivo_cancelamento": "N", "exigir_senha_desconto": "N",
+    "exigir_senha_cancelamento": "S", "exigir_motivo_cancelamento": "N", "consumacao_minima": "0", "sangria_horarios": "", "consumacao_minima_de": "0", "consumacao_minima_ate": "0", "exigir_senha_desconto": "N",
     "imprimir_cupom": "S", "terminal": "1", "codigo_comissao": "50", "exigir_senha_comissao": "N",
     "codigo_saida": "1002",          # digitado na comanda sem consumo: libera a saída e imprime o comprovante
     "imprimir_saida_ao_pagar": "S",  # comanda/mesa paga: junto com o cupom sai o ticket de saída para a portaria
