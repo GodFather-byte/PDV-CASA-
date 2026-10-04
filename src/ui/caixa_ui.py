@@ -504,7 +504,9 @@ class JanelaCaixa(tk.Toplevel):
             return
         texto = caixa_dialogos.escolher_observacao(self, self.ctx)
         if texto:
-            self.ctx.caixa.definir_observacao(int(s), texto)
+            ok, _ = tema.tratar(self, self.ctx.caixa.definir_observacao, int(s), texto)
+            if not ok:
+                return
             self._enviar_remoto([int(s)])
             self.recarregar()
             self.grade.selecionar(s)

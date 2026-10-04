@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from src.controllers.estoque_controller import EstoqueController
 from src.controllers.produto_controller import ProdutoController
-from src.controllers.turno_controller import TurnoController
+from src.controllers.turno_controller import TurnoController, proximo_cupom
 from src.controllers.conferencia_turno import registrar_transferencia
 from src.core import formatacao as fmt
 from src.core.posicao import interpretar as interpretar_posicao
@@ -246,6 +246,10 @@ class CaixaController:
             self.banco.log("item_cancelado", f"venda {item['venda_id']} item {item_id}", self.operador_id)
 
     def definir_observacao(self, item_id: int, texto: str | None) -> None:
+        item = self.banco.um("SELECT venda_id FROM itens_venda WHERE id = ?", (item_id,))
+        if item is None:
+            raise ErroNegocio("Item não encontrado.")
+        self._aberta(item["venda_id"])                 # cupom já emitido não muda
         self.banco.executar("UPDATE itens_venda SET observacao = ? WHERE id = ?", ((texto or "").strip() or None, item_id))
 
     # ============================================================== totais
@@ -375,7 +379,7 @@ class CaixaController:
 
     # =========================================================== fechamento
     def proximo_cupom(self) -> int:
-        return self.banco.valor("SELECT COALESCE(MAX(cupom), 0) + 1 FROM vendas")
+        return proximo_cupom(self.banco)
 
     def fechar(self, venda_id: int, garcom_id: int | None = None, pessoas: int | None = None,
                excesso_como_credito: bool | None = None) -> dict:
@@ -531,6 +535,12 @@ class CaixaController:
         self.banco.executar("UPDATE itens_venda SET venda_id = ? WHERE venda_id = ?", (destino_id, origem_id))
         self.banco.executar("UPDATE pagamentos_venda SET venda_id = ? WHERE venda_id = ?", (destino_id, origem_id))
         self.banco.executar("UPDATE repiques SET venda_id = ? WHERE venda_id = ?", (destino_id, origem_id))
+        # O desconto dado na origem vale também na conta juntada: soma ao do destino, em valor (o percentual de cada uma
+        # vira o valor que ele dava, que é o que o cliente já viu na pré-conta).
+        desconto = self.banco.valor("SELECT desconto_cent FROM vendas WHERE id = ?", (origem_id,), 0)
+        if desconto > 0:
+            self.banco.executar("UPDATE vendas SET desconto_cent = desconto_cent + ?, desconto_pct = 0 WHERE id = ?",
+                                (desconto, destino_id))
         pessoas = self.banco.valor("SELECT pessoas FROM vendas WHERE id = ?", (origem_id,), 0)
         self.banco.executar("UPDATE vendas SET pessoas = pessoas + ?, ultimo_lancamento_em = ?, status = 'aberta' "
                             "WHERE id = ?", (pessoas, fmt.agora(), destino_id))

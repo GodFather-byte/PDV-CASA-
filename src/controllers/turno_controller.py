@@ -16,6 +16,13 @@ RECEBIDO_NO_TURNO = ("COALESCE(p.turno_id, v.turno_id) = ? "
                      "AND (v.status <> 'cancelada' OR COALESCE(p.turno_id, v.turno_id) <> v.turno_id)")
 
 
+def proximo_cupom(banco) -> int:
+    """Próximo número de cupom. Além das vendas, olha o último número guardado pela limpeza do movimento: apagar as
+    vendas antigas não pode fazer a numeração voltar ao 1 e repetir cupons já impressos."""
+    return max(banco.valor("SELECT COALESCE(MAX(cupom), 0) FROM vendas", (), 0),
+               banco.cfg_int("ultimo_cupom_emitido", 0)) + 1
+
+
 class TurnoController:
     def __init__(self, banco, terminal: int | None = None):
         self.banco = banco
@@ -57,11 +64,11 @@ class TurnoController:
         if valor_inicial_cent < 0:
             raise ErroNegocio("O valor inicial (fundo de caixa) não pode ser negativo.")
         with self.banco.transacao():
-            proximo_cupom = self.banco.valor("SELECT COALESCE(MAX(cupom), 0) + 1 FROM vendas")
+            cupom_inicial = proximo_cupom(self.banco)
             tid = self.banco.inserir("turnos", {
                 "numero": numero, "terminal": self.terminal, "operador_id": operador_id,
                 "aberto_em": fmt.agora(), "valor_inicial_cent": valor_inicial_cent,
-                "cupom_inicial": proximo_cupom, "status": "aberto"})
+                "cupom_inicial": cupom_inicial, "status": "aberto"})
             self.banco.log("turno_aberto", f"turno {numero}, fundo {fmt.fmt_brl(valor_inicial_cent)}", operador_id)
             if licenca.exigida(self.banco):
                 licenca.registrar_uso(self.banco)
