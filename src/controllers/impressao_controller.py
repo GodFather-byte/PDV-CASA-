@@ -205,6 +205,10 @@ class ImpressaoController:
         linhas += [_lr(f"  {r['tipo']}{'' if r.get('na_gaveta', 1) else ' *'}", M(r["valor"]), w) for r in resumo["recebimentos"]]
         if any(not r.get("na_gaveta", 1) for r in resumo["recebimentos"]):
             linhas.append("  * fora da gaveta")
+        if resumo.get("adiantamentos_abertos"):
+            linhas.append(_lr("  Adiant. contas abertas", M(resumo["adiantamentos_abertos"]), w))
+        if resumo.get("recebido_turno_anterior"):
+            linhas.append(_lr("  Pago em turno anterior", M(resumo["recebido_turno_anterior"]), w))
         for rotulo, chave in (("Troco", "troco"), ("C. Vale emitido", "vale_emitido"), ("Venda (+)", "venda"),
                               ("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa (+)", "taxa"),
                               ("Repique", "repique"), ("Venda caderneta", "venda_caderneta"),

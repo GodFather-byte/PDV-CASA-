@@ -269,6 +269,33 @@ class TesteAvisoDeVersao(BaseUI):
         self.sem_travar()
 
 
+class TestePainelFechamentoComAdiantamento(BaseUI):
+    def test_painel_mostra_o_adiantamento_de_conta_aberta(self):
+        from src.ui.caixa_dialogos import PainelFechamento
+        tid = self.abrir_turno()
+        self.banco.cfg_set("cobra_servico_mesa", "N")
+        vid, _ = self.ctx.caixa.abrir_mesa(7)
+        self.ctx.caixa.adicionar_item(vid, self.skol, 5)
+        self.ctx.caixa.adicionar_pagamento(vid, self.banco.valor("SELECT id FROM tipos_pagamento WHERE tipo = 'Dinheiro'"), 1500)
+        res = self.ctx.turnos.fechar(tid, self.ctx.operador_id, 10000 + 1500)
+        textos = []
+
+        def ler(w):
+            pilha = [w]
+            while pilha:
+                x = pilha.pop()
+                pilha.extend(x.winfo_children())
+                if isinstance(x, ttk.Label):
+                    textos.append(str(x.cget("text")))
+            w.destroy()
+        self.robo.quando("PainelFechamento", ler)
+        PainelFechamento(self.root, self.ctx, res)
+        self.assertIn("  Adiant. de contas abertas", textos)
+        self.assertNotIn("  Pago em turno anterior", textos)
+        self.assertEqual(res["resultado"], 0)
+        self.sem_travar()
+
+
 class TesteFluxosCaixa(BaseUI):
     def setUp(self):
         super().setUp()

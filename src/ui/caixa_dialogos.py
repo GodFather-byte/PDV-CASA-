@@ -111,6 +111,12 @@ class PainelFechamento(tk.Toplevel):
             ttk.Label(dir_, text=r["tipo"]).grid(row=i, column=0, sticky="w")
             ttk.Label(dir_, text=M(r["valor"]), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(30, 0))
             i += 1
+        for rotulo, chave in (("Adiant. de contas abertas", "adiantamentos_abertos"),
+                              ("Pago em turno anterior", "recebido_turno_anterior")):
+            if res.get(chave):                  # explica por que o recebido difere do vendido; só aparece quando acontece
+                ttk.Label(dir_, text=f"  {rotulo}", foreground=tema.COR["suave"]).grid(row=i, column=0, sticky="w")
+                ttk.Label(dir_, text=M(res[chave]), foreground=tema.COR["suave"]).grid(row=i, column=1, sticky="e", padx=(30, 0))
+                i += 1
         ttk.Separator(dir_).grid(row=i, column=0, columnspan=2, sticky="ew", pady=6)
         for rotulo, chave in (("Troco", "troco"), ("C. Vale emitido (+)", "vale_emitido"), ("Venda (+)", "venda"),
                               ("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa (+)", "taxa"),
