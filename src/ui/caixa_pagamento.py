@@ -106,7 +106,7 @@ class JanelaPagamento(tk.Toplevel):
             e.bind("<Escape>", lambda ev: (self.grade_formas.tree.focus_set(), "break")[1])
         if v["modalidade"] != "mesa":
             self.e_serv.configure(state="disabled")
-        if self.eh_credito:
+        if self.eh_credito or not self.ctx.banco.cfg_bool("usar_desconto", False):     # boate: sem desconto (configurável)
             for e in (self.e_pct, self.e_desc):
                 e.configure(state="disabled")
 

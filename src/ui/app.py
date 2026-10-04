@@ -161,6 +161,14 @@ class App:
         r.focus_force()
         self.atualizar_painel()
         self.consultar_atualizacoes()
+        if not ctx.config.loja_cadastrada() and ctx.acesso.pode(ctx.operador, "cfg_loja"):
+            r.after(150, self.cadastrar_loja)
+
+    def cadastrar_loja(self) -> None:
+        """Primeiro uso: pede o nome da casa (ele sai nos comprovantes). 'Depois' adia para a próxima entrada."""
+        from src.ui import cadastro_loja_ui
+        if self.menu is not None and cadastro_loja_ui.pedir(self.root, self.ctx):
+            self.mostrar_menu()                       # o nome novo aparece no cabeçalho da tela
 
     def _montar_painel(self, pai) -> None:
         dir_ = tk.Frame(pai, bg=tema.COR["marinho"])

@@ -100,7 +100,9 @@ class PainelFechamento(tk.Toplevel):
                  ("Cupons cancelados", len(res.get("cupons_cancelados") or ())),
                  ("Itens cancelados", len(res.get("itens_cancelados") or ())),
                  ("Transferências", len(res.get("transferencias") or ())),
-                 ("Comissões das garotas", M(com["total_cent"]) if com.get("quantidade") else "nenhuma")]
+                 ("Comissões das garotas", M(com["total_cent"]) if com.get("quantidade") else "nenhuma"),
+                 ("Saídas sem consumo (1002)", len(res.get("saidas_liberadas") or ())),
+                 ("Produtos vendidos", f"{len(res.get('produtos_vendidos') or ())} (lista na conferência)")]
         for i, (r, v) in enumerate(dados):
             ttk.Label(esq, text=r).grid(row=i, column=0, sticky="w")
             ttk.Label(esq, text=str(v), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(20, 0))

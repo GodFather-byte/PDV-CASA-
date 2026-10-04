@@ -183,6 +183,7 @@ class TesteLarguraDaFita(BaseFechamento):
 class TesteViaDaGarotaNoTexto(BaseFechamento):
     def setUp(self):
         super().setUp()
+        self.banco.cfg_set("comissao_em_pontos", "N")        # a via em reais; a via em pontos tem teste em test_comissao_garotas
         self.com = ComissaoController(self.banco)
 
     def lancar(self, garota, reais):

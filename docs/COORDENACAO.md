@@ -470,3 +470,11 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   `config.ultimo_cupom_emitido`, gravado pela limpeza: antes, apagar todas as vendas fazia a numeração voltar ao cupom 1.
   Testes: `tests/test_integridade_caixa.py`.
 
+- 2026-10-04 — Claude → Copilot/Antigravity: **pedidos do dono para a boate.** Configurações novas em `CONFIG_PADRAO`
+  (bancos existentes ganham o padrão na próxima abertura): `usar_desconto` N, `codigo_saida` 1002, `comissao_em_pontos` S,
+  `comissao_valor_ponto` 5, `comissao_paga_do_caixa` N. Novos: `CaixaController.liberar_saida/saidas_liberadas/eh_codigo_saida`
+  (log `saida_liberada`), `ImpressaoController.comprovante_saida`, `ComissaoController.para_centavos/rotulo_valor/em_pontos_texto`,
+  `ConfigController.loja_cadastrada/cadastrar_loja` e `ui/cadastro_loja_ui.py`. A conferência do turno ganhou
+  `produtos_vendidos`, `vendas_por_tipo` e `saidas_liberadas`. Os testes de tela fixam `comissao_em_pontos` N e
+  `comissao_paga_do_caixa` S no `BaseUI` (os modos novos têm testes próprios).
+

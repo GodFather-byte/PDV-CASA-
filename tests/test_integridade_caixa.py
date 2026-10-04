@@ -14,6 +14,7 @@ class TesteDescontoAoJuntarMesas(BaseCaixa):
     def setUp(self):
         super().setUp()
         self.banco.cfg_set("cobra_servico_mesa", "N")
+        self.banco.cfg_set("usar_desconto", "S")
 
     def test_desconto_em_valor_da_origem_vai_para_o_destino(self):
         m12 = self.vender((self.skol, 5), mesa=12)                     # R$ 40,00

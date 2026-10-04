@@ -36,6 +36,40 @@ class ComissaoController:
             return int(cod) == int(t)
         return cod.lower() == t.lower()
 
+    # --------------------------------------------------------------- pontos
+    # A casa marca a comissão em pontos: 0,1 = R$ 5,00, 0,2 = R$ 10,00, 0,3 = R$ 15,00... (comissao_em_pontos, padrão S;
+    # o valor de cada 0,1 fica em comissao_valor_ponto). Com N, digita-se o valor em reais, como antes.
+    def em_pontos(self) -> bool:
+        return self.banco.cfg_bool("comissao_em_pontos", True)
+
+    def valor_ponto_cent(self) -> int:
+        """Quanto vale cada 0,1 ponto, em centavos (padrão R$ 5,00)."""
+        try:
+            cent = fmt.para_centavos(self.banco.cfg("comissao_valor_ponto", "5") or "5")
+        except ValueError:
+            cent = 500
+        return cent if cent > 0 else 500
+
+    def rotulo_valor(self) -> str:
+        return f"Pontos (0,1 = {fmt.fmt_brl(self.valor_ponto_cent())})" if self.em_pontos() else "Valor (R$)"
+
+    def para_centavos(self, texto) -> int:
+        """O que o operador digitou no campo da comissão, em centavos: pontos (0,3 -> R$ 15,00) ou reais."""
+        if not self.em_pontos():
+            return fmt.para_centavos(texto)
+        pontos = fmt.para_qtd(texto)
+        decimos = round(pontos * 10, 6)
+        if decimos != int(decimos):
+            raise ErroNegocio(f"Use pontos de 0,1 em 0,1 (0,1 = {fmt.fmt_brl(self.valor_ponto_cent())}).")
+        return int(decimos) * self.valor_ponto_cent()
+
+    def em_pontos_texto(self, cent: int) -> str:
+        """'0,3 ponto (R$ 15,00)' quando a casa usa pontos; senão só o valor."""
+        if not self.em_pontos() or cent % self.valor_ponto_cent():
+            return fmt.fmt_brl(cent)
+        decimos = cent // self.valor_ponto_cent()
+        return f"{decimos // 10},{decimos % 10} ({fmt.fmt_brl(cent)})"
+
     # --------------------------------------------------------------- cadastro de garotas
     @staticmethod
     def validar_numero(numero) -> int:

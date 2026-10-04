@@ -80,6 +80,15 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   depois: o pagamento dele não pode ser removido, e cancelar uma conta com adiantamento de turno anterior registra a
   devolução como saída do turno atual (só a parte que fica na gaveta; Pix e cartão são estornados fora do caixa).
   Juntar mesas ou comandas leva junto os pagamentos, o repique e o desconto da origem (somado ao do destino, em valor).
+- **Pedidos do dono (boate, 2026-10-04):**
+  - **Sem desconto** por padrão (`usar_desconto` = N): os campos somem do fechamento da conta e a linha zerada sai da fita.
+  - **Cadastro da casa** no primeiro acesso de quem pode mexer na loja; o nome sai em todos os comprovantes.
+  - **Código 1002** (`codigo_saida`): digitado na comanda sem consumo, libera a posição e imprime o comprovante de saída
+    (casa, comanda, data, hora, turno, quem liberou); com consumo ou pagamento, recusa. As saídas entram no fechamento.
+  - **Comissão em pontos** (`comissao_em_pontos`, `comissao_valor_ponto`): 0,1 = R$ 5,00, 0,2 = R$ 10,00...
+  - **Pagar comissão não tira do caixa** por padrão (`comissao_paga_do_caixa` = N): fica registrada, sem sangria.
+  - **Fechamento completo:** além do dinheiro, vendas por tipo (balcão, comandas, mesas), todos os produtos vendidos,
+    posições abertas, cancelamentos, transferências, saídas sem consumo, comissões, sangrias e assinaturas.
 - **Cupom emitido não muda:** a observação de um item só pode ser alterada com a venda aberta, e a numeração dos cupons
   nunca volta atrás, nem depois da limpeza do movimento (o último número fica em `config.ultimo_cupom_emitido`).
 - **Serviço** (10% configurável) só em mesa e comanda (cada uma com sua chave: `cobra_servico_mesa` e

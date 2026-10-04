@@ -204,6 +204,7 @@ class TesteUtilitarios(BaseCaixa):
 class TesteRelatorios(BaseCaixa):
     def setUp(self):
         super().setUp()
+        self.banco.cfg_set("usar_desconto", "S")
         self.rel = RelatorioController(self.banco)
         sub = self.banco.valor("SELECT id FROM subgrupos LIMIT 1")
         # SKOL R$ 8 (custo 3) e AGUA R$ 3,50 (custo 1)

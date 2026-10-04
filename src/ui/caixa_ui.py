@@ -369,6 +369,10 @@ class JanelaCaixa(tk.Toplevel):
             self.var_cod.set("")
             self.lancar_comissao()
             return
+        if self.ctx.caixa.eh_codigo_saida(texto):        # 1002: comanda sem consumo, libera a saída e imprime o papel
+            self.var_cod.set("")
+            self.liberar_saida()
+            return
         p = self.ctx.produtos.buscar_codigo(texto)
         if p is None and parece_posicao(texto):      # "C2" ou "M5" no campo do código troca de posição (produto de mesmo código vence)
             self.var_cod.set("")
@@ -955,13 +959,14 @@ class JanelaCaixa(tk.Toplevel):
         garota = str(v["posicao"]) if v and v["modalidade"] == "mesa" and v["comanda"] else ""
         self.modo_comissao = True
         self.lbl_cod_titulo.configure(text="Garota nº")
-        self.lbl_qtd_titulo.configure(text="Valor (R$)")
+        self.lbl_qtd_titulo.configure(text=self.ctx.comissoes.rotulo_valor())
         self.lbl_desc.configure(foreground=COR_COMISSAO)
         self.ent_qtd.configure(state="normal")
         self.var_cod.set(garota)
         self._comissao_nome()
         if garota:
-            self.avisar(f"Comissão da garota {garota}: digite o valor e tecle Enter (Esc cancela).", tema.COR["aviso"])
+            oque = "os pontos" if self.ctx.comissoes.em_pontos() else "o valor"
+            self.avisar(f"Comissão da garota {garota}: digite {oque} e tecle Enter (Esc cancela).", tema.COR["aviso"])
             self.ent_qtd.focus_set()
         else:
             self.avisar("Comissão: digite o número da garota e tecle Enter (Esc cancela).", tema.COR["aviso"])
@@ -1006,13 +1011,14 @@ class JanelaCaixa(tk.Toplevel):
             self.ent_codigo.focus_set()
             return
         try:
-            cent = fmt.para_centavos(self.var_qtd.get())
-        except ValueError:
-            self.avisar("Valor inválido.", tema.COR["perigo"])
+            cent = self.ctx.comissoes.para_centavos(self.var_qtd.get())
+        except (ValueError, ErroNegocio) as e:
+            self.avisar(str(e) if isinstance(e, ErroNegocio) else "Valor inválido.", tema.COR["perigo"])
             self.ent_qtd.focus_set()
             return
         if cent <= 0:
-            self.avisar("Informe o valor da comissão.", tema.COR["perigo"])
+            self.avisar("Informe " + ("os pontos" if self.ctx.comissoes.em_pontos() else "o valor") + " da comissão.",
+                        tema.COR["perigo"])
             self.ent_qtd.focus_set()
             return
         campo = comissao_ui.conferir_lancamento(self, self.ctx, numero, cent)
@@ -1069,6 +1075,31 @@ class JanelaCaixa(tk.Toplevel):
     def comissoes(self) -> None:
         """Botão Comissões: o que há a pagar a cada garota, pagamento com recibo e cancelamento de lançamento."""
         JanelaComissoes(self, self.ctx, ao_mudar=self.recarregar)
+        self.ent_codigo.focus_set()
+
+    def liberar_saida(self) -> None:
+        """Código 1002 digitado na comanda do cliente que não consumiu nada: libera a posição e imprime o comprovante de
+        saída (comanda, data, hora). Sem comanda na tela, pergunta qual."""
+        v = self.venda()
+        if v and v["modalidade"] == "mesa":
+            pos = (bool(v["comanda"]), v["posicao"])
+        else:
+            comum, outra = self._exemplos()
+            pos = self._pedir_posicao("Saída sem consumo", f"Comanda (ex.: {comum}) ou mesa (ex.: {outra}) que vai sair:")
+            if pos is None:
+                self.ent_codigo.focus_set()
+                return
+        ok, info = tema.tratar(self, self.ctx.caixa.liberar_saida, *pos)
+        if not ok:
+            self.ent_codigo.focus_set()
+            return
+        if self.venda_id and not self.ctx.banco.valor("SELECT 1 FROM vendas WHERE id = ? AND status IN ('aberta','conta_enviada')",
+                                                      (self.venda_id,)):
+            self.venda_id = None
+        enviar_ou_mostrar(self, self.ctx, "Comprovante de saída", self.ctx.impressao.comprovante_saida(info, self.ctx.operador.nome),
+                          f"saida_{info['rotulo']}", tipo="comprovante")
+        self.recarregar()
+        self.avisar(f"Saída liberada: {info['nome']} sem consumo.", tema.COR["ok"])
         self.ent_codigo.focus_set()
 
     def consultar_comanda(self) -> None:

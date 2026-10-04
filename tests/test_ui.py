@@ -36,6 +36,10 @@ class BaseUI(unittest.TestCase):
         fmt.definir_relogio(None)
         self.banco = BancoDados(":memory:")
         self.ctx = Contexto(self.banco)
+        self.banco.cfg_set("comissao_em_pontos", "N")     # os testes de tela da comissão digitam reais; pontos têm teste próprio
+        self.banco.cfg_set("comissao_paga_do_caixa", "S")  # idem: os testes de pagamento esperam a sangria; o padrão N tem teste
+        # Casa já cadastrada: senão o menu abriria a janela do primeiro acesso no meio dos testes (TesteCadastroDaCasa a testa).
+        self.banco.atualizar("loja", 1, {"nome_fantasia": "Casa de Teste"})
         self.ctx.operador = self.ctx.acesso.autenticar("adm", "adm")
         cad = CadastroController(self.banco)
         sub = self.banco.valor("SELECT id FROM subgrupos")
@@ -267,6 +271,53 @@ class TesteAvisoDeVersao(BaseUI):
         self.assertNotIn("Não avisar desta versão", botoes)
         self.assertTrue(app.lbl_versao.winfo_ismapped())                  # continua avisando até atualizar
         self.sem_travar()
+
+
+class TesteCadastroDaCasa(BaseUI):
+    def _menu(self):
+        from src.ui.app import App
+        self.banco.atualizar("loja", 1, {"nome_fantasia": "", "razao_social": ""})   # casa ainda não cadastrada
+        app = App(self.banco)
+        self.addCleanup(app.root.destroy)
+        self.robo.parar()
+        self.robo = Robo(app.root)
+        app.ctx.operador = app.ctx.acesso.autenticar("adm", "adm")
+        return app
+
+    def test_primeiro_acesso_pede_o_nome_da_casa_e_ele_sai_no_cupom(self):
+        app = self._menu()
+        self.assertFalse(app.ctx.config.loja_cadastrada())
+        vistos = []
+
+        def cadastrar(w):
+            vistos.append(w.title())
+            clicar(w, "Gravar")                                   # sem nome: recusa e continua na janela
+            campos = entradas(w)
+            campos[0].insert(0, "Boate Estrela"); campos[2].insert(0, "12.345.678/0001-90")
+            clicar(w, "Gravar")
+        self.robo.quando("Dialogo", cadastrar)
+        app.mostrar_menu()
+        for _ in range(40):
+            app.root.update(); app.root.after(25); app.root.update_idletasks()
+            if app.ctx.config.loja_cadastrada():
+                break
+        self.assertEqual(vistos, ["Cadastro da casa"])
+        self.assertEqual(app.ctx.config.nome_loja(), "Boate Estrela")
+        cab = "\n".join(app.ctx.impressao.cabecalho(40))
+        self.assertIn("BOATE ESTRELA", cab)
+        self.assertIn("CNPJ 12.345.678/0001-90", cab)
+        self.sem_travar()
+
+    def test_casa_cadastrada_nao_pergunta_e_operador_sem_permissao_tambem_nao(self):
+        app = self._menu()
+        with mock.patch("src.ui.cadastro_loja_ui.pedir") as pedir:
+            self.ctx.cadastros.salvar("operadores", {"nome": "Ana", "senha": "1", "nivel": "1"})
+            app.ctx.operador = app.ctx.acesso.autenticar("ana", "1")
+            app.mostrar_menu(); app.root.update(); app.root.after(300); app.root.update()
+            app.ctx.config.cadastrar_loja({"nome_fantasia": "Casa"})
+            app.ctx.operador = app.ctx.acesso.autenticar("adm", "adm")
+            app.mostrar_menu(); app.root.update(); app.root.after(300); app.root.update()
+        pedir.assert_not_called()
 
 
 class TestePainelFechamentoComAdiantamento(BaseUI):

@@ -50,7 +50,7 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
     en.pack(side="left")
     lbl_nome = ttk.Label(linha, text="", font=("Segoe UI", 14, "bold"), foreground=tema.COR["marinho2"])
     lbl_nome.pack(side="left", padx=12)
-    ttk.Label(dlg.corpo, text="Valor da comissão (R$)", style="Rotulo.TLabel").pack(anchor="w", pady=(12, 0))
+    ttk.Label(dlg.corpo, text=f"Comissão: {ctx.comissoes.rotulo_valor()}", style="Rotulo.TLabel").pack(anchor="w", pady=(12, 0))
     valor = tk.StringVar()
     ev = ttk.Entry(dlg.corpo, textvariable=valor, width=14, font=("Segoe UI", 18, "bold"), justify="right")
     ev.pack(anchor="w")
@@ -80,9 +80,9 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
             en.focus_set()
             return
         try:
-            cent = fmt.para_centavos(valor.get())
-        except ValueError:
-            msg.configure(text="Valor inválido.")
+            cent = ctx.comissoes.para_centavos(valor.get())
+        except (ValueError, ErroNegocio) as e:
+            msg.configure(text=str(e) if isinstance(e, ErroNegocio) else "Valor inválido.")
             ev.focus_set()
             return
         if cent <= 0:
@@ -148,15 +148,18 @@ def lancar(master, ctx, sugerida: str = "", ao_lancar=None) -> int | None:
     return numero if registrar_comissao(master, ctx, turno["id"], numero, cent, ao_lancar) is not None else None
 
 
-def dialogo_pagar(master, numero: int, nome: str, total_cent: int, quantidade: int) -> bool | None:
+def dialogo_pagar(master, numero: int, nome: str, total_cent: int, quantidade: int, do_caixa_padrao: bool = False) -> bool | None:
     """Confirma o pagamento. Devolve True (o dinheiro sai da gaveta), False (pago fora do caixa) ou None (desistiu)."""
     dlg = tema.Dialogo(master, "Pagar comissão")
     ttk.Label(dlg.corpo, text=f"Garota {numero} {nome}".strip(), font=tema.FONTE_B).pack(anchor="w")
     ttk.Label(dlg.corpo, text=f"{quantidade} lançamento(s) a pagar", foreground=tema.COR["suave"]).pack(anchor="w")
     ttk.Label(dlg.corpo, text=fmt.fmt_brl(total_cent), font=("Georgia", 28, "bold"), foreground=tema.COR["total"]).pack(anchor="w", pady=10)
-    do_caixa = tk.BooleanVar(value=True)
+    # Nem sempre sobra dinheiro no caixa: por padrão o pagamento só fica registrado (comissao_paga_do_caixa = N).
+    do_caixa = tk.BooleanVar(master=dlg, value=do_caixa_padrao)
     ttk.Checkbutton(dlg.corpo, text="O dinheiro sai da gaveta do caixa (registra uma sangria e abre a gaveta)",
                     variable=do_caixa).pack(anchor="w")
+    ttk.Label(dlg.corpo, text="Desmarcado: a comissão fica registrada como paga, sem mexer no dinheiro do caixa.",
+              foreground=tema.COR["suave"]).pack(anchor="w")
     b = tema._botoes(dlg, "Pagar", comando_ok=lambda: dlg.ok(bool(do_caixa.get())))
     dlg.bind("<Return>", lambda e: dlg.ok(bool(do_caixa.get())))
     return dlg.mostrar(b)
@@ -171,7 +174,8 @@ def pagar_garota(master, ctx, numero: int) -> dict | None:
     if not itens:
         tema.aviso(master, f"A garota {numero} não tem comissão pendente.")
         return None
-    do_caixa = dialogo_pagar(master, numero, ctx.comissoes.nome(numero), sum(i["valor_cent"] for i in itens), len(itens))
+    do_caixa = dialogo_pagar(master, numero, ctx.comissoes.nome(numero), sum(i["valor_cent"] for i in itens), len(itens),
+                             ctx.banco.cfg_bool("comissao_paga_do_caixa", False))
     if do_caixa is None:
         return None
     turno = ctx.turnos.atual()

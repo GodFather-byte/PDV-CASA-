@@ -581,3 +581,41 @@ class TesteMigracaoV8(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TesteComissaoEmPontos(BaseComissao):
+    """A casa marca em pontos: 0,1 = R$ 5,00, 0,2 = R$ 10,00, 0,3 = R$ 15,00."""
+
+    def test_padrao_e_pontos_de_cinco_reais(self):
+        com = self.com
+        self.assertTrue(com.em_pontos())
+        self.assertEqual([com.para_centavos(t) for t in ("0,1", "0,2", "0,3", "1", "1,5")], [500, 1000, 1500, 5000, 7500])
+        self.assertEqual(com.rotulo_valor(), "Pontos (0,1 = R$ 5,00)")
+        self.assertEqual(com.em_pontos_texto(1500), "0,3 (R$ 15,00)")
+
+    def test_fracao_menor_que_0_1_e_recusada(self):
+        with self.assertRaisesRegex(ErroNegocio, "0,1 em 0,1"):
+            self.com.para_centavos("0,15")
+        with self.assertRaises(ValueError):
+            self.com.para_centavos("abc")
+
+    def test_valor_do_ponto_configuravel_e_modo_reais(self):
+        self.banco.cfg_set("comissao_valor_ponto", "2,50")
+        self.assertEqual(self.com.para_centavos("0,4"), 1000)
+        self.banco.cfg_set("comissao_em_pontos", "N")
+        self.assertEqual(self.com.para_centavos("25,00"), 2500)
+        self.assertEqual(self.com.rotulo_valor(), "Valor (R$)")
+        self.assertEqual(self.com.em_pontos_texto(2500), "R$ 25,00")
+
+    def test_via_da_garota_mostra_os_pontos(self):
+        from src.controllers.impressao_controller import ImpressaoController
+        cid = self.com.lancar(180, self.com.para_centavos("0,3"), self.turno, self.adm)
+        lanc = self.com.lancamento(cid)
+        via = ImpressaoController(self.banco).via_comissao(lanc, [lanc], "Bia", "ADM")
+        self.assertIn("Pontos desta comissão", via)
+        self.assertIn("0,3 (R$ 15,00)", via)
+
+    def test_pontos_saem_em_letra_grande_na_termica(self):
+        from src.controllers.impressao_controller import _ESTILOS
+        self.assertIn("Pontos desta", _ESTILOS["via_comissao"]["grande_prefixos"])
+

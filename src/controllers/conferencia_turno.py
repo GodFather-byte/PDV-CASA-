@@ -17,6 +17,7 @@ from src.core.posicao import nome as nome_posicao
 from src.core.posicao import rotulo as rotulo_posicao
 
 LIMITE_FITA = 40      # linhas por seção na fita; o resto vira "e mais N"
+LIMITE_PRODUTOS = 300  # o fechamento lista todos os produtos vendidos (o cardápio de uma casa cabe com folga)
 M, Q = fmt.fmt_num, fmt.fmt_qtd
 
 
@@ -52,6 +53,40 @@ def _cupons_cancelados(banco, turno_id: int) -> list[dict]:
                 """SELECT v.cupom, v.modalidade, v.comanda, v.posicao, v.total_cent, v.motivo_cancelamento, o.nome AS por
                    FROM vendas v LEFT JOIN operadores o ON o.id = v.cancelada_por
                    WHERE v.turno_id = ? AND v.status = 'cancelada' ORDER BY v.cupom""", (turno_id,))]
+
+
+def _produtos_vendidos(banco, turno_id: int) -> list[dict]:
+    """O que saiu no turno: cada produto das vendas fechadas nele (itens não cancelados), do maior total ao menor."""
+    return [dict(r) for r in banco.todos(
+        """SELECT p.nome AS produto, SUM(i.quantidade) AS quantidade, SUM(i.total_cent) AS total_cent
+           FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos p ON p.id = i.produto_id
+           WHERE v.turno_id = ? AND v.status = 'fechada' AND i.cancelado = 0
+           GROUP BY p.id ORDER BY total_cent DESC, p.nome""", (turno_id,))]
+
+
+_TIPO_VENDA = {("balcao", 0): "Balcão", ("mesa", 1): "Comandas", ("mesa", 0): "Mesas", ("caderneta", 0): "Caderneta",
+               ("entrega", 0): "Entrega"}
+
+
+def _vendas_por_tipo(banco, turno_id: int) -> list[dict]:
+    """Vendas fechadas no turno por tipo (balcão, comandas, mesas...): quantos cupons e quanto. Recebimento de caderneta
+    (sem itens) não é venda e fica de fora."""
+    return [{"tipo": _TIPO_VENDA.get((r["modalidade"], r["comanda"]), r["modalidade"]), "cupons": r["cupons"],
+             "total_cent": r["total_cent"]}
+            for r in banco.todos(
+                """SELECT modalidade, CASE WHEN modalidade = 'mesa' THEN comanda ELSE 0 END AS comanda,
+                          COUNT(*) AS cupons, SUM(total_cent) AS total_cent FROM vendas
+                   WHERE turno_id = ? AND status = 'fechada' AND subtotal_cent > 0
+                   GROUP BY 1, 2 ORDER BY total_cent DESC""", (turno_id,))]
+
+
+def _saidas_liberadas(banco, turno_id: int) -> list[dict]:
+    """Saídas sem consumo do turno (código 1002): hora, comanda e quem liberou."""
+    return [{"quando": r["quando"], "local": nome_posicao(bool(r["comanda"]), r["posicao"]), "por": r["por"]}
+            for r in banco.todos(
+                """SELECT l.quando, json_extract(l.detalhe, '$.comanda') AS comanda, json_extract(l.detalhe, '$.posicao') AS posicao,
+                          o.nome AS por FROM log_eventos l LEFT JOIN operadores o ON o.id = l.operador_id
+                   WHERE l.evento = 'saida_liberada' AND json_extract(l.detalhe, '$.turno_id') = ? ORDER BY l.id""", (turno_id,))]
 
 
 def _eventos(banco, evento: str, inicio: str, fim: str):
@@ -98,6 +133,9 @@ def conferencia(banco, turno: dict) -> dict:
             "cupons_cancelados": _cupons_cancelados(banco, turno["id"]),
             "itens_cancelados": _itens_cancelados(banco, inicio, fim),
             "transferencias": _transferencias(banco, inicio, fim),
+            "produtos_vendidos": _produtos_vendidos(banco, turno["id"]),
+            "vendas_por_tipo": _vendas_por_tipo(banco, turno["id"]),
+            "saidas_liberadas": _saidas_liberadas(banco, turno["id"]),
             "comissoes": {**comissoes.resumo_turno(turno["id"]), "a_pagar_cent": comissoes.total_a_pagar()}}
 
 
@@ -123,12 +161,12 @@ def _curto(rotulo: str | None) -> str:
     return rotulo if rotulo[:1] in "Cc" else f"M{rotulo}"
 
 
-def _secao(titulo: str, itens: list, formata, w: int) -> list[str]:
+def _secao(titulo: str, itens: list, formata, w: int, limite: int = LIMITE_FITA) -> list[str]:
     linhas = ["-" * w, f"{titulo} ({len(itens)})"]
-    for it in itens[:LIMITE_FITA]:
+    for it in itens[:limite]:
         linhas += formata(it)
-    if len(itens) > LIMITE_FITA:
-        linhas.append(f"  ... e mais {len(itens) - LIMITE_FITA}")
+    if len(itens) > limite:
+        linhas.append(f"  ... e mais {len(itens) - limite}")
     return linhas
 
 
@@ -136,6 +174,15 @@ def linhas_fita(res: dict, w: int = 40) -> list[str]:
     """As seções da conferência para a fita de `w` colunas. Só aparecem as que têm algo; a linha das posições abertas
     aparece sempre (um 'nenhuma' mostra que foi conferido)."""
     saida: list[str] = []
+    if res.get("vendas_por_tipo"):
+        saida += _secao("VENDAS POR TIPO", res["vendas_por_tipo"],
+                        lambda t: [_lr(f"  {t['tipo']} ({t['cupons']} cupons)", M(t["total_cent"]), w)], w)
+    if res.get("produtos_vendidos"):
+        produtos = res["produtos_vendidos"]
+        saida += _secao("PRODUTOS VENDIDOS", produtos,
+                        lambda p: [_lr(f"  {_qtd(p['quantidade'])}x {p['produto']}", M(p["total_cent"]), w)], w,
+                        limite=LIMITE_PRODUTOS)
+        saida.append(_lr("  Total dos produtos", M(sum(p["total_cent"] for p in produtos)), w))
     abertas = res.get("posicoes_abertas") or []
     if abertas:
         def posicao(p):
@@ -170,6 +217,10 @@ def linhas_fita(res: dict, w: int = 40) -> list[str]:
     def comissao(g):
         quem = f"{g['garota']} {g['nome']}".strip()
         return [_lr(f"  {quem} ({g['lancamentos']}x)", M(g["total_cent"]), w)]
+
+    if res.get("saidas_liberadas"):
+        saida += _secao("SAÍDAS SEM CONSUMO (1002)", res["saidas_liberadas"],
+                        lambda s: [_lr(f"  {_hora(s['quando'])} {_curto_local(s['local'])}", f"por {s['por'] or '?'}", w)], w)
 
     c = res.get("comissoes") or {}
     if c.get("por_garota") or c.get("a_pagar_cent"):

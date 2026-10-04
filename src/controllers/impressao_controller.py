@@ -33,7 +33,7 @@ _ESTILOS = {
     "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado", "SOBROU", "FALTOU", "CAIXA CONFERIDO")},
     "pedido": {"negrito_linhas": 1},
     "comprovante": {"negrito_linhas": 1, "grande_prefixos": ("Valor",)},
-    "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "TOTAL A RECEBER")},
+    "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "Pontos desta", "TOTAL A RECEBER")},
     "relatorio": {"negrito_linhas": 1},
 }
 
@@ -214,6 +214,8 @@ class ImpressaoController:
                               ("Repique", "repique"), ("Venda caderneta", "venda_caderneta"),
                               ("Pagtos caderneta (+)", "pagtos_caderneta"), ("Entradas financ. (+)", "entradas"),
                               ("Saídas financ. (-)", "saidas")):
+            if chave == "desconto" and not resumo[chave] and not self.banco.cfg_bool("usar_desconto", False):
+                continue                                    # casa sem desconto (boate): a linha zerada só polui a fita
             linhas.append(_lr(rotulo, M(resumo[chave]), w))
         linhas += ["-" * w, _lr("TC (cupons)", str(resumo["tc"]), w), _lr("TM", M(resumo["tm"]), w),
                    _lr("Pessoas", str(resumo["pessoas"]), w), _lr("Valor por pessoa", M(resumo["valor_por_pessoa"]), w),
@@ -276,14 +278,30 @@ class ImpressaoController:
                                               _lr("Valor", M(valor_cent), w), f"Motivo: {descricao}"[:w * 2],
                                               f"Operador: {operador}", "", "_" * w, "Assinatura".center(w)])
 
+    def comprovante_saida(self, info: dict, operador: str) -> str:
+        """Papel de saída do código 1002: o cliente mostra na porta. Comanda em destaque, data e hora, sem consumo."""
+        w = self.largura()
+        linhas = self.cabecalho(w) + ["=" * w, "COMPROVANTE DE SAÍDA".center(w), "-" * w,
+                                      info["nome"].upper().center(w), "",
+                                      _lr("Data", fmt.fmt_datahora(info["quando"])[:10], w),
+                                      _lr("Hora", fmt.fmt_datahora(info["quando"])[11:16], w),
+                                      _lr("Consumo", "SEM CONSUMO", w),
+                                      _lr("Turno", str(info["turno"]), w), _lr("Liberado por", operador or "", w),
+                                      "-" * w, "Saída liberada.".center(w), "=" * w]
+        return "\n".join(linhas)
+
     def via_comissao(self, lancamento: dict, pendentes: list[dict], nome: str, operador: str) -> str:
         """A via que a garota leva a cada comissão marcada para ela: o valor desta, o que ela tem a receber (todos os lançamentos
         pendentes, os mais recentes) e o total, para acompanhar o próprio acerto (não fiscal)."""
+        from src.controllers.comissao_controller import ComissaoController
+        comissoes = ComissaoController(self.banco)
         w = self.largura()
         quem = f"{lancamento['garota']} {nome}".strip()
+        rotulo = "Pontos desta comissão" if comissoes.em_pontos() else "Valor desta comissão"
         linhas = self.cabecalho(w) + ["=" * w, "COMISSÃO LANÇADA".center(w), "VIA DA GAROTA".center(w),
                                       fmt.fmt_datahora(lancamento["criado_em"]).center(w), f"Garota: {quem}"[:w], "-" * w,
-                                      _lr("Valor desta comissão", M(lancamento["valor_cent"]), w),
+                                      _lr(rotulo, comissoes.em_pontos_texto(lancamento["valor_cent"]) if comissoes.em_pontos()
+                                          else M(lancamento["valor_cent"]), w),
                                       f"Lançamento nº {lancamento['id']}", "-" * w, "Suas comissões a receber:"]
         recentes = pendentes[-LIMITE_VIA_COMISSAO:]
         if len(pendentes) > len(recentes):

@@ -198,6 +198,17 @@ class TesteVenda(BaseCaixa):
 
 
 class TesteDescontoServico(BaseCaixa):
+    def setUp(self):
+        super().setUp()
+        self.banco.cfg_set("usar_desconto", "S")
+
+    def test_desconto_desligado_por_padrao(self):
+        self.banco.cfg_set("usar_desconto", "N")
+        vid = self.vender((self.skol, 5))
+        with self.assertRaises(ErroNegocio):
+            self.caixa.definir_desconto(vid, valor_cent=500)
+        self.assertEqual(self.caixa.definir_desconto(vid, valor_cent=0)["total"], 4000)    # zerar é sempre permitido
+
     def test_desconto_percentual_e_em_valor(self):
         vid = self.vender((self.skol, 5))                                  # 40,00
         self.assertEqual(self.caixa.definir_desconto(vid, pct=10)["total"], 3600)
