@@ -131,7 +131,7 @@ Base.metadata.create_all(bind=engine)
 def _acrescentar_colunas() -> None:
     """create_all não altera tabela existente: colunas novas de tabelas que já existiam entram aqui."""
     from sqlalchemy import inspect, text
-    novas = {"lojas": {"licenca_ate": "VARCHAR"}, "vendas": {"comanda": "BOOLEAN NOT NULL DEFAULT 0"}}
+    novas = {"lojas": {"licenca_ate": "VARCHAR"}, "vendas": {"comanda": "BOOLEAN NOT NULL DEFAULT FALSE"}}
     with engine.begin() as con:
         for tabela, colunas in novas.items():
             existentes = {c["name"] for c in inspect(con).get_columns(tabela)}
