@@ -72,6 +72,7 @@ CAMPOS_CONFIG = [
     ("comissao_em_pontos", "Comissão das garotas em pontos (0,1, 0,2...) em vez de reais", "sn", "Caixa"),
     ("comissao_valor_ponto", "Quanto vale cada 0,1 ponto de comissão (R$)", "decimal", "Caixa"),
     ("comissao_paga_do_caixa", "Pagamento da comissão já vem marcado para sair da gaveta (sangria)", "sn", "Caixa"),
+    ("imprimir_saida_ao_pagar", "Ao pagar a comanda ou mesa, imprimir junto o ticket de saída para a portaria", "sn", "Caixa"),
     ("codigo_saida", "Código que libera a saída da comanda sem consumo e imprime o comprovante (vazio = desligado)", "texto",
      "Caixa"),
     ("comissao_na_linha", "Marcar, pagar e cancelar a comissão das garotas na própria tela do caixa (desligado: abre janelas)", "sn", "Caixa"),
