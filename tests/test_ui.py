@@ -386,6 +386,23 @@ class TesteSaidaAoPagarNaTela(BaseUI):
         self.assertIn("CARTAO: 100  PAGO - LIBERADO", saida)
         self.assertIn("CUPOM: 1", saida)
 
+    def test_na_termica_o_cupom_e_o_ticket_vao_para_o_papel(self):
+        import os
+        self.banco.cfg_set("imprimir_saida_ao_pagar", "S")
+        pasta = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, pasta, True)
+        arquivo = os.path.join(pasta, "saida.prn")
+        self.ctx.impressao.pasta_saida = lambda: Path(pasta)
+        self.ctx.config.salvar_maquina({"modo_impressao": "termica", "impressora_termica_conexao": "arquivo",
+                                        "impressora_termica_endereco": arquivo})
+        self.assertEqual(self.pagar_comanda("100"), [])                      # na térmica nada abre na tela
+        self.ctx.impressao.fila.processar()
+        papel = Path(arquivo).read_bytes()
+        self.assertIn(b"CUPOM N", papel)
+        self.assertIn(b"TICKET DE SAIDA", papel)
+        self.assertLess(papel.index(b"CUPOM N"), papel.index(b"TICKET DE SAIDA"))   # primeiro o cupom, depois o ticket
+        self.assertIn(b"CARTAO: 100  PAGO - LIBERADO", papel)
+
     def test_desligado_sai_so_o_cupom(self):
         impressos = self.pagar_comanda("100")
         self.assertEqual(len(impressos), 1)
