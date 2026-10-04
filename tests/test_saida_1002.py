@@ -130,3 +130,41 @@ class TesteCodigoDaSaidaReservado(BaseCaixa):
         ConfigController(self.banco).salvar_config({"codigo_saida": ""})
         cad.salvar("produtos", {**base, "codigo": "1002"})          # sem o código de saída, o 1002 fica livre
 
+
+class TesteSaidaJuntoComOPagamento(BaseCaixa):
+    """Comanda paga: o cupom sai e, junto, o ticket de saída da comanda para a portaria (sem precisar do 1002)."""
+
+    def pagar_comanda(self, numero=100, comanda=True):
+        vid, _ = self.caixa.abrir_mesa(numero, comanda=comanda)
+        self.caixa.adicionar_item(vid, self.skol, 1)
+        self.pagar(vid, "Dinheiro", self.caixa.recalcular(vid)["total"])
+        self.caixa.fechar(vid)
+        return vid
+
+    def test_comanda_paga_gera_o_ticket_com_o_cupom(self):
+        self.banco.atualizar("loja", 1, {"nome_fantasia": "Boate Estrela"})
+        vid = self.pagar_comanda(100)
+        texto = ImpressaoController(self.banco).saida_da_venda(vid)
+        for trecho in ("TICKET DE SAIDA", "BOATE ESTRELA", "FAVOR ENTREGAR ESTE TICKET NA SAIDA", "OPERADOR: ADM",
+                       f"CUPOM: {self.caixa.obter(vid)['cupom']}", "POSICAO DE ORIGEM: 100", "CARTAO: 100  PAGO - LIBERADO"):
+            self.assertIn(trecho, texto)
+        self.assertEqual(self.caixa.saidas_liberadas(self.turno), [])       # não conta como saída sem consumo (1002)
+
+    def test_mesa_paga_tambem(self):
+        texto = ImpressaoController(self.banco).saida_da_venda(self.pagar_comanda(5, comanda=False))
+        self.assertIn("MESA: M5  PAGO - LIBERADO", texto)
+
+    def test_balcao_e_venda_aberta_nao_tem_ticket(self):
+        imp = ImpressaoController(self.banco)
+        balcao = self.vender((self.skol, 1))
+        self.pagar(balcao, "Dinheiro", 800)
+        self.caixa.fechar(balcao)
+        self.assertIsNone(imp.saida_da_venda(balcao))
+        aberta, _ = self.caixa.abrir_mesa(7, comanda=True)
+        self.caixa.adicionar_item(aberta, self.skol, 1)
+        self.assertIsNone(imp.saida_da_venda(aberta))
+
+    def test_desligado_nas_configuracoes(self):
+        ConfigController(self.banco).salvar_config({"imprimir_saida_ao_pagar": "N"})
+        self.assertIsNone(ImpressaoController(self.banco).saida_da_venda(self.pagar_comanda()))
+

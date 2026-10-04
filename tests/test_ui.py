@@ -38,6 +38,7 @@ class BaseUI(unittest.TestCase):
         self.ctx = Contexto(self.banco)
         self.banco.cfg_set("comissao_em_pontos", "N")     # os testes de tela da comissão digitam reais; pontos têm teste próprio
         self.banco.cfg_set("comissao_paga_do_caixa", "S")  # idem: os testes de pagamento esperam a sangria; o padrão N tem teste
+        self.banco.cfg_set("imprimir_saida_ao_pagar", "N")   # um papel por pagamento nos testes antigos; o ticket tem teste próprio
         for chave in ("usar_delivery", "usar_caderneta", "usar_contas"):   # os testes de tela exercitam todos os módulos;
             self.banco.cfg_set(chave, "S")                                # o padrão desligado tem teste próprio (test_modulos)
         # Casa já cadastrada: senão o menu abriria a janela do primeiro acesso no meio dos testes (TesteCadastroDaCasa a testa).
@@ -347,6 +348,48 @@ class TestePainelFechamentoComAdiantamento(BaseUI):
         self.assertNotIn("  Pago em turno anterior", textos)
         self.assertEqual(res["resultado"], 0)
         self.sem_travar()
+
+
+class TesteSaidaAoPagarNaTela(BaseUI):
+    """Pagar a comanda pela tela do caixa: sai o cupom e, logo depois, o ticket de saída da comanda para a portaria."""
+
+    def setUp(self):
+        super().setUp()
+        self.banco.cfg_set("posicao_padrao", "comanda")
+        self.abrir_turno()
+        from src.ui.caixa_ui import JanelaCaixa
+        self.cx = JanelaCaixa(self.root, self.ctx)
+        self.cx.update()
+
+    def pagar_comanda(self, posicao):
+        self.cx.var_pos.set(posicao); self.cx.chamar_mesa(); self.cx.update()
+        self.cx.var_cod.set("1"); self.cx._enter_codigo(); self.cx.update()
+        self.cx.var_qtd.set("1"); self.cx.confirmar_item(); self.cx.update()
+        impressos = []
+
+        def acao(j):
+            f = [i for i in j.grade_formas.tree.get_children() if j.grade_formas.valores(i)[0] == "Dinheiro"][0]
+            j.grade_formas.selecionar(f); j._forma_escolhida()
+            j.var_valor.set("20,00"); j._lancar_valor()
+            j.after(10, j.fechar_venda)
+        self.robo.quando("JanelaPagamento", acao)
+        self.robo.quando("Visualizador", lambda w: (impressos.append(w.texto), w.destroy()), vezes=2)
+        self.cx.pagar(); self.cx.update()
+        self.sem_travar()
+        return impressos
+
+    def test_comanda_paga_imprime_cupom_e_saida(self):
+        self.banco.cfg_set("imprimir_saida_ao_pagar", "S")
+        cupom, saida = self.pagar_comanda("100")
+        self.assertIn("CUPOM NÃO FISCAL", cupom)
+        self.assertIn("TICKET DE SAIDA", saida)
+        self.assertIn("CARTAO: 100  PAGO - LIBERADO", saida)
+        self.assertIn("CUPOM: 1", saida)
+
+    def test_desligado_sai_so_o_cupom(self):
+        impressos = self.pagar_comanda("100")
+        self.assertEqual(len(impressos), 1)
+        self.assertIn("CUPOM NÃO FISCAL", impressos[0])
 
 
 class TesteFluxosCaixa(BaseUI):

@@ -266,11 +266,12 @@ class JanelaPagamento(tk.Toplevel):
             self.atualizar()
             return
         self.fechou = True
+        saida = self.ctx.impressao.saida_da_venda(self.venda_id)   # comanda/mesa paga: o ticket da portaria vai junto
+        self.destroy()
         if self.ctx.banco.cfg_bool("imprimir_cupom", True):
             texto = self.ctx.impressao.cupom(self.venda_id)
             op = self.ctx.impressao.opcoes_cupom(self.venda_id)    # vias e gaveta conforme as formas de pagamento
-            self.destroy()
             enviar_ou_mostrar(self.master, self.ctx, f"Cupom {venda['cupom']}", texto, f"cupom_{venda['cupom']}",
                               tipo="cupom", abrir_gaveta=op["abrir_gaveta"], copias=op["copias"], venda_id=self.venda_id)
-            return
-        self.destroy()
+        if saida:
+            enviar_ou_mostrar(self.master, self.ctx, "Ticket de saída", saida, f"saida_cupom_{venda['cupom']}", tipo="saida")

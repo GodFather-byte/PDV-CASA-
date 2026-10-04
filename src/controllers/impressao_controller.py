@@ -334,14 +334,29 @@ class ImpressaoController:
         tipo = "CARTAO" if info.get("comanda", True) else "MESA"
         posicao = info.get("rotulo") or str(info.get("numero", ""))
         numero = f"{info['ticket']:06d}" if info.get("ticket") else ""
+        direita = f"CUPOM: {info['cupom']}" if info.get("cupom") else (f"TICKET: {numero}" if numero else "")
         linhas = ["=" * w, "TICKET DE SAIDA".center(w), "=" * w, *casa, "=" * w,
                   *(["FAVOR ENTREGAR ESTE TICKET NA SAIDA".center(w)] if w >= 35       # fita de 58mm: em duas linhas
                     else ["FAVOR ENTREGAR ESTE".center(w), "TICKET NA SAIDA".center(w)]), "=" * w,
                   _lr(f"DATA: {quando[:10]}", f"HORA: {quando[11:19]}", w), "-" * w,
-                  _lr(f"OPERADOR: {operador or ''}", f"TICKET: {numero}" if numero else "", w),
+                  _lr(f"OPERADOR: {operador or ''}", direita, w),
                   f"POSICAO DE ORIGEM: {posicao}"[:w], "-" * w,
-                  f"{tipo}: {posicao}  LIBERADO"[:w], "=" * w]
+                  f"{tipo}: {posicao}  {'PAGO - LIBERADO' if info.get('cupom') else 'LIBERADO'}"[:w], "=" * w]
         return "\n".join(linhas)
+
+    def saida_da_venda(self, venda_id: int) -> str | None:
+        """Ticket de saída da comanda (ou mesa) que acabou de ser paga: sai junto com o cupom para o cliente entregar na
+        portaria, sem precisar do código 1002. None se não for comanda/mesa paga ou se a casa desligou
+        (imprimir_saida_ao_pagar)."""
+        if not self.banco.cfg_bool("imprimir_saida_ao_pagar", True):
+            return None
+        v = self.caixa.obter(venda_id)
+        if v["modalidade"] != "mesa" or v["status"] != "fechada":
+            return None
+        operador = self.banco.valor("SELECT nome FROM operadores WHERE id = ?", (v["operador_id"],), "")
+        info = {"nome": nome_posicao(v["comanda"], v["posicao"]), "rotulo": self.caixa.rotular_posicao(v["comanda"], v["posicao"]),
+                "quando": v["fechada_em"], "comanda": bool(v["comanda"]), "numero": v["posicao"], "cupom": v["cupom"]}
+        return self.comprovante_saida(info, operador)
 
     def via_comissao(self, lancamento: dict, pendentes: list[dict], nome: str, operador: str) -> str:
         """A via que a garota leva a cada comissão marcada para ela: o valor desta, o que ela tem a receber (todos os lançamentos

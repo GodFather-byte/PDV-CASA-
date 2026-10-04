@@ -65,6 +65,7 @@ CONFIG_PADRAO = {
     "exigir_senha_cancelamento": "S", "exigir_senha_desconto": "N",
     "imprimir_cupom": "S", "terminal": "1", "codigo_comissao": "50", "exigir_senha_comissao": "N",
     "codigo_saida": "1002",          # digitado na comanda sem consumo: libera a saída e imprime o comprovante
+    "imprimir_saida_ao_pagar": "S",  # comanda/mesa paga: junto com o cupom sai o ticket de saída para a portaria
     "comissao_em_pontos": "S", "comissao_valor_ponto": "5",   # comissão das garotas: 0,1 = R$ 5,00
     "comissao_paga_do_caixa": "N",   # nem sempre sobra dinheiro: por padrão a comissão só é registrada (sem sangria)
     # Comissão na tela do caixa e documentos da boate (chaves novas: bancos existentes ganham o padrão na próxima abertura).
