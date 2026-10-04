@@ -32,8 +32,10 @@ class RelatoriosVendas:
             p.append(valor)
 
         # Faixa em vez de date(coluna): assim o índice de fechada_em é usado ('AAAA-MM-DD' <= 'AAAA-MM-DD hh:mm:ss').
-        if f.get("de"): add(f"{a}.fechada_em >= ?", f["de"])
-        if f.get("ate"): add(f"{a}.fechada_em < ?", fmt.somar_dias(f["ate"], 1))
+        # O dia é o operacional: com a virada às 6h, "de 03/10 a 03/10" é a noite de 03/10 inteira (até 04/10 05:59).
+        virada = self._virada()
+        if f.get("de"): add(f"{a}.fechada_em >= ?", fmt.faixa_dia_operacional(f["de"], virada)[0])
+        if f.get("ate"): add(f"{a}.fechada_em < ?", fmt.faixa_dia_operacional(f["ate"], virada)[1])
         if f.get("hora_ini"): add(f"time({a}.fechada_em) >= ?", _hora(f["hora_ini"]))
         if f.get("hora_fim"): add(f"time({a}.fechada_em) <= ?", _hora(f["hora_fim"]))
         if f.get("cupom_ini"): add(f"{a}.cupom >= ?", int(f["cupom_ini"]))
@@ -54,10 +56,15 @@ class RelatoriosVendas:
             add(f"{a}.modalidade = ?", modalidade)
         return " AND ".join(onde), p
 
+    def _virada(self) -> int:
+        return min(max(self.banco.cfg_int("virada_dia_hora", 6), 0), 23)
+
     def criterios(self, f: dict) -> list[str]:
         c = []
         if f.get("de") or f.get("ate"):
-            c.append(f"Período: {fmt.fmt_data(f.get('de')) or '...'} a {fmt.fmt_data(f.get('ate')) or '...'}")
+            virada = self._virada()
+            c.append(f"Período: {fmt.fmt_data(f.get('de')) or '...'} a {fmt.fmt_data(f.get('ate')) or '...'}"
+                     + (f" (o dia vira às {virada:02d}:00)" if virada else ""))
         if f.get("hora_ini") or f.get("hora_fim"):
             c.append(f"Horário: {f.get('hora_ini') or '00:00'} a {f.get('hora_fim') or '23:59'}")
         if f.get("cupom_ini") or f.get("cupom_fim"):
@@ -368,7 +375,8 @@ class RelatoriosVendas:
                                                   Coluna("Último registro", 19)], criterios=self.criterios(f))
         tc = pe = tot = 0
         for r in self.banco.todos(
-                f"""SELECT date(v.fechada_em) AS dia, COUNT(*) AS tc, SUM(v.pessoas) AS pessoas, SUM(v.total_cent) AS tot,
+                f"""SELECT date(v.fechada_em, '-{self._virada()} hours') AS dia, COUNT(*) AS tc, SUM(v.pessoas) AS pessoas,
+                           SUM(v.total_cent) AS tot,
                            MAX(v.fechada_em) AS ultimo FROM vendas v
                     WHERE {onde} AND v.subtotal_cent > 0 GROUP BY dia ORDER BY dia""", p):
             rel.add(fmt.fmt_data(r["dia"]), fmt.NOMES_DIA[fmt.dia_semana(r["dia"])], r["tc"], r["pessoas"],
@@ -379,13 +387,14 @@ class RelatoriosVendas:
 
     def vendas_por_hora(self, f: dict) -> Relatorio:
         onde, p = self._onde_vendas(f)
+        virada = self._virada()          # a noite em ordem: 22h, 23h, 0h, 1h... (não 0h antes das 22h)
         rel = Relatorio("Vendas por hora", [Coluna("Dia", 10), Coluna("Hora", 13), Coluna("Valor", 12, "d"), Coluna("T.C.", 6, "d"),
                                             Coluna("T.M.", 10, "d"), Coluna("Clientes", 8, "d")], criterios=self.criterios(f))
         tc = tot = pe = 0
         linhas = self.banco.todos(
-            f"""SELECT date(v.fechada_em) AS dia, CAST(strftime('%H', v.fechada_em) AS INTEGER) AS h, COUNT(*) AS tc,
-                       SUM(v.total_cent) AS tot, SUM(v.pessoas) AS pessoas FROM vendas v
-                WHERE {onde} AND v.subtotal_cent > 0 GROUP BY dia, h ORDER BY dia, h""", p)
+            f"""SELECT date(v.fechada_em, '-{virada} hours') AS dia, CAST(strftime('%H', v.fechada_em) AS INTEGER) AS h,
+                       COUNT(*) AS tc, SUM(v.total_cent) AS tot, SUM(v.pessoas) AS pessoas FROM vendas v
+                WHERE {onde} AND v.subtotal_cent > 0 GROUP BY dia, h ORDER BY dia, (h - {virada} + 24) % 24""", p)
         for r in linhas:
             rel.add(fmt.NOMES_DIA[fmt.dia_semana(r["dia"])], f"{r['h']:02d}:00 a {r['h'] + 1:02d}:00",
                     M(r["tot"]), r["tc"], M(fmt.dividir_cent(r["tot"], r["tc"])), r["pessoas"])

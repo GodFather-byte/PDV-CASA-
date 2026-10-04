@@ -61,7 +61,7 @@ CAMPOS_CONFIG = [
     ("painel_mesas_fixo", "Mostrar sempre os ícones das mesas e comandas abertas no rodapé do caixa", "sn", "Mesas e serviço"),
     ("painel_mostra_garotas", "Mostrar no rodapé do caixa as garotas com comissão a pagar", "sn", "Mesas e serviço"),
     ("num_turnos", "Número de turnos por dia", "int", "Caixa"),
-    ("virada_dia_hora", "O dia do painel vira às (hora, 0 a 23; 6 = a madrugada conta na noite anterior)", "int", "Caixa"),
+    ("virada_dia_hora", "O dia do painel e dos relatórios de vendas vira às (hora, 0 a 23; 6 = a madrugada conta na noite anterior)", "int", "Caixa"),
     ("exigir_senha_gaveta", "Exigir senha de supervisor para abrir a gaveta", "sn", "Caixa"),
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),
     ("exigir_senha_cancelamento", "Exigir senha de supervisor para cancelamentos", "sn", "Caixa"),

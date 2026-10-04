@@ -84,6 +84,22 @@ class TesteAdiantamentoEntreTurnos(BaseAdiantamento):
         r2 = self.turnos.fechar(self.turno, self.adm, FUNDO + 2000)
         self.assertEqual((r2["esperado"], r2["resultado"]), (FUNDO + 2000, 0))
 
+    def test_resumo_explica_adiantamentos_e_o_que_foi_pago_antes(self):
+        from src.controllers.impressao_controller import ImpressaoController
+        m = self.vender((self.skol, 5), mesa=7)                       # R$ 40,00
+        self.pagar(m, "Dinheiro", 1500)
+        r1 = self.turnos.resumo(self.turno)
+        self.assertEqual((r1["adiantamentos_abertos"], r1["recebido_turno_anterior"]), (1500, 0))
+        self.assertIn("Adiant. contas abertas", ImpressaoController(self.banco).fechamento(r1))
+        self.trocar_turno(FUNDO + 1500)
+        self.pagar(m, "Dinheiro", 2500)
+        self.caixa.fechar(m)
+        r2 = self.turnos.resumo(self.turno)
+        self.assertEqual((r2["adiantamentos_abertos"], r2["recebido_turno_anterior"], r2["venda"]), (0, 1500, 4000))
+        fita = ImpressaoController(self.banco).fechamento(r2)
+        self.assertIn("Pago em turno anterior", fita)
+        self.assertNotIn("Adiant. contas abertas", fita)               # zerado: a linha não aparece
+
     def test_esperado_ja_conta_o_adiantamento_da_mesa_aberta(self):
         m = self.vender((self.skol, 5), mesa=7)
         self.pagar(m, "Dinheiro", 2000)

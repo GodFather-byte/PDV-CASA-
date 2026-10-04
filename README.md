@@ -290,11 +290,44 @@ O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de 
    novo-token BOATE-CENTRO` troca um token vazado e `desativar`/`ativar` bloqueiam e liberam a loja. O painel do dono
    abre em `http://servidor:8000/`: com o token da loja mostra só ela; com o `PDV_API_TOKEN`, todas. O "dia" do painel
    vai das 6h às 6h do dia seguinte, para a noite da boate não se dividir à meia-noite (`PDV_NUVEM_VIRADA_HORA` muda a
-   hora; 0 volta ao dia do calendário). O painel do PDV segue a mesma regra (Configurações > "O dia do painel vira às").
+   hora; 0 volta ao dia do calendário). O painel e os relatórios de vendas do PDV seguem a mesma regra (Configurações > Caixa).
 2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000/v1/sincronizar`), o token da loja e a
    chave da loja (a mesma usada no `criar`).
 3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`).
    Ele registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e só confirma o que a API aceitou.
+
+### Licença renovada pela nuvem
+
+Com a chave privada do fornecedor no servidor (o mesmo arquivo de `tools.gerar_licenca`, em `PDV_LICENCA_CHAVE` ou
+`~/.pdv-casa/licenca_privada.key`), basta registrar até quando cada loja pagou:
+
+```powershell
+python -m backend.lojas assinatura BOATE-CENTRO 2026-11-30   # pagou até 30/11
+python -m backend.lojas assinatura BOATE-CENTRO cancelar     # não renova mais
+```
+
+O PDV da loja busca o código sozinho (pela sincronização, a cada 6 horas, e na entrada quando a licença está vencida) e o
+ativa se estender o prazo. Se a loja não pagar, a data não avança e a licença vence normalmente, com aviso e carência.
+O código manual (`python -m tools.gerar_licenca emitir`) continua valendo para lojas sem internet.
+
+### Avisar as lojas sobre uma versão nova
+
+A versão do PDV fica em `src/versao.py` (aparece no canto da tela principal). Para cada entrega:
+
+1. Suba o número em `src/versao.py` (ex.: `1.1.0` → `1.2.0`) e gere o executável.
+2. Publique na nuvem, com as notas que o dono da loja vai ler:
+
+   ```powershell
+   python -m backend.atualizacoes publicar 1.2.0 --notas "Corrige o troco em dinheiro." --url https://seu-site/WillPDV-1.2.0.zip
+   python -m backend.atualizacoes publicar 1.2.1 --notas "Corrige perda de vendas na transferência." --critica
+   python -m backend.atualizacoes listar
+   ```
+
+Cada caixa conectado consulta a nuvem ao abrir o menu e a cada 6 horas pela sincronização, e mostra uma faixa no painel
+("Nova versão 1.2.0 disponível"). Ao clicar, aparecem as notas de todas as versões que a loja ainda não tem e o botão
+para baixar. `--critica` deixa a faixa vermelha e tira a opção "Não avisar desta versão": use para correções de dinheiro
+ou de dados. O aviso some sozinho quando a loja instala a versão anunciada. O PDV não se atualiza sozinho de propósito:
+uma instalação que falhasse no meio do expediente pararia o caixa.
 
 O painel inicial do PDV mostra as vendas aguardando envio e as recusadas pela nuvem (em quarentena). O contrato está em
 [`docs/COORDENACAO.md`](docs/COORDENACAO.md) e é verificado por `tests/test_nuvem.py`.

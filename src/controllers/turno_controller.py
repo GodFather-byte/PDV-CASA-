@@ -177,6 +177,15 @@ class TurnoController:
         }
         # Valor esperado na gaveta: fundo + recebido nas formas que ficam na gaveta (dinheiro, cheque, ticket;
         # já líquido de troco) + suprimentos - sangrias. Cartão e Pix não entram: são conferidos na maquininha.
+        # Por que o recebido difere do vendido: adiantamento de conta ainda aberta (entrou agora, a venda fecha depois) e a parte
+        # das vendas fechadas agora que foi paga num turno anterior (já conferida lá).
+        r["adiantamentos_abertos"] = b.valor(
+            """SELECT COALESCE(SUM(p.valor_cent - p.troco_cent), 0) FROM pagamentos_venda p JOIN vendas v ON v.id = p.venda_id
+               WHERE p.turno_id = ? AND v.status IN ('aberta','conta_enviada')""", (turno_id,), 0)
+        r["recebido_turno_anterior"] = b.valor(
+            """SELECT COALESCE(SUM(p.valor_cent - p.troco_cent), 0) FROM pagamentos_venda p JOIN vendas v ON v.id = p.venda_id
+               WHERE v.turno_id = ? AND v.status = 'fechada' AND p.turno_id IS NOT NULL AND p.turno_id <> ?""",
+            (turno_id, turno_id), 0)
         r["esperado"] = t["valor_inicial_cent"] + na_gaveta + entradas - saidas
         r["fora_da_gaveta"] = total_recebido - na_gaveta
         r.update(conferencia_turno.conferencia(b, t))      # posições abertas, cancelamentos e transferências do turno

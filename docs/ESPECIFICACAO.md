@@ -66,9 +66,10 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   mostra o total "fora da gaveta". Cada forma de pagamento tem a marca "Fica na gaveta" (`tipos_pagamento.na_gaveta`;
   cartão, Pix, transferência e TEF saem de fábrica). Repique e contra-vale emitido são informativos e não entram.
   (O exemplo do manual não incluía as sangrias no esperado; aqui elas reduzem o esperado porque o dinheiro saiu.)
-- **Dia operacional nos painéis:** a noite da boate atravessa a meia-noite, então o "vendas do dia" da tela principal e o
-  painel da nuvem contam das 6h às 6h do dia seguinte (`virada_dia_hora` no PDV, `PDV_NUVEM_VIRADA_HORA` na nuvem; 0 volta
-  ao dia do calendário). Os relatórios por período continuam pelas datas e horas digitadas.
+- **Dia operacional:** a noite da boate atravessa a meia-noite, então o "vendas do dia" da tela principal, os relatórios
+  de vendas por período (o período, o informativo por dia e as vendas por hora, na ordem da noite) e o painel da nuvem
+  contam das 6h às 6h do dia seguinte (`virada_dia_hora` no PDV, `PDV_NUVEM_VIRADA_HORA` na nuvem; 0 volta ao dia do
+  calendário). Os filtros de horário, os relatórios financeiros e os de estoque continuam pelo calendário.
 - **Licença e relógio voltado:** a data de referência da licença é a maior entre hoje, a última data vista
   (`licenca_ultimo_uso`) e o movimento mais recente (venda encerrada ou turno aberto). Apagar ou editar a linha da data vista
   não reabre o prazo; seria preciso adulterar o histórico de vendas. Uma licença offline em código Python não é inviolável:

@@ -1,6 +1,7 @@
 """Janela principal: login, os sete botões do menu (manual ADM seção 1) e o painel de resumo."""
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from tkinter import ttk
 
@@ -12,6 +13,7 @@ from src.database.conexao import BancoDados
 from src.ui import tema
 from src.ui.contexto import Contexto
 from src.ui.login import JanelaLogin
+from src.versao import VERSAO
 
 CADASTROS = [("unidades", "Unidades"), ("grupos", "Grupos"), ("subgrupos", "Subgrupos"), ("produtos", "Produtos"),
              ("observacoes", "Observações"), ("composicao", "Composição"), ("cargos", "Cargos"),
@@ -61,6 +63,7 @@ class App:
         self.menu: tk.Frame | None = None
         self.root.protocol("WM_DELETE_WINDOW", self.sair)
         self._relogio_id = None
+        self._consulta_versao: dict | None = None      # {"pronta": bool, "dados": ...}: a thread da rede escreve aqui
 
     # ---------------------------------------------------------------- fluxo
     def run(self) -> None:
@@ -133,6 +136,7 @@ class App:
         tk.Label(cab, text=ctx.config.nome_loja().upper(), bg="white", fg=tema.COR["marinho"], font=("Segoe UI", 20, "bold")).pack(anchor="w")
         self.lbl_operador = tk.Label(cab, bg="white", fg=tema.COR["suave"], justify="right")
         self.lbl_operador.place(relx=1.0, x=-4, y=6, anchor="ne")
+        tk.Label(cab, text=f"Versão {VERSAO}", bg="white", fg=tema.COR["suave"]).place(relx=1.0, x=-4, rely=1.0, anchor="se")
 
         corpo = tk.Frame(self.menu, bg=tema.COR["marinho"], padx=22, pady=18)
         corpo.pack(fill="both", expand=True)
@@ -156,6 +160,7 @@ class App:
         r.lift()
         r.focus_force()
         self.atualizar_painel()
+        self.consultar_atualizacoes()
 
     def _montar_painel(self, pai) -> None:
         dir_ = tk.Frame(pai, bg=tema.COR["marinho"])
@@ -175,6 +180,9 @@ class App:
             lbl.pack(side="right")
             self.valores[chave] = lbl
 
+        self.lbl_versao = tk.Label(self.painel, text="", bg="#0e1a3a", fg="#ffd24d", font=tema.FONTE_B, cursor="hand2",
+                                   wraplength=360, justify="left")
+        self.lbl_versao.bind("<Button-1>", lambda e: self.abrir_aviso_versao())
         self.lbl_backup = tk.Label(self.painel, text="", bg="#0e1a3a", fg="#ffd24d", font=tema.FONTE_B)
         self.lbl_backup.pack(anchor="w")
         self.lbl_atualiz = tk.Label(self.painel, text="", bg="#0e1a3a", fg="white", font=tema.FONTE_B)
@@ -213,9 +221,59 @@ class App:
         self.lbl_atualiz.configure(text=f"Última atualização:  {fmt.fmt_datahora(p['atualizado_em'])}")
         self.lbl_backup.configure(text=f"Último backup: {fmt.fmt_datahora(p['ultimo_backup'])}" if p["ultimo_backup"]
                                   else "Não há backup nesta máquina")
+        self.mostrar_aviso_versao()
         op = self.ctx.operador
         self.lbl_operador.configure(text=f"Operador: {op.nome}\nNível de acesso: {op.nivel}")
         self._relogio_id = self.root.after(30_000, self.atualizar_painel)
+
+    # --------------------------------------------------------- atualizações
+    def mostrar_aviso_versao(self) -> None:
+        """Faixa no topo do painel quando há versão nova (vermelha se for crítica). Clicar abre as notas."""
+        from src.sync import atualizacoes
+        from src.ui import atualizacao_ui
+        aviso = atualizacoes.pendente(self.banco)
+        if aviso is None:
+            self.lbl_versao.pack_forget()
+            return
+        self.lbl_versao.configure(text=atualizacao_ui.texto_faixa(aviso), fg="#ff6b6b" if aviso["critica"] else "#ffd24d")
+        if not self.lbl_versao.winfo_ismapped():
+            self.lbl_versao.pack(anchor="w", before=self.lbl_backup, pady=(0, 6))
+
+    def abrir_aviso_versao(self) -> None:
+        from src.sync import atualizacoes
+        from src.ui import atualizacao_ui
+        aviso = atualizacoes.pendente(self.banco)
+        if aviso is not None:
+            atualizacao_ui.mostrar(self.root, self.banco, aviso)
+            self.mostrar_aviso_versao()
+
+    def consultar_atualizacoes(self) -> None:
+        """Pergunta à nuvem se há versão nova, numa thread (a rede não pode travar a tela). O banco só é usado aqui, na
+        thread da tela: a thread recebe o endereço e o token prontos e devolve a resposta em self._consulta_versao."""
+        from src.sync import atualizacoes
+        url, token = self.banco.cfg("api_url"), self.banco.cfg("api_token")
+        if not url.strip() or not token.strip() or not atualizacoes.precisa_consultar(self.banco) or self._consulta_versao:
+            return
+        estado = self._consulta_versao = {"pronta": False, "dados": None}
+
+        def rede():
+            estado["dados"] = atualizacoes.consultar(url, token)
+            estado["pronta"] = True
+        threading.Thread(target=rede, name="consulta-atualizacoes", daemon=True).start()
+        self.root.after(500, self._receber_consulta)
+
+    def _receber_consulta(self) -> None:
+        from src.sync import atualizacoes
+        estado = self._consulta_versao
+        if estado is None:
+            return
+        if not estado["pronta"]:
+            self.root.after(500, self._receber_consulta)
+            return
+        self._consulta_versao = None
+        atualizacoes.gravar(self.banco, estado["dados"])
+        if self.menu is not None:
+            self.mostrar_aviso_versao()
 
     # --------------------------------------------------------------- ações
     def acionar(self, grupo: str) -> None:

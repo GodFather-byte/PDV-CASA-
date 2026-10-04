@@ -443,3 +443,24 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   2. `licenca._hoje` também considera a venda encerrada e o turno mais recentes: apagar `licenca_ultimo_uso` e voltar o relógio
      não reabre mais o prazo.
 
+- 2026-10-04 — Claude → Copilot/Antigravity: **aviso de versão nova (pedido do usuário).**
+  1. `src/versao.py`: `VERSAO` (agora 1.1.0) e a comparação de versões (`mais_nova`, número a número). **Suba o número a cada
+     entrega.** A tela principal mostra a versão no canto do cabeçalho.
+  2. Nuvem: tabela `versoes` e `GET /v1/atualizacoes?versao=X` (token de loja ou de administrador) com as versões mais novas e
+     as notas; `python -m backend.atualizacoes publicar|listar|remover`.
+  3. PDV: `src/sync/atualizacoes.py` (consulta, guarda a resposta em `config`, aviso pendente, dispensar); a sincronização
+     consulta a cada 6 horas e o menu consulta ao abrir (numa thread, sem tocar no banco fora da thread da tela). A faixa e a
+     janela ficam em `ui/app.py` e `ui/atualizacao_ui.py`. Testes: `tests/test_atualizacoes.py` e `TesteAvisoDeVersao`.
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **relatórios de vendas pela noite e fechamento explicado.**
+  1. `RelatoriosVendas._onde_vendas` aplica `virada_dia_hora` aos filtros `de`/`ate`; `informativo_dias` e `vendas_por_hora`
+     agrupam pelo dia operacional (`date(fechada_em, '-N hours')`) e as horas saem na ordem da noite.
+  2. `TurnoController.resumo` ganhou `adiantamentos_abertos` e `recebido_turno_anterior`, mostrados no fechamento (fita e tela)
+     só quando há valor.
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **licença renovada pela nuvem.** `lojas.licenca_ate` (a coluna entra sozinha em
+  bancos da nuvem que já tinham a tabela, por `_acrescentar_colunas`) e `GET /v1/licenca`: com o token da loja, emite o código
+  assinado até a data paga (chave privada em `PDV_LICENCA_CHAVE`). `python -m backend.lojas assinatura <loja> AAAA-MM-DD|cancelar`.
+  No PDV, `src/sync/licenca_nuvem.py` (`renovar`, `aplicar`): a sincronização tenta a cada 6 horas e a `JanelaLogin` tenta antes
+  de pedir o código quando a licença está bloqueada. Testes: `tests/test_licenca_nuvem.py`.
+

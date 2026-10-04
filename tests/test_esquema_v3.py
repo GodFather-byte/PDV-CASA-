@@ -95,6 +95,7 @@ class TesteIndicesEFiltros(BaseTeste):
             ("2026-10-01", "2026-11-01")))
 
     def test_filtro_por_dia_inclui_o_dia_inteiro_e_nada_alem_dele(self):
+        self.banco.cfg_set("virada_dia_hora", "0")                 # dia do calendário
         for quando in ("2026-10-02 23:59:59", "2026-10-03 00:00:00", "2026-10-03 12:00:00",
                        "2026-10-03 23:59:59", "2026-10-04 00:00:00"):
             self.vender_em(quando)
@@ -104,6 +105,20 @@ class TesteIndicesEFiltros(BaseTeste):
         self.assertEqual(len(self.rel.cupons({"de": "2026-10-03"})), 4)       # sem data final: até o fim
         self.assertEqual(len(self.rel.cupons({"ate": "2026-10-03"})), 4)      # sem data inicial: desde o começo
         self.assertEqual(len(self.rel.cupons({})), 5)
+
+    def test_relatorios_de_vendas_contam_a_noite_inteira(self):
+        # Virada às 6h (padrão): "de 03/10 a 03/10" é a noite de 03/10, das 06:00 até 04/10 05:59:59.
+        for quando in ("2026-10-03 05:59:59", "2026-10-03 22:00:00", "2026-10-03 23:30:00", "2026-10-04 01:15:00",
+                       "2026-10-04 06:00:00"):
+            self.vender_em(quando)
+        noite = {"de": "2026-10-03", "ate": "2026-10-03"}
+        self.assertEqual([c["fechada_em"] for c in self.rel.cupons(noite)],
+                         ["2026-10-03 22:00:00", "2026-10-03 23:30:00", "2026-10-04 01:15:00"])
+        self.assertIn("(o dia vira às 06:00)", self.rel.criterios(noite)[0])
+        dias = self.rel.informativo_dias({"de": "2026-10-02", "ate": "2026-10-04"})
+        self.assertEqual([(l[0], l[2]) for l in dias.linhas[:-1]], [("02/10/2026", "1"), ("03/10/2026", "3"), ("04/10/2026", "1")])
+        horas = self.rel.vendas_por_hora(noite)
+        self.assertEqual([l[1] for l in horas.linhas[:-1]], ["22:00 a 23:00", "23:00 a 24:00", "01:00 a 02:00"])
 
     def test_painel_conta_a_noite_inteira(self):
         # Virada às 6h (padrão): a noite de 03/10 vai de 03/10 06:00 até 04/10 05:59:59.

@@ -30,6 +30,8 @@ from sqlalchemy import Boolean, Column, Float, Integer, String, func
 from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
+from src.core import ed25519, licenca as licenca_pdv
+from src.versao import chave, mais_nova, valida      # a mesma regra de comparação de versões do PDV
 
 log = logging.getLogger("pdv.nuvem")
 
@@ -83,6 +85,18 @@ class Loja(Base):
     token_hash = Column(String, unique=True, index=True, nullable=False)
     ativa = Column(Boolean, nullable=False, default=True)
     criada_em = Column(String)
+    licenca_ate = Column(String, nullable=True)     # AAAA-MM-DD: até quando a assinatura está paga (backend.lojas assinatura)
+
+
+class Versao(Base):
+    """Versão do PDV publicada pelo fornecedor (python -m backend.atualizacoes). Os caixas consultam /v1/atualizacoes."""
+    __tablename__ = "versoes"
+    id = Column(Integer, primary_key=True, index=True)
+    versao = Column(String, unique=True, index=True, nullable=False)
+    notas = Column(String, nullable=False)
+    url_download = Column(String, nullable=True)
+    critica = Column(Boolean, nullable=False, default=False)
+    publicada_em = Column(String)
 
 
 def hash_token(token: str) -> str:
@@ -111,6 +125,21 @@ class VendaPagamento(Base):
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def _acrescentar_colunas() -> None:
+    """create_all não altera tabela existente: colunas novas de tabelas que já existiam entram aqui."""
+    from sqlalchemy import inspect, text
+    novas = {"lojas": {"licenca_ate": "VARCHAR"}}
+    with engine.begin() as con:
+        for tabela, colunas in novas.items():
+            existentes = {c["name"] for c in inspect(con).get_columns(tabela)}
+            for nome, tipo in colunas.items():
+                if nome not in existentes:
+                    con.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}"))
+
+
+_acrescentar_colunas()
 
 app = FastAPI(title="WillPDV - API de nuvem")
 
@@ -298,3 +327,57 @@ def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{
         "ticket_medio_cent": (int(receita) + cupons // 2) // cupons if cupons else 0,   # centavos inteiros
         "top_produtos": [{"nome": n, "qtd": float(q), "total_cent": int(t)} for n, q, t in mais_vendidos],
     }
+
+
+# ------------------------------------------------------------ atualizações
+@app.get("/v1/atualizacoes")
+def atualizacoes(versao: str = Query(..., max_length=20), acesso: Acesso = Depends(autenticar),
+                 db: Session = Depends(get_db)):
+    """O que há de novo para um PDV na `versao` informada: as versões mais novas publicadas, da mais nova para a
+    mais antiga, com as notas. `critica` diz se alguma delas é correção que não deve esperar."""
+    if not valida(versao):
+        raise HTTPException(status_code=422, detail="versão inválida")
+    novas = sorted((v for v in db.query(Versao).all() if mais_nova(v.versao, versao)),
+                   key=lambda v: chave(v.versao), reverse=True)
+    return {
+        "versao_atual": versao,
+        "disponivel": bool(novas),
+        "ultima": novas[0].versao if novas else None,
+        "critica": any(v.critica for v in novas),
+        "url_download": next((v.url_download for v in novas if v.url_download), None),
+        "versoes": [{"versao": v.versao, "notas": v.notas, "critica": bool(v.critica), "publicada_em": v.publicada_em}
+                    for v in novas[:20]],
+    }
+
+
+# ------------------------------------------------------------- licença
+def semente_licenca() -> Optional[bytes]:
+    """Chave privada do fornecedor (a mesma de tools.gerar_licenca): PDV_LICENCA_CHAVE ou ~/.pdv-casa/licenca_privada.key."""
+    arquivo = Path(os.environ.get("PDV_LICENCA_CHAVE") or Path.home() / ".pdv-casa" / "licenca_privada.key")
+    try:
+        semente = bytes.fromhex(arquivo.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return None
+    return semente if len(semente) == 32 else None
+
+
+@app.get("/v1/licenca")
+def licenca(acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
+    """Código de licença da loja do token, válido até a data paga (`python -m backend.lojas assinatura`). O PDV renova
+    sozinho com ele; se a loja não pagou, a data não avança e a licença vence normalmente no caixa."""
+    if acesso.admin:
+        raise HTTPException(status_code=403, detail="Use o token da loja.")
+    loja = db.query(Loja).filter(Loja.chave_loja == acesso.loja).first()
+    if not loja.licenca_ate:
+        raise HTTPException(status_code=404, detail="Nenhuma assinatura registrada para esta loja.")
+    ate = date.fromisoformat(loja.licenca_ate)
+    hoje = date.today()
+    if ate <= hoje:
+        raise HTTPException(status_code=409, detail=f"Assinatura paga até {ate.strftime('%d/%m/%Y')}: renove com o fornecedor.")
+    semente = semente_licenca()
+    if semente is None or ed25519.chave_publica(semente).hex() != licenca_pdv.CHAVE_PUBLICA_HEX:
+        log.error("Licença pedida pela loja %s, mas a nuvem não tem a chave privada do fornecedor certa.", loja.chave_loja)
+        raise HTTPException(status_code=503, detail="A nuvem não está configurada para emitir licenças.")
+    return {"codigo": licenca_pdv.gerar_licenca(semente, loja.chave_loja, (ate - hoje).days, hoje),
+            "expira_em": ate.isoformat()}
+
