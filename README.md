@@ -296,6 +296,25 @@ O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de 
 3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`).
    Ele registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e só confirma o que a API aceitou.
 
+### Avisar as lojas sobre uma versão nova
+
+A versão do PDV fica em `src/versao.py` (aparece no canto da tela principal). Para cada entrega:
+
+1. Suba o número em `src/versao.py` (ex.: `1.1.0` → `1.2.0`) e gere o executável.
+2. Publique na nuvem, com as notas que o dono da loja vai ler:
+
+   ```powershell
+   python -m backend.atualizacoes publicar 1.2.0 --notas "Corrige o troco em dinheiro." --url https://seu-site/WillPDV-1.2.0.zip
+   python -m backend.atualizacoes publicar 1.2.1 --notas "Corrige perda de vendas na transferência." --critica
+   python -m backend.atualizacoes listar
+   ```
+
+Cada caixa conectado consulta a nuvem ao abrir o menu e a cada 6 horas pela sincronização, e mostra uma faixa no painel
+("Nova versão 1.2.0 disponível"). Ao clicar, aparecem as notas de todas as versões que a loja ainda não tem e o botão
+para baixar. `--critica` deixa a faixa vermelha e tira a opção "Não avisar desta versão": use para correções de dinheiro
+ou de dados. O aviso some sozinho quando a loja instala a versão anunciada. O PDV não se atualiza sozinho de propósito:
+uma instalação que falhasse no meio do expediente pararia o caixa.
+
 O painel inicial do PDV mostra as vendas aguardando envio e as recusadas pela nuvem (em quarentena). O contrato está em
 [`docs/COORDENACAO.md`](docs/COORDENACAO.md) e é verificado por `tests/test_nuvem.py`.
 

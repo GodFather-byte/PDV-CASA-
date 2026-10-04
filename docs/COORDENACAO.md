@@ -443,3 +443,12 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   2. `licenca._hoje` também considera a venda encerrada e o turno mais recentes: apagar `licenca_ultimo_uso` e voltar o relógio
      não reabre mais o prazo.
 
+- 2026-10-04 — Claude → Copilot/Antigravity: **aviso de versão nova (pedido do usuário).**
+  1. `src/versao.py`: `VERSAO` (agora 1.1.0) e a comparação de versões (`mais_nova`, número a número). **Suba o número a cada
+     entrega.** A tela principal mostra a versão no canto do cabeçalho.
+  2. Nuvem: tabela `versoes` e `GET /v1/atualizacoes?versao=X` (token de loja ou de administrador) com as versões mais novas e
+     as notas; `python -m backend.atualizacoes publicar|listar|remover`.
+  3. PDV: `src/sync/atualizacoes.py` (consulta, guarda a resposta em `config`, aviso pendente, dispensar); a sincronização
+     consulta a cada 6 horas e o menu consulta ao abrir (numa thread, sem tocar no banco fora da thread da tela). A faixa e a
+     janela ficam em `ui/app.py` e `ui/atualizacao_ui.py`. Testes: `tests/test_atualizacoes.py` e `TesteAvisoDeVersao`.
+

@@ -116,6 +116,18 @@ class Sincronizador:
                   n, vendas[indices[0]].get("cupom"), "; ".join(motivos[indices[0]]))
         return {"estado": "rejeitadas", "rejeitadas": n, "restantes": self.sync.contagem_pendentes()}
 
+    def _verificar_atualizacoes(self) -> None:
+        """Aproveita a rodada para ver se há versão nova do PDV (no máximo a cada 6 horas). Falha aqui nunca para o envio."""
+        if self._http is not None and not hasattr(self._http, "get"):
+            return                                   # cliente HTTP de teste que só envia
+        try:
+            from src.sync import atualizacoes
+            aviso = atualizacoes.verificar(self.banco, self._http)
+            if aviso:
+                log.info("Versão nova do PDV disponível: %s%s.", aviso["ultima"], " (CRÍTICA)" if aviso["critica"] else "")
+        except Exception:
+            log.exception("Falha ao consultar atualizações.")
+
     # ----------------------------------------------------------------- laço
     def iniciar_loop(self, rodadas: int | None = None, dormir=time.sleep) -> None:
         """Repete as rodadas; com falhas seguidas o intervalo dobra. `rodadas` limita o laço (testes)."""
@@ -139,6 +151,7 @@ class Sincronizador:
                 falhas = 0
                 if r["estado"] == "ok" and r["enviadas"]:
                     log.info("%d venda(s) confirmada(s) pela nuvem; restam %d.", r["enviadas"], r["restantes"])
+            self._verificar_atualizacoes()
             tem_mais = r["estado"] in ("ok", "rejeitadas") and not sem_progresso and r.get("restantes", 0) > 0
             dormir(0 if tem_mais else proxima_espera(self.configuracao()["intervalo"], falhas))
 

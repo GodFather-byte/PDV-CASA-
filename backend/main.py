@@ -30,6 +30,7 @@ from sqlalchemy import Boolean, Column, Float, Integer, String, func
 from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
+from src.versao import chave, mais_nova, valida      # a mesma regra de comparação de versões do PDV
 
 log = logging.getLogger("pdv.nuvem")
 
@@ -83,6 +84,17 @@ class Loja(Base):
     token_hash = Column(String, unique=True, index=True, nullable=False)
     ativa = Column(Boolean, nullable=False, default=True)
     criada_em = Column(String)
+
+
+class Versao(Base):
+    """Versão do PDV publicada pelo fornecedor (python -m backend.atualizacoes). Os caixas consultam /v1/atualizacoes."""
+    __tablename__ = "versoes"
+    id = Column(Integer, primary_key=True, index=True)
+    versao = Column(String, unique=True, index=True, nullable=False)
+    notas = Column(String, nullable=False)
+    url_download = Column(String, nullable=True)
+    critica = Column(Boolean, nullable=False, default=False)
+    publicada_em = Column(String)
 
 
 def hash_token(token: str) -> str:
@@ -298,3 +310,25 @@ def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{
         "ticket_medio_cent": (int(receita) + cupons // 2) // cupons if cupons else 0,   # centavos inteiros
         "top_produtos": [{"nome": n, "qtd": float(q), "total_cent": int(t)} for n, q, t in mais_vendidos],
     }
+
+
+# ------------------------------------------------------------ atualizações
+@app.get("/v1/atualizacoes")
+def atualizacoes(versao: str = Query(..., max_length=20), acesso: Acesso = Depends(autenticar),
+                 db: Session = Depends(get_db)):
+    """O que há de novo para um PDV na `versao` informada: as versões mais novas publicadas, da mais nova para a
+    mais antiga, com as notas. `critica` diz se alguma delas é correção que não deve esperar."""
+    if not valida(versao):
+        raise HTTPException(status_code=422, detail="versão inválida")
+    novas = sorted((v for v in db.query(Versao).all() if mais_nova(v.versao, versao)),
+                   key=lambda v: chave(v.versao), reverse=True)
+    return {
+        "versao_atual": versao,
+        "disponivel": bool(novas),
+        "ultima": novas[0].versao if novas else None,
+        "critica": any(v.critica for v in novas),
+        "url_download": next((v.url_download for v in novas if v.url_download), None),
+        "versoes": [{"versao": v.versao, "notas": v.notas, "critica": bool(v.critica), "publicada_em": v.publicada_em}
+                    for v in novas[:20]],
+    }
+

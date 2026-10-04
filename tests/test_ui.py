@@ -218,6 +218,57 @@ class TesteMenu(BaseUI):
         self.sem_travar()
 
 
+class TesteAvisoDeVersao(BaseUI):
+    def _menu(self, *versoes):
+        import json
+        from src.ui.app import App
+        self.banco.cfg_set("atualizacao_resposta", json.dumps({"url_download": "https://exemplo/pdv.zip", "versoes": [
+            {"versao": v, "notas": f"Notas da {v}", "critica": c} for v, c in versoes]}))
+        app = App(self.banco)
+        self.addCleanup(app.root.destroy)
+        self.robo.parar()
+        self.robo = Robo(app.root)
+        app.ctx.operador = app.ctx.acesso.autenticar("adm", "adm")
+        app.mostrar_menu(); app.root.update()
+        return app
+
+    def test_sem_versao_nova_nao_mostra_faixa(self):
+        app = self._menu()
+        self.assertFalse(app.lbl_versao.winfo_ismapped())
+
+    def test_faixa_abre_as_notas_e_pode_ser_dispensada(self):
+        app = self._menu(("9.0.0", False))
+        self.assertTrue(app.lbl_versao.winfo_ismapped())
+        self.assertIn("Nova versão 9.0.0", app.lbl_versao.cget("text"))
+        textos = []
+
+        def ver(w):
+            textos.extend(str(f.cget("text")) for f in w.corpo.winfo_children() if isinstance(f, ttk.Label))
+            clicar(w, "Não avisar")
+        self.robo.quando("Dialogo", ver)
+        app.abrir_aviso_versao(); app.root.update()
+        self.assertIn("Notas da 9.0.0", textos)
+        self.assertFalse(app.lbl_versao.winfo_ismapped())
+        self.sem_travar()
+
+    def test_versao_critica_fica_vermelha_e_nao_tem_como_dispensar(self):
+        app = self._menu(("9.0.0", True))
+        self.assertIn("IMPORTANTE", app.lbl_versao.cget("text"))
+        botoes = []
+
+        def ver(w):
+            from tests.ui_robo import botoes as achar
+            botoes.extend(str(b.cget("text")) for b in achar(w))
+            clicar(w, "Baixar")
+        self.robo.quando("Dialogo", ver)
+        with mock.patch("webbrowser.open") as abrir:
+            app.abrir_aviso_versao(); app.root.update()
+        abrir.assert_called_once_with("https://exemplo/pdv.zip")
+        self.assertNotIn("Não avisar desta versão", botoes)
+        self.assertTrue(app.lbl_versao.winfo_ismapped())                  # continua avisando até atualizar
+        self.sem_travar()
+
+
 class TesteFluxosCaixa(BaseUI):
     def setUp(self):
         super().setUp()
