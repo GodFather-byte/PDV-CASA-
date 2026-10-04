@@ -25,7 +25,9 @@ from tests.base import BaseTeste
 
 # O backend lê o banco e o token do ambiente quando é importado: aponta para uma pasta temporária.
 _PASTA = tempfile.mkdtemp(prefix="pdv_nuvem_")
-os.environ["PDV_NUVEM_DB_URL"] = "sqlite:///" + (Path(_PASTA) / "nuvem.db").as_posix()
+# PDV_TESTE_NUVEM_DB_URL roda os mesmos testes contra outro banco (ex.: um PostgreSQL de teste, como o Neon/Render).
+os.environ["PDV_NUVEM_DB_URL"] = (os.environ.get("PDV_TESTE_NUVEM_DB_URL")
+                                  or "sqlite:///" + (Path(_PASTA) / "nuvem.db").as_posix())
 os.environ["PDV_API_TOKEN"] = "token-de-teste"
 try:
     from fastapi.testclient import TestClient

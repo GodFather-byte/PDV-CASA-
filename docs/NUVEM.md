@@ -35,6 +35,68 @@ Para parar o servidor, aperte `Ctrl+C`.
 
 ---
 
+## Opção grátis para começar: Render + Neon
+
+Dá para colocar a nuvem no ar **sem pagar nada**, usando dois serviços gratuitos:
+
+- **Render** ([render.com](https://render.com)): roda o programa da nuvem.
+- **Neon** ([neon.tech](https://neon.tech)): guarda os dados (lojas, licenças e vendas) num banco PostgreSQL.
+
+O banco precisa ficar fora do Render porque o disco do plano grátis do Render é apagado a cada reinício: as lojas e os
+tokens sumiriam. No Neon os dados ficam guardados.
+
+**Limitações do plano grátis (para saber antes):**
+
+| O quê | Na prática |
+|---|---|
+| O Render "dorme" depois de 15 minutos sem uso | O primeiro acesso depois disso demora cerca de 1 minuto. O caixa não trava: o envio tenta de novo sozinho, e a licença manual continua valendo. |
+| Neon grátis: 0,5 GB | Dá para muitos meses de vendas de algumas boates. |
+| Sem terminal no Render grátis | Os comandos de lojas e licenças (passos 3 e 5) rodam **no seu PC**, ligados ao banco do Neon (veja abaixo). |
+
+Quando tiver várias boates pagando, passe para o VPS da seção 2 ou para um plano pago do Render. É só mudar o endereço
+no caixa.
+
+### G1. Criar o banco no Neon
+1. Crie a conta em [neon.tech](https://neon.tech) (dá para entrar com o GitHub) e crie um projeto (região: São Paulo,
+   se aparecer, ou a mais próxima).
+2. Em **Connection string**, copie o endereço. Ele começa com `postgresql://` e termina com `?sslmode=require`.
+   Guarde-o: é a "chave" do seu banco.
+
+### G2. Subir a nuvem no Render
+1. Crie a conta em [render.com](https://render.com) entrando com o **GitHub** e autorize o acesso ao repositório
+   `PDV-CASA-`.
+2. Clique em **New > Blueprint** e escolha o repositório. O Render lê o arquivo `render.yaml` do projeto e já
+   preenche tudo.
+3. Ele pede o valor de **PDV_NUVEM_DB_URL**: cole o endereço do Neon (passo G1).
+4. Para a renovação automática da licença: no serviço criado, abra **Environment > Secret Files > Add Secret File**.
+   - Nome do arquivo: `licenca_privada.key`
+   - Conteúdo: o conteúdo do seu `C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key`, que é uma linha de letras e números.
+5. Clique em **Deploy**. Quando terminar, o Render mostra o endereço, algo como `https://willpdv-nuvem.onrender.com`.
+   Abra `https://willpdv-nuvem.onrender.com/v1/saude`: tem que aparecer `{"status":"ok"}`.
+6. A sua senha de administrador (para ver o painel de todas as lojas) está em **Environment > PDV_API_TOKEN**.
+
+### G3. Rodar os comandos de lojas e licenças no seu PC
+Como o banco está no Neon, os comandos funcionam do seu computador. No PowerShell, dentro da pasta do projeto:
+
+```powershell
+pip install -r backend\requirements.txt
+$env:PDV_NUVEM_DB_URL = "postgresql://...cole-aqui-o-endereco-do-neon..."
+python -m backend.lojas criar BOATE-ESTRELA "Boate Estrela"
+python -m backend.lojas listar
+python -m backend.lojas assinatura BOATE-ESTRELA 2026-11-30
+```
+
+A linha do `$env:` precisa ser repetida cada vez que abrir um PowerShell novo. Daí em diante, os passos **3 a 6**
+deste guia funcionam igual: só troque `lojas` por `python -m backend.lojas` e `atualizacoes` por
+`python -m backend.atualizacoes`.
+
+No caixa (passo 4), o endereço fica: `https://willpdv-nuvem.onrender.com/v1/sincronizar`.
+
+Para atualizar a nuvem quando o código mudar, não precisa fazer nada: o Render publica sozinho a cada mudança no `main`
+do GitHub.
+
+---
+
 ## 2. Colocar no ar de verdade (servidor na internet)
 
 O caminho mais simples e barato é um **VPS com Ubuntu**: Hostinger, DigitalOcean, Contabo, Magalu Cloud etc.
