@@ -44,8 +44,7 @@ class UtilitarioController:
     def limpar_movimento(self, antes_de: str) -> dict:
         """Apaga vendas e movimentos ANTERIORES à data (o período apagado termina no dia anterior).
 
-        Salvaguardas: faz backup antes; não apaga o dia de hoje em diante; e, se a sincronização com a
-        nuvem estiver configurada, recusa apagar vendas que ainda não foram enviadas."""
+        Salvaguardas: faz backup antes e não apaga o dia de hoje em diante."""
         data = fmt.para_data_iso(antes_de)
         if not data:
             raise ErroNegocio("Informe a data limite (dd/mm/aaaa).")
@@ -55,15 +54,6 @@ class UtilitarioController:
             raise ErroNegocio("A limpeza apaga até o dia anterior à data informada; use no máximo a data de hoje "
                               "menos 1 dia para preservar o movimento atual.")
         alvo = ("status IN ('fechada','cancelada') AND date(COALESCE(fechada_em, aberta_em)) < ?")
-        if self.banco.cfg("api_url").strip():
-            pendentes = self.banco.valor(f"SELECT COUNT(*) FROM vendas WHERE sincronizado = 0 AND {alvo}", (data,), 0)
-            if pendentes:
-                raise ErroNegocio(f"Existem {pendentes} venda(s) do período ainda não enviadas à nuvem. "
-                                  "Sincronize antes de limpar.")
-            recusadas = self.banco.valor(f"SELECT COUNT(*) FROM vendas WHERE sincronizado = 2 AND {alvo}", (data,), 0)
-            if recusadas:
-                raise ErroNegocio(f"Existem {recusadas} venda(s) do período recusadas pela nuvem (em quarentena). Corrija a "
-                                  "causa (veja logs/sync.log) e rode 'python -m src.app --sync --reenviar' antes de limpar.")
         copia = self.backup()
         with self.banco.transacao():
             # A numeração dos cupons continua de onde parou (turno_controller.proximo_cupom), mesmo sem as vendas apagadas.

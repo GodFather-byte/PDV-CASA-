@@ -180,7 +180,7 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 | Gaveta | Abre pelo pulso da impressora térmica (ESC p) e a abertura manual é registrada. Sem impressora térmica configurada o caixa só registra. Não testada em gaveta real. |
 | Impressora térmica em equipamento real | Testada só com impressora TCP simulada e arquivo. Faltam modelos reais: página de código, corte, pino da gaveta e velocidade serial variam. |
 | Rede com vários caixas no mesmo banco | O banco SQLite é local a cada terminal. |
-| Sincronização com a nuvem em loja | API (FastAPI) e cliente existem, com testes de contrato; falta validar em loja, HTTPS e token por loja. Cadastros descendo da nuvem: não existe. |
+| Nuvem | Só licença e atualizações (FastAPI); vendas e painel foram retirados de propósito (cada boate guarda as suas). Falta validar em loja e HTTPS. Licença liberada automaticamente no pagamento online: não existe (hoje é `lojas assinatura`). |
 | Tabela de preços por empresa (multi-loja) | Uma única tabela de preços. |
 | E-mail da loja, foto do subgrupo | Os campos são guardados; não são usados. (O logotipo da loja é impresso no cupom térmico quando a opção está ligada.) |
 | Colunas "Turno 1 a 3" e "Figura" do tipo de pagamento | O manual não explica o uso; omitidas. |

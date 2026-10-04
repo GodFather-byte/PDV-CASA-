@@ -51,7 +51,7 @@ Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos:"
 Name: "iniciarcomwindows"; Description: "Abrir o caixa automaticamente ao ligar o computador"; GroupDescription: "Atalhos:"; Flags: unchecked
-Name: "nuvem"; Description: "Enviar as vendas para a nuvem em segundo plano (ao ligar o computador)"; GroupDescription: "Nuvem:"; Flags: unchecked
+Name: "nuvem"; Description: "Verificar licença e atualizações na nuvem em segundo plano (ao ligar o computador)"; GroupDescription: "Nuvem:"; Flags: unchecked
 
 [Files]
 ; Toda a pasta gerada pelo PyInstaller (o .exe e as bibliotecas ao lado dele).

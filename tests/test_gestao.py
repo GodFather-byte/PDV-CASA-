@@ -11,7 +11,6 @@ from src.controllers.contas_controller import ContasController
 from src.controllers.estoque_controller import EstoqueController
 from src.controllers.impressao_controller import ImpressaoController
 from src.controllers.relatorio_controller import RelatorioController
-from src.controllers.sync_controller import SyncController
 from src.controllers.utilitario_controller import UtilitarioController
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio, ErroValidacao
@@ -111,42 +110,6 @@ class TesteConfig(BaseCaixa):
             cfg.salvar_maquina({"colunas_fita": "10"})
 
 
-class TesteSync(BaseCaixa):
-    def fechar_venda(self, forma="Dinheiro"):
-        vid = self.vender((self.skol, 1))
-        self.pagar(vid, forma, 1000)
-        self.caixa.fechar(vid)
-        return vid
-
-    def test_lote_tem_vendas_fechadas_com_itens_e_pagamentos(self):
-        v1 = self.fechar_venda()
-        self.vender((self.agua, 1))             # aberta: não entra
-        lote = SyncController(self.banco).montar_lote()
-        self.assertEqual(len(lote["vendas"]), 1)
-        v = lote["vendas"][0]
-        self.assertEqual((v["cupom"], v["total_cent"], v["troco_cent"], v["status"]), (1, 800, 200, "fechada"))
-        self.assertEqual(v["itens"][0]["preco_unit_cent"], 800)
-        self.assertEqual(v["pagamentos"], [{"tipo": "Dinheiro", "valor_cent": 1000, "troco_cent": 200}])
-        self.assertEqual(v["uuid"], self.caixa.obter(v1)["uuid"])
-
-    def test_confirmacao_parcial_mantem_o_resto_pendente(self):
-        self.fechar_venda(); self.fechar_venda()
-        sync = SyncController(self.banco)
-        uuids = [v["uuid"] for v in sync.montar_lote()["vendas"]]
-        self.assertEqual(sync.confirmar(uuids[:1]), 1)
-        self.assertEqual([v["uuid"] for v in sync.montar_lote()["vendas"]], uuids[1:])
-        self.assertEqual(sync.contagem_pendentes(), 1)
-
-    def test_cancelar_cupom_ja_enviado_volta_a_ficar_pendente(self):
-        vid = self.fechar_venda()
-        sync = SyncController(self.banco)
-        sync.confirmar([self.caixa.obter(vid)["uuid"]])
-        self.assertEqual(sync.contagem_pendentes(), 0)
-        self.caixa.cancelar_venda(vid, "erro")
-        lote = sync.montar_lote()
-        self.assertEqual([(v["status"]) for v in lote["vendas"]], ["cancelada"])
-
-
 class TesteUtilitarios(BaseCaixa):
     def setUp(self):
         super().setUp()
@@ -199,16 +162,11 @@ class TesteUtilitarios(BaseCaixa):
         self.assertEqual(self.banco.valor("SELECT saldo_cent FROM clientes WHERE id = ?", (cid,)), -800)
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM caderneta"), 1)
 
-    def test_limpeza_recusa_data_de_hoje_futura_e_vendas_nao_enviadas(self):
+    def test_limpeza_recusa_data_de_hoje_e_futura(self):
         with self.assertRaises(ErroNegocio):
             self.util.limpar_movimento(fmt.fmt_data(fmt.hoje()))
         with self.assertRaises(ErroNegocio):
             self.util.limpar_movimento(fmt.fmt_data(fmt.somar_dias(fmt.hoje(), 3)))
-        self._venda_antiga(5)
-        self.banco.cfg_set("api_url", "https://nuvem.exemplo/api")
-        with self.assertRaises(ErroNegocio) as e:
-            self.util.limpar_movimento(fmt.fmt_data(fmt.somar_dias(fmt.hoje(), -1)))
-        self.assertIn("não enviadas", str(e.exception))
 
 
 class TesteRelatorios(BaseCaixa):

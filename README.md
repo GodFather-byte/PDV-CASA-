@@ -5,7 +5,7 @@
 Sistema de ponto de venda offline-first para bares, casas noturnas e operações de
 alimentação. O objetivo é evoluir para um PDV confiável de ponta a ponta: vendas,
 mesas e comandas, turnos, pagamentos, estoque, clientes, financeiro, relatórios e
-sincronização idempotente com a nuvem.
+licença mensal e atualizações pela nuvem.
 
 > **Estado do projeto:** em desenvolvimento. O sistema local (cadastros, caixa, mesas,
 > caderneta, entrega, estoque, contas, relatórios, utilitários e configurações dos
@@ -13,7 +13,7 @@ sincronização idempotente com a nuvem.
 > por testes automatizados de regras e de telas. Ainda **não foi validado em loja**: não há
 > emissão fiscal, TEF nem leitura real de balança, e a impressora térmica e a gaveta só foram testadas com
 > impressora simulada (ver
-> [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a sincronização com a nuvem (API + cliente) ainda não foi testada em loja.
+> [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a nuvem (licença e atualizações) ainda não foi testada em loja.
 
 ## Começar
 
@@ -35,7 +35,7 @@ qualquer operador cuja senha seja igual ao nome); depois crie os operadores em M
 Cinco senhas erradas seguidas bloqueiam aquele usuário (ou a senha de supervisor) por 5 minutos. Operadores de nível 0
 entram direto no caixa. O primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
 
-O sistema local usa só a biblioteca padrão (Tkinter e SQLite). Quem usa a sincronização, a balança ou a
+O sistema local usa só a biblioteca padrão (Tkinter e SQLite). Quem usa a nuvem, a balança ou a
 impressão RAW do Windows precisa de `pip install -r requirements.txt`.
 
 ## O que já existe
@@ -88,7 +88,6 @@ São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
   nas comandas* e *Mostrar sempre os ícones das mesas e comandas abertas no rodapé do caixa* (desligado, eles só aparecem
   com Esc/F4 e somem ao escolher uma posição).
 - Relatórios: "Mesas e comandas" mostra a posição como `123` (comanda) ou `M5` (mesa); o filtro *Modalidade* separa `mesa` de `comanda`.
-- A **nuvem** ainda recebe a comanda como venda de mesa (o contrato de sincronização não mudou).
 
 ## Comissão das garotas
 
@@ -251,7 +250,7 @@ como impresso; reimprima pela 2ª via).
 - `src/ui/`: interface Tkinter (`app.py` é a janela principal, `caixa_ui.py` o caixa); telas Flet antigas congeladas.
 - `tests/`: regras de negócio, telas (com um robô que opera as janelas modais) e o teste de fumaça.
 - `src/sync/`: transporte PDV ↔ nuvem.
-- `backend/`: API de nuvem (FastAPI) que recebe os lotes de vendas e o painel do dono; não é usada pelo PDV local.
+- `backend/`: API de nuvem (FastAPI) de licença e atualizações; não é usada pelo PDV local.
 - `tools/`: ferramentas do fornecedor (licença); não vão no instalador.
 
 ## Banco local e dados
@@ -276,31 +275,27 @@ Convenções obrigatórias entre as camadas:
 - timestamps locais são armazenados em ISO (`YYYY-MM-DD HH:MM:SS`);
 - UUID identifica a venda e permite reenvio idempotente.
 
-## Sincronização com a nuvem
+## Nuvem (só licença e atualizações)
 
-> Passo a passo completo para colocar a nuvem no ar (servidor, HTTPS, backup), cadastrar boates e acompanhar as
-> licenças: [`docs/NUVEM.md`](docs/NUVEM.md).
+> Passo a passo para colocar a nuvem no ar, cadastrar boates e acompanhar as licenças: [`docs/NUVEM.md`](docs/NUVEM.md).
 
-O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de forma idempotente por UUID:
+Cada boate tem o seu PDV e as vendas ficam só nele (use o backup). A nuvem (`backend/`, FastAPI) **não recebe vendas e não
+tem painel**: ela guarda até quando cada loja pagou, entrega o código de licença e avisa sobre versão nova.
 
 1. No servidor (`pip install -r backend/requirements.txt`), na raiz do repositório:
 
    ```powershell
-   $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"      # token do administrador (painel de todas as lojas)
+   $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"      # token do administrador (lista de lojas)
    python -m backend.lojas criar BOATE-CENTRO "Boate Centro"  # uma vez por loja: mostra o token DESSA loja
    python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
    ```
 
-   Cada loja tem o próprio token, e a nuvem identifica a loja por ele: o token de uma loja não envia vendas em nome de
-   outra nem vê o painel dela. O token aparece só na criação (a nuvem guarda apenas o hash); `python -m backend.lojas
-   novo-token BOATE-CENTRO` troca um token vazado e `desativar`/`ativar` bloqueiam e liberam a loja. O painel do dono
-   abre em `http://servidor:8000/`: com o token da loja mostra só ela; com o `PDV_API_TOKEN`, todas. O "dia" do painel
-   vai das 6h às 6h do dia seguinte, para a noite da boate não se dividir à meia-noite (`PDV_NUVEM_VIRADA_HORA` muda a
-   hora; 0 volta ao dia do calendário). O painel e os relatórios de vendas do PDV seguem a mesma regra (Configurações > Caixa).
-2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000/v1/sincronizar`), o token da loja e a
-   chave da loja (a mesma usada no `criar`).
-3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`).
-   Ele registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e só confirma o que a API aceitou.
+   O token da loja aparece só na criação (a nuvem guarda apenas o hash); `python -m backend.lojas novo-token BOATE-CENTRO`
+   troca um token vazado e `desativar`/`ativar` bloqueiam e liberam a loja.
+2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000`), o token da loja e a chave da loja (a
+   mesma usada no `criar`).
+3. Deixe a verificação rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`). Ela
+   registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e não faz nada se o endereço estiver vazio.
 
 ### Licença renovada pela nuvem
 
@@ -312,7 +307,7 @@ python -m backend.lojas assinatura BOATE-CENTRO 2026-11-30   # pagou até 30/11
 python -m backend.lojas assinatura BOATE-CENTRO cancelar     # não renova mais
 ```
 
-O PDV da loja busca o código sozinho (pela sincronização, a cada 6 horas, e na entrada quando a licença está vencida) e o
+O PDV da loja busca o código sozinho (pela verificação em segundo plano, a cada 6 horas, e na entrada quando a licença está vencida) e o
 ativa se estender o prazo. Se a loja não pagar, a data não avança e a licença vence normalmente, com aviso e carência.
 O código manual (`python -m tools.gerar_licenca emitir`) continua valendo para lojas sem internet.
 
@@ -329,14 +324,11 @@ A versão do PDV fica em `src/versao.py` (aparece no canto da tela principal). P
    python -m backend.atualizacoes listar
    ```
 
-Cada caixa conectado consulta a nuvem ao abrir o menu e a cada 6 horas pela sincronização, e mostra uma faixa no painel
+Cada caixa conectado consulta a nuvem ao abrir o menu e a cada 6 horas pela verificação, e mostra uma faixa no painel
 ("Nova versão 1.2.0 disponível"). Ao clicar, aparecem as notas de todas as versões que a loja ainda não tem e o botão
 para baixar. `--critica` deixa a faixa vermelha e tira a opção "Não avisar desta versão": use para correções de dinheiro
 ou de dados. O aviso some sozinho quando a loja instala a versão anunciada. O PDV não se atualiza sozinho de propósito:
 uma instalação que falhasse no meio do expediente pararia o caixa.
-
-O painel inicial do PDV mostra as vendas aguardando envio e as recusadas pela nuvem (em quarentena). O contrato está em
-[`docs/COORDENACAO.md`](docs/COORDENACAO.md) e é verificado por `tests/test_nuvem.py`.
 
 Antes de operar comercialmente ainda é necessário: HTTPS (proxy reverso ou túnel), teste em loja com a
 rotina real do caixa, backup e restauração testados, hardware fiscal/periféricos e homologação no ambiente da loja.

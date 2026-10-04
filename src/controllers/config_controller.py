@@ -90,8 +90,8 @@ CAMPOS_CONFIG = [
     ("pasta_backup", "Pasta do backup (vazio = pasta Backup do sistema)", "texto", "Utilitários"),
     ("email_loja", "E-mail da loja", "texto", "E-mail"), ("email_destino", "E-mail de destino dos relatórios", "texto", "E-mail"),
     ("smtp_servidor", "Servidor de e-mail (provedor)", "texto", "E-mail"),
-    ("chave_loja", "Chave da loja (licença)", "texto", "Nuvem"), ("api_url", "Endereço da API de sincronização", "texto", "Nuvem"),
-    ("api_token", "Token da API", "texto", "Nuvem"), ("sync_intervalo_seg", "Intervalo da sincronização (segundos)", "int", "Nuvem"),
+    ("chave_loja", "Chave da loja (licença)", "texto", "Nuvem"), ("api_url", "Endereço da nuvem (licença e atualizações)", "texto", "Nuvem"),
+    ("api_token", "Token da API", "texto", "Nuvem"), ("sync_intervalo_seg", "Intervalo da verificação na nuvem (segundos)", "int", "Nuvem"),
 ]
 _TIPO_CONFIG = {c[0]: c[2] for c in CAMPOS_CONFIG}
 _OPCOES_CONFIG = {c[0]: [o[0] for o in c[4]] for c in CAMPOS_CONFIG if len(c) > 4}

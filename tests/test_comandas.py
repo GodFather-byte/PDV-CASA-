@@ -231,12 +231,6 @@ class TesteComandas(BaseCaixa):
         self.assertEqual(len(rel.cupons(f)), 3)
         self.assertEqual(dict(rel.vendas_periodo(f).rodape)["  Mesa/Comanda/Balcão"], "19,50")
 
-    def test_comanda_vai_para_a_nuvem_como_mesa(self):
-        from src.controllers.sync_controller import SyncController
-        self.fechar(self.comanda(6, (self.skol, 1)))
-        vendas = SyncController(self.banco).montar_lote()["vendas"]
-        self.assertEqual([(v["modalidade"], v["posicao"]) for v in vendas], [("mesa", 6)])
-
 
 class TesteIconesDoRodape(BaseCaixa):
     """O modelo dos ícones do caixa (sem Tk): balcão primeiro, depois mesas e comandas, cada uma no seu estado."""
@@ -448,14 +442,6 @@ class TesteComandaPorNumero(BaseCaixa):
         for t in tiles[1:]:
             comanda, numero = self.caixa.ler_posicao(t["chave"])
             self.assertEqual((comanda, numero), (t["tipo"] == "comanda", int(t["chave"].lstrip("M"))), t["chave"])
-
-    def test_comanda_vai_para_a_nuvem_como_mesa_com_o_mesmo_numero(self):
-        from src.controllers.sync_controller import SyncController
-        vid = self.comanda(123, (self.skol, 1))
-        self.pagar(vid, "Dinheiro", self.caixa.obter(vid)["total_cent"])
-        self.caixa.fechar(vid)
-        vendas = SyncController(self.banco).montar_lote()["vendas"]
-        self.assertEqual([(v["modalidade"], v["posicao"]) for v in vendas], [("mesa", 123)])
 
 
 class TesteConfigNotacao(BaseCaixa):
