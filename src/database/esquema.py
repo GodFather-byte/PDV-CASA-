@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 8
+VERSAO_ESQUEMA = 9
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -355,13 +355,16 @@ TABELAS = [
         produto_id INTEGER NOT NULL REFERENCES produtos(id),
         fracao REAL NOT NULL
     )""",
+    # turno_id (v9): turno em que o dinheiro entrou. O adiantamento de uma mesa conta nesse turno, mesmo que a conta
+    # feche no seguinte. Fica NULL só no pagamento antigo de uma mesa ainda aberta, que conta no turno da venda.
     """CREATE TABLE IF NOT EXISTS pagamentos_venda (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
         tipo_pagamento_id INTEGER NOT NULL REFERENCES tipos_pagamento(id),
         valor_cent INTEGER NOT NULL,
         troco_cent INTEGER NOT NULL DEFAULT 0,
-        criado_em TEXT NOT NULL
+        criado_em TEXT NOT NULL,
+        turno_id INTEGER REFERENCES turnos(id)
     )""",
     "CREATE INDEX IF NOT EXISTS ix_pagto_venda ON pagamentos_venda(venda_id)",
     """CREATE TABLE IF NOT EXISTS movimentos_caixa (
@@ -461,6 +464,7 @@ INDICES_POS_MIGRACAO = [
     # Uma mesa OU uma comanda aberta por número: a comanda 2 e a mesa 2 podem existir ao mesmo tempo (v4).
     """CREATE UNIQUE INDEX IF NOT EXISTS ix_posicao_aberta ON vendas(comanda, posicao)
         WHERE modalidade = 'mesa' AND status IN ('aberta','conta_enviada')""",
+    "CREATE INDEX IF NOT EXISTS ix_pagto_turno ON pagamentos_venda(turno_id)",     # v9
 ]
 
 
@@ -512,5 +516,12 @@ MIGRACOES = {
         ("coluna", "comissoes_garotas", "pago_turno_id", "INTEGER REFERENCES turnos(id)"),
         "UPDATE comissoes_garotas SET pago_turno_id = (SELECT m.turno_id FROM movimentos_caixa m "
         "WHERE m.id = comissoes_garotas.movimento_id) WHERE status = 'paga' AND pago_turno_id IS NULL AND movimento_id IS NOT NULL",
+    ],
+    # v9: cada pagamento guarda o turno em que foi recebido. Os antigos herdam o turno da venda (o de fechamento ou
+    # cancelamento), que era onde já contavam; o de uma mesa ainda aberta fica NULL e continua contando onde ela fechar.
+    9: [
+        ("coluna", "pagamentos_venda", "turno_id", "INTEGER REFERENCES turnos(id)"),
+        "UPDATE pagamentos_venda SET turno_id = (SELECT v.turno_id FROM vendas v WHERE v.id = pagamentos_venda.venda_id)"
+        " WHERE turno_id IS NULL",
     ],
 }

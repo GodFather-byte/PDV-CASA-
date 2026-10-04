@@ -66,6 +66,12 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   mostra o total "fora da gaveta". Cada forma de pagamento tem a marca "Fica na gaveta" (`tipos_pagamento.na_gaveta`;
   cartão, Pix, transferência e TEF saem de fábrica). Repique e contra-vale emitido são informativos e não entram.
   (O exemplo do manual não incluía as sangrias no esperado; aqui elas reduzem o esperado porque o dinheiro saiu.)
+- **Cada pagamento conta no turno em que o dinheiro entrou** (`pagamentos_venda.turno_id`, esquema v9), não no turno em que a
+  conta fecha: o adiantamento de uma comanda fica no turno que o recebeu (e já entra no esperado enquanto a comanda está
+  aberta, porque o dinheiro está na gaveta), e o troco sai dos pagamentos do turno que fecha a conta. Turno fechado não muda
+  depois: o pagamento dele não pode ser removido, e cancelar uma conta com adiantamento de turno anterior registra a
+  devolução como saída do turno atual (só a parte que fica na gaveta; Pix e cartão são estornados fora do caixa).
+  Juntar mesas ou comandas leva junto os pagamentos e o repique da origem.
 - **Serviço** (10% configurável) só em mesa e comanda (cada uma com sua chave: `cobra_servico_mesa` e
   `cobra_servico_comanda`), calculado sobre os itens marcados "cobrar serviço", antes
   do desconto. O desconto incide só nos produtos. O operador pode digitar outro valor de serviço, até zero.

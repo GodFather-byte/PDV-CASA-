@@ -60,7 +60,7 @@ class CaixaController:
 
     def pagamentos(self, venda_id: int) -> list[dict]:
         return [dict(r) for r in self.banco.todos(
-            """SELECT p.*, t.tipo, t.permite_troco, t.emite_vale FROM pagamentos_venda p
+            """SELECT p.*, t.tipo, t.permite_troco, t.emite_vale, t.na_gaveta FROM pagamentos_venda p
                JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id WHERE p.venda_id = ? ORDER BY p.id""",
             (venda_id,))]
 
@@ -316,16 +316,25 @@ class CaixaController:
             raise ErroNegocio("Informe um valor maior que zero.")
         if v["modalidade"] == "caderneta" and self.itens(venda_id):
             raise ErroNegocio("Venda em caderneta não recebe pagamento: o valor fica na conta do cliente.")
+        turno = self.turnos.exigir_aberto()
         return self.banco.inserir("pagamentos_venda", {
             "venda_id": venda_id, "tipo_pagamento_id": tipo_pagamento_id,
-            "valor_cent": valor_cent, "criado_em": fmt.agora()})
+            "valor_cent": valor_cent, "criado_em": fmt.agora(), "turno_id": turno["id"]})
 
     def remover_pagamento(self, pagamento_id: int) -> None:
-        p = self.banco.um("SELECT venda_id FROM pagamentos_venda WHERE id = ?", (pagamento_id,))
+        p = self.banco.um("SELECT venda_id, turno_id FROM pagamentos_venda WHERE id = ?", (pagamento_id,))
         if p is None:
             raise ErroNegocio("Pagamento não encontrado.")
         self._aberta(p["venda_id"])
+        if self._de_outro_turno(p["turno_id"], self.turnos.atual()):
+            raise ErroNegocio("Este pagamento foi recebido em um turno que já foi fechado e conferido; ele não pode "
+                              "ser removido. Se for preciso devolver o valor, cancele a conta.")
         self.banco.executar("DELETE FROM pagamentos_venda WHERE id = ?", (pagamento_id,))
+
+    @staticmethod
+    def _de_outro_turno(turno_id: int | None, atual: dict | None) -> bool:
+        """Pagamento recebido em um turno que não é o aberto agora (pagamento antigo sem turno conta como do atual)."""
+        return turno_id is not None and (atual is None or turno_id != atual["id"])
 
     def liquidar(self, venda_id: int, total: int | None = None) -> dict:
         """Confronta pagamentos x total. Devolve pago, falta, troco, vale e o rateio do troco
@@ -343,8 +352,12 @@ class CaixaController:
         vale = min(excesso - troco, sum(p["valor_cent"] for p in pags if p["emite_vale"]))
         if excesso - troco - vale > 0:
             raise ErroNegocio("O valor pago excede o total e a forma de pagamento não permite troco.")
+        # O troco é dado agora, da gaveta do turno aberto: sai primeiro dos pagamentos recebidos neste turno, para não
+        # mexer na conferência de um turno já fechado. Só se eles não bastarem (alguém pagou a mais num turno anterior
+        # e deixou a conta aberta) o resto recai sobre os pagamentos antigos.
+        atual = self.turnos.atual()
         restante = troco
-        for p in pags:
+        for p in sorted(pags, key=lambda p: (self._de_outro_turno(p["turno_id"], atual), p["id"])):
             if p["permite_troco"] and restante > 0:
                 parte = min(restante, p["valor_cent"])
                 out["rateio"][p["id"]] = parte
@@ -379,6 +392,8 @@ class CaixaController:
             raise ErroNegocio("Informe o garçom que atendeu a mesa.")
 
         with self.banco.transacao():
+            self.banco.executar("UPDATE pagamentos_venda SET turno_id = ? WHERE venda_id = ? AND turno_id IS NULL",
+                                (turno["id"], venda_id))
             calc = self.recalcular(venda_id)
             total = calc["total"]
             troco = vale = 0
@@ -456,15 +471,21 @@ class CaixaController:
                 if not self.itens(venda_id, cancelados=True) and not self.pagamentos(venda_id):
                     self.banco.executar("DELETE FROM vendas WHERE id = ?", (venda_id,))
                     return
+                turno = self.turnos.exigir_aberto()
                 self.banco.atualizar("vendas", venda_id, {
                     "status": "cancelada", "cupom": self.proximo_cupom(), "fechada_em": agora,
-                    "turno_id": self.turnos.exigir_aberto()["id"],
+                    "turno_id": turno["id"],
                     "cancelada_por": self.operador_id, "motivo_cancelamento": motivo, "sincronizado": 0})
-                self.banco.executar("DELETE FROM pagamentos_venda WHERE venda_id = ?", (venda_id,))
+                self._devolver_adiantamentos(venda_id, turno)
+                # O recebido neste turno é devolvido da própria gaveta: sai da venda, como sempre. O de turno anterior
+                # fica registrado (aquele turno o recebeu e já foi conferido com ele).
+                self.banco.executar("DELETE FROM pagamentos_venda WHERE venda_id = ? AND (turno_id IS NULL OR turno_id = ?)",
+                                    (venda_id, turno["id"]))
             elif v["status"] == "fechada":
                 turno = self.turnos.atual()
                 if turno is None or v["turno_id"] != turno["id"]:
                     raise ErroNegocio("Só é possível cancelar cupons do turno atual. Este turno já foi fechado.")
+                self._devolver_adiantamentos(venda_id, turno)
                 self.estoque.estornar_venda(venda_id)
                 self._estornar_caderneta(v)
                 self.banco.atualizar("vendas", venda_id, {
@@ -473,6 +494,17 @@ class CaixaController:
             else:
                 raise ErroNegocio("Este cupom já está cancelado.")
             self.banco.log("venda_cancelada", f"venda {venda_id} cupom {v['cupom']} {motivo}".strip(), self.operador_id)
+
+    def _devolver_adiantamentos(self, venda_id: int, turno: dict) -> int:
+        """Cancelamento de conta que recebeu dinheiro em um turno já fechado: aquele turno continua com o valor (ele
+        entrou lá e foi conferido), e a devolução ao cliente sai da gaveta do turno atual como uma saída registrada.
+        Pix e cartão não passam pela gaveta: o estorno deles é feito na maquininha ou no banco. Devolve o valor."""
+        valor = sum(p["valor_cent"] - p["troco_cent"] for p in self.pagamentos(venda_id)
+                    if p["na_gaveta"] and self._de_outro_turno(p["turno_id"], turno))
+        if valor > 0:
+            self.turnos.movimentar(turno["id"], self.operador_id, "saida", valor,
+                                   f"Devolução de adiantamento da venda {venda_id} (recebido em turno anterior)")
+        return valor
 
     def _estornar_caderneta(self, v: dict) -> None:
         for lan in self.banco.todos("SELECT * FROM caderneta WHERE venda_id = ?", (v["id"],)):
@@ -493,7 +525,12 @@ class CaixaController:
         return self.recalcular(venda_id)
 
     def _mover_itens(self, origem_id: int, destino_id: int) -> None:
+        """Junta a venda de origem na de destino e apaga a origem. Tudo o que pertence à origem vai junto: sem isso, o
+        adiantamento já pago na mesa sumiria (os pagamentos são apagados em cascata com a venda) e um repique ligado a
+        ela travaria a transferência. Cada pagamento mantém o turno em que entrou."""
         self.banco.executar("UPDATE itens_venda SET venda_id = ? WHERE venda_id = ?", (destino_id, origem_id))
+        self.banco.executar("UPDATE pagamentos_venda SET venda_id = ? WHERE venda_id = ?", (destino_id, origem_id))
+        self.banco.executar("UPDATE repiques SET venda_id = ? WHERE venda_id = ?", (destino_id, origem_id))
         pessoas = self.banco.valor("SELECT pessoas FROM vendas WHERE id = ?", (origem_id,), 0)
         self.banco.executar("UPDATE vendas SET pessoas = pessoas + ?, ultimo_lancamento_em = ?, status = 'aberta' "
                             "WHERE id = ?", (pessoas, fmt.agora(), destino_id))

@@ -389,3 +389,18 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   6. **Sem mudança de esquema** (segue na v8): as chaves novas só entram em `CONFIG_PADRAO` (INSERT OR IGNORE). Testes novos:
      `test_comissao_na_tela.py`, `test_fechamento_assinado.py` e `test_boate_extras.py`; o `BaseUI` agora manda o histórico de
      impressão dos testes para uma pasta temporária (antes caía em `impressao/`).
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **dois bugs de dinheiro corrigidos no caixa (esquema v9).**
+  1. **Juntar mesas apagava o adiantamento:** `CaixaController._mover_itens` apagava a venda de origem e o `ON DELETE CASCADE` levava
+     os pagamentos dela (o cliente pagou R$ 10, deu Esc, a mesa foi juntada a outra: os R$ 10 sumiam). Agora pagamentos e repiques
+     vão para o destino; o repique ligado à origem também fazia a transferência falhar com `FOREIGN KEY constraint failed`.
+  2. **Adiantamento caía no turno errado:** o pagamento contava no turno em que a conta FECHAVA. Comanda com adiantamento no turno 1
+     e fechada no turno 2 dava sobra no 1 e falta no 2, com os dois caixas certos. `pagamentos_venda.turno_id` (v9; a migração
+     preenche com o turno da venda) guarda o turno em que o dinheiro entrou, e `turno_controller.RECEBIDO_NO_TURNO` é o filtro
+     usado por `resumo` (fechamento e Leitura X) e `dinheiro_esperado`. Regras: o troco sai primeiro dos pagamentos do turno atual
+     (`liquidar`); `remover_pagamento` recusa pagamento de turno fechado; cancelar conta com adiantamento de turno anterior grava
+     a devolução como saída do turno atual (`_devolver_adiantamentos`, só formas `na_gaveta`); a limpeza não apaga turno que um
+     pagamento ainda referencia. Pagamento antigo sem turno (mesa aberta na migração) conta onde a venda fechar, como antes.
+  3. `CaixaController.adicionar_pagamento` agora exige turno aberto e grava `turno_id`. O adaptador legado `venda_controller` não
+     foi tocado: o pagamento dele fica com `turno_id` NULL e conta no turno da venda. Contrato da nuvem sem mudança.
+     Testes: `tests/test_adiantamentos.py` (15).
