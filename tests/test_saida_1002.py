@@ -102,3 +102,18 @@ if BaseNaTela is not None:
             self.digitar_codigo("1002")
             self.assertIn("COMANDA 55", impressos[0])
             self.sem_travar()
+
+
+class TesteCodigoDaSaidaReservado(BaseCaixa):
+    def test_produto_nao_pode_usar_o_codigo_da_saida(self):
+        from src.controllers.cadastro_controller import CadastroController
+        cad = CadastroController(self.banco)
+        sub = self.banco.valor("SELECT id FROM subgrupos LIMIT 1")
+        un = self.banco.valor("SELECT id FROM unidades LIMIT 1")
+        base = {"nome": "COISA", "codigo": "77", "subgrupo_id": sub, "unidade_id": un, "preco_cent": "5,00"}
+        for campo in ("codigo", "atalho", "cbarra"):
+            with self.assertRaisesRegex(ErroValidacao, "reservado", msg=campo):
+                cad.salvar("produtos", {**base, campo: "1002"})
+        ConfigController(self.banco).salvar_config({"codigo_saida": ""})
+        cad.salvar("produtos", {**base, "codigo": "1002"})          # sem o código de saída, o 1002 fica livre
+

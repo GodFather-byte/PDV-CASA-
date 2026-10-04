@@ -19,6 +19,21 @@ def _hora(h: str | None) -> str | None:
     return h + ":00"
 
 
+
+def virada_dia(banco) -> int:
+    """Hora em que o dia operacional vira (configuração `virada_dia_hora`, 0 a 23; 6 = a madrugada conta na noite anterior)."""
+    return min(max(banco.cfg_int("virada_dia_hora", 6), 0), 23)
+
+
+def periodo_operacional(banco, f: dict, coluna: str, onde: list, p: list) -> None:
+    """Filtro 'de/até' por DIA OPERACIONAL em uma coluna 'AAAA-MM-DD hh:mm:ss': com a virada às 6h, "de 03/10 a 03/10" é a
+    noite de 03/10 inteira (até 04/10 05:59), como no relatório de vendas. Faixa em vez de date(coluna), para usar os índices."""
+    virada = virada_dia(banco)
+    if f.get("de"):
+        onde.append(f"{coluna} >= ?"); p.append(fmt.faixa_dia_operacional(f["de"], virada)[0])
+    if f.get("ate"):
+        onde.append(f"{coluna} < ?"); p.append(fmt.faixa_dia_operacional(f["ate"], virada)[1])
+
 class RelatoriosVendas:
     banco = None  # fornecido pela classe concreta
 
@@ -57,7 +72,7 @@ class RelatoriosVendas:
         return " AND ".join(onde), p
 
     def _virada(self) -> int:
-        return min(max(self.banco.cfg_int("virada_dia_hora", 6), 0), 23)
+        return virada_dia(self.banco)
 
     def criterios(self, f: dict) -> list[str]:
         c = []
@@ -202,8 +217,7 @@ class RelatoriosVendas:
     # ----------------------------------------- 6.03 e 6.04 caixa e turnos
     def caixa_movimentos(self, f: dict) -> Relatorio:
         onde, p = ["1=1"], []
-        if f.get("de"): onde.append("date(m.criado_em) >= ?"); p.append(f["de"])
-        if f.get("ate"): onde.append("date(m.criado_em) <= ?"); p.append(f["ate"])
+        periodo_operacional(self.banco, f, "m.criado_em", onde, p)
         if f.get("turno"): onde.append("t.numero = ?"); p.append(int(f["turno"]))
         if f.get("operador_id"): onde.append("m.operador_id = ?"); p.append(f["operador_id"])
         if f.get("tipo"): onde.append("m.tipo = ?"); p.append(f["tipo"])
@@ -224,8 +238,7 @@ class RelatoriosVendas:
 
     def fechamentos(self, f: dict) -> Relatorio:
         onde, p = ["t.status = 'fechado'"], []
-        if f.get("de"): onde.append("date(t.fechado_em) >= ?"); p.append(f["de"])
-        if f.get("ate"): onde.append("date(t.fechado_em) <= ?"); p.append(f["ate"])
+        periodo_operacional(self.banco, f, "t.fechado_em", onde, p)
         if f.get("turno"): onde.append("t.numero = ?"); p.append(int(f["turno"]))
         if f.get("operador_id"): onde.append("t.fechado_por = ?"); p.append(f["operador_id"])
         if f.get("terminal"): onde.append("t.terminal = ?"); p.append(f["terminal"])
