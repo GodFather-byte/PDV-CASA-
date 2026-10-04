@@ -66,6 +66,7 @@ CAMPOS_CONFIG = [
     ("exigir_senha_gaveta", "Exigir senha de supervisor para abrir a gaveta", "sn", "Caixa"),
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),
     ("exigir_senha_cancelamento", "Exigir senha de supervisor para cancelamentos", "sn", "Caixa"),
+    ("exigir_motivo_cancelamento", "Exigir o motivo para cancelar item ou venda", "sn", "Caixa"),
     ("exigir_senha_desconto", "Exigir senha de supervisor para desconto", "sn", "Caixa"),
     ("exigir_senha_comissao", "Exigir senha de supervisor para lançar comissão das garotas", "sn", "Caixa"),
     ("codigo_comissao", "Código que lança a comissão das garotas no caixa (vazio = desligado)", "texto", "Caixa"),
@@ -79,7 +80,11 @@ CAMPOS_CONFIG = [
     ("imprimir_via_comissao", "Imprimir a via da garota a cada comissão lançada", "sn", "Caixa"),
     ("imprimir_fechamento_ao_trocar", "Imprimir o fechamento ao trocar o turno (com a assinatura do caixa)", "sn", "Caixa"),
     ("vias_fechamento", "Vias do fechamento do turno (1 a 3)", "int", "Caixa"),
+    ("consumacao_minima", "Consumação mínima por comanda (R$, 0 = desligada): na saída cobra a diferença até o mínimo", "int", "Mesas e serviço"),
+    ("consumacao_minima_de", "Consumação mínima vale a partir da comanda nº (0 = todas)", "int", "Mesas e serviço"),
+    ("consumacao_minima_ate", "Consumação mínima vale até a comanda nº (0 = sem limite; deixe de fora as comandas das garotas)", "int", "Mesas e serviço"),
     ("limite_gaveta", "Avisar para fazer sangria quando o dinheiro da gaveta passar de (R$, 0 = não avisar)", "int", "Caixa"),
+    ("sangria_horarios", "Horários de sangria: lembra o caixa de fazer a sangria nestes horários (ex.: 02:00, 04:30; vazio = sem lembrete)", "texto", "Caixa"),
     ("imprimir_cupom", "Imprimir cupom ao fechar a venda", "sn", "Caixa"),
     ("usar_delivery", "Delivery: pedidos de entrega (F6), bairros e taxas de entrega", "sn", "Módulos"),
     ("taxa_entrega_padrao", "Taxa de entrega padrão do delivery (R$)", "texto", "Módulos"),
@@ -87,10 +92,11 @@ CAMPOS_CONFIG = [
     ("usar_contas", "Contas a pagar/receber, plano de contas e relatórios financeiros", "sn", "Módulos"),
     ("programa_comunicacao", "Programa de comunicação (caminho do executável)", "texto", "Utilitários"),
     ("pasta_backup", "Pasta do backup (vazio = pasta Backup do sistema)", "texto", "Utilitários"),
+    ("pasta_backup_extra", "Cópia extra do backup: pendrive, outro disco ou pasta de rede (vazio = sem cópia extra)", "texto", "Utilitários"),
     ("email_loja", "E-mail da loja", "texto", "E-mail"), ("email_destino", "E-mail de destino dos relatórios", "texto", "E-mail"),
     ("smtp_servidor", "Servidor de e-mail (provedor)", "texto", "E-mail"),
-    ("chave_loja", "Chave da loja (licença)", "texto", "Nuvem"), ("api_url", "Endereço da API de sincronização", "texto", "Nuvem"),
-    ("api_token", "Token da API", "texto", "Nuvem"), ("sync_intervalo_seg", "Intervalo da sincronização (segundos)", "int", "Nuvem"),
+    ("chave_loja", "Chave da loja (licença)", "texto", "Nuvem"), ("api_url", "Endereço da nuvem (licença e atualizações)", "texto", "Nuvem"),
+    ("api_token", "Token da API", "texto", "Nuvem"), ("sync_intervalo_seg", "Intervalo da verificação na nuvem (segundos)", "int", "Nuvem"),
 ]
 _TIPO_CONFIG = {c[0]: c[2] for c in CAMPOS_CONFIG}
 _OPCOES_CONFIG = {c[0]: [o[0] for o in c[4]] for c in CAMPOS_CONFIG if len(c) > 4}

@@ -120,7 +120,7 @@ class JanelaPagamento(tk.Toplevel):
         total = v["total_cent"]
         self.lbl_total.configure(text=fmt.fmt_num(total if not self.eh_credito else max(pago, 0)))
         linhas = [f"Desc.    : {fmt.fmt_num(v['desconto_cent']):>10}", f"Serviço  : {fmt.fmt_num(v['servico_cent']):>10}",
-                  f"Taxa     : {fmt.fmt_num(v['taxa_cent']):>10}", f"Produtos : {fmt.fmt_num(v['subtotal_cent']):>10}",
+                  f"{'Compl.' if v.get('comanda') else 'Taxa'}    : {fmt.fmt_num(v['taxa_cent']):>10}", f"Produtos : {fmt.fmt_num(v['subtotal_cent']):>10}",
                   f"Pago     : {fmt.fmt_num(pago):>10}"]
         self.lbl_resumo.configure(text="\n".join(linhas))
         self.lbl_msg.configure(text="")

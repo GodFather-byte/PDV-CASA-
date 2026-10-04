@@ -180,7 +180,7 @@ class TesteMenu(BaseUI):
         self.assertNotIn("Utilitários", app.botoes)
         self.assertIn("Caixa", app.botoes)
         self.assertEqual(app.valores["estoque_total"].cget("text"), "1")    # painel do dia
-        self.assertIn("Não há backup", app.lbl_backup.cget("text"))
+        self.assertIn("nenhum backup", app.lbl_backup.cget("text"))        # painel avisa que ainda não há cópia
 
     def test_login_valida_senha_e_ignora_caixa_alta(self):
         from src.ui.login import JanelaLogin

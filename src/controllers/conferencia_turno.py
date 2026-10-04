@@ -108,7 +108,8 @@ def _itens_cancelados(banco, inicio: str, fim: str) -> list[dict]:
             continue
         saida.append({"quando": e["quando"], "local": _local(r["modalidade"], r["comanda"], r["posicao"]),
                       "cupom": r["cupom"], "codigo": r["codigo"], "produto": r["nome"], "quantidade": r["quantidade"],
-                      "total_cent": r["total_cent"], "por": e["por"]})
+                      "total_cent": r["total_cent"], "por": e["por"],
+                      "motivo": (re.search(r"motivo: (.*)", e["detalhe"] or "") or [None, None])[1]})
     return saida
 
 
@@ -205,7 +206,8 @@ def linhas_fita(res: dict, w: int = 40) -> list[str]:
 
     def item(i):
         return [_lr(f"  {_hora(i['quando'])} {_curto_local(i['local'])} {_qtd(i['quantidade'])}x {i['produto']}",
-                    M(i["total_cent"]), w), f"        por {i['por'] or '?'}"[:w]]
+                    M(i["total_cent"]), w),
+                (f"        {i['por'] or '?'}: {i['motivo']}" if i.get("motivo") else f"        por {i['por'] or '?'}")[:w]]
 
     def transferencia(t):
         o = "inteira" if t["tipo"] == "mesa" else f"{_qtd(t['quantidade'])}x {t['produto'] or '?'}"

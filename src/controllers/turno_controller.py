@@ -2,6 +2,9 @@
 troca de turno (fechamento) com sobra ou falta (manual do Caixa)."""
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta
+
 from src.controllers import conferencia_turno
 from src.core import formatacao as fmt
 from src.core import licenca
@@ -14,6 +17,16 @@ from src.core.erros import ErroNegocio
 # (CaixaController.cancelar_venda). Pagamento antigo sem turno (anterior à v9) conta no turno da venda, como antes.
 RECEBIDO_NO_TURNO = ("COALESCE(p.turno_id, v.turno_id) = ? "
                      "AND (v.status <> 'cancelada' OR COALESCE(p.turno_id, v.turno_id) <> v.turno_id)")
+
+
+def _horarios(texto: str) -> list[tuple[int, int]]:
+    """"02:00, 4:30" -> [(2, 0), (4, 30)]; o que não for horário válido é ignorado."""
+    saida = []
+    for parte in re.split(r"[,;\s]+", texto or ""):
+        achou = re.fullmatch(r"(\d{1,2})[:hH](\d{2})", parte)
+        if achou and int(achou.group(1)) < 24 and int(achou.group(2)) < 60:
+            saida.append((int(achou.group(1)), int(achou.group(2))))
+    return saida
 
 
 def proximo_cupom(banco) -> int:
@@ -107,6 +120,24 @@ class TurnoController:
         movimentos = {r["tipo"]: r["total"] for r in b.todos(
             "SELECT tipo, COALESCE(SUM(valor_cent), 0) AS total FROM movimentos_caixa WHERE turno_id = ? GROUP BY tipo", (turno_id,))}
         return t["valor_inicial_cent"] + na_gaveta + movimentos.get("entrada", 0) - movimentos.get("saida", 0)
+
+    def sangria_do_horario(self, turno_id: int, agora: datetime | None = None) -> str | None:
+        """Sangria por horário (Configurações > Caixa > *Horários de sangria*, ex.: "02:00, 04:30"): devolve o horário
+        combinado que já passou neste turno sem nenhuma sangria depois dele, ou None. Serve de lembrete no caixa."""
+        horarios = _horarios(self.banco.cfg("sangria_horarios"))
+        if not horarios:
+            return None
+        t = self.obter(turno_id)
+        agora = agora or datetime.fromisoformat(fmt.agora())
+        abertura = datetime.fromisoformat(t["aberto_em"])
+        passados = [dia for h, m in horarios for d in (-1, 0)
+                    if abertura < (dia := (agora + timedelta(days=d)).replace(hour=h, minute=m, second=0, microsecond=0)) <= agora]
+        if not passados:
+            return None
+        devido = max(passados)
+        feita = self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa WHERE turno_id = ? AND tipo = 'saida' AND criado_em >= ?",
+                                 (turno_id, devido.isoformat(sep=" ")), 0)
+        return None if feita else f"{devido:%H:%M}"
 
     def repique(self, turno_id: int, operador_id: int, posicao: int, valor_cent: int, comanda: bool = False) -> int:
         """Caixinha deixada pelo cliente após pagar (não é o serviço). `posicao` é a mesa ou, com comanda=True, a comanda."""

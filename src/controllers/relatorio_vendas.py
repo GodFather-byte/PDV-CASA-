@@ -293,6 +293,51 @@ class RelatoriosVendas:
         rel.add("TOTAL", t[0], t[1], M(t[2]), M(t[3]), M(t[4]), estilo="total")
         return rel
 
+    def auditoria_operadores(self, f: dict) -> Relatorio:
+        """Um quadro por operador para o dono conferir a noite: o que vendeu, quanto cancelou, quanto de desconto deu e quanto
+        tirou do caixa em sangria. Cancelamento alto ou desconto fora do normal é onde costuma estar o problema."""
+        onde, p = self._onde_vendas(f)
+        virada = self._virada()
+        ini = fmt.faixa_dia_operacional(f["de"], virada)[0] if f.get("de") else "0000-01-01 00:00:00"
+        fim = fmt.faixa_dia_operacional(f["ate"], virada)[1] if f.get("ate") else "9999-12-31 23:59:59"
+        rel = Relatorio("Auditoria por operador", [
+            Coluna("Operador", 16), Coluna("Cupons", 7, "d"), Coluna("Vendido", 11, "d"), Coluna("Ticket", 9, "d"),
+            Coluna("Desconto", 9, "d"), Coluna("Cup.canc", 8, "d"), Coluna("Itens canc", 10, "d"), Coluna("Sangrias", 10, "d")],
+            criterios=self.criterios(f))
+        linhas: dict[int, dict] = {}
+
+        def linha(op_id, nome):
+            return linhas.setdefault(op_id or 0, {"nome": nome or "(sem operador)", "cupons": 0, "total": 0, "desc": 0,
+                                                  "canc": 0, "itens": 0, "sangria": 0})
+        for r in self.banco.todos(
+                f"""SELECT v.operador_id, o.nome, COUNT(*) AS cupons, SUM(v.total_cent) AS total, SUM(v.desconto_cent) AS desc
+                    FROM vendas v LEFT JOIN operadores o ON o.id = v.operador_id
+                    WHERE {onde} AND v.subtotal_cent > 0 GROUP BY v.operador_id""", p):
+            x = linha(r["operador_id"], r["nome"])
+            x["cupons"], x["total"], x["desc"] = r["cupons"], r["total"], r["desc"]
+        for r in self.banco.todos(
+                """SELECT v.cancelada_por AS op, o.nome, COUNT(*) AS n FROM vendas v LEFT JOIN operadores o ON o.id = v.cancelada_por
+                   WHERE v.status = 'cancelada' AND COALESCE(v.fechada_em, v.aberta_em) >= ? AND COALESCE(v.fechada_em, v.aberta_em) < ?
+                   GROUP BY v.cancelada_por""", (ini, fim)):
+            linha(r["op"], r["nome"])["canc"] = r["n"]
+        for r in self.banco.todos(
+                """SELECT l.operador_id AS op, o.nome, COUNT(*) AS n FROM log_eventos l LEFT JOIN operadores o ON o.id = l.operador_id
+                   WHERE l.evento = 'item_cancelado' AND l.quando >= ? AND l.quando < ? GROUP BY l.operador_id""", (ini, fim)):
+            linha(r["op"], r["nome"])["itens"] = r["n"]
+        for r in self.banco.todos(
+                """SELECT m.operador_id AS op, o.nome, SUM(m.valor_cent) AS total FROM movimentos_caixa m
+                   LEFT JOIN operadores o ON o.id = m.operador_id
+                   WHERE m.tipo = 'saida' AND m.criado_em >= ? AND m.criado_em < ? GROUP BY m.operador_id""", (ini, fim)):
+            linha(r["op"], r["nome"])["sangria"] = r["total"]
+        t = [0, 0, 0, 0, 0, 0]
+        for x in sorted(linhas.values(), key=lambda x: (-x["total"], x["nome"])):
+            ticket = fmt.dividir_cent(x["total"], x["cupons"])
+            rel.add(x["nome"], x["cupons"], M(x["total"]), M(ticket), M(x["desc"]), x["canc"], x["itens"], M(x["sangria"]))
+            for i, v in enumerate((x["cupons"], x["total"], x["desc"], x["canc"], x["itens"], x["sangria"])):
+                t[i] += v
+        rel.add("TOTAL", t[0], M(t[1]), M(fmt.dividir_cent(t[1], t[0])), M(t[2]), t[3], t[4], M(t[5]), estilo="total")
+        return rel
+
     # ------------------------------------------------------------ 6.07 CMV
     def cmv(self, f: dict) -> Relatorio:
         """Custo da mercadoria vendida: custo atual (composição ou último preço de compra) x quantidade."""

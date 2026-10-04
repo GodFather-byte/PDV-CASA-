@@ -32,65 +32,20 @@ O protótipo de console (`src/main.py`), as telas Flet (`main_ui.py`, `cadastros
 com o caixa novo), os adaptadores em tupla do `ProdutoController`, o `mesa_controller.py` e o `restaurante_controller.py`
 (que nem importavam) e a tabela `mesas` (esquema v10) foram apagados. O único fluxo de venda é o `CaixaController`.
 
-## Contrato de sincronização PDV → nuvem
+## Nuvem: só licença e atualizações (2026-10-04)
 
-`POST {api_url}` com o cabeçalho `Authorization: Bearer <token>` (o `api_token` de Configurações > Nuvem: o token DA LOJA,
-criado na nuvem com `python -m backend.lojas criar <chave_loja> "<nome>"`) e corpo JSON:
+A nuvem **não recebe vendas e não tem painel** (o contrato `POST /v1/sincronizar`, o painel `GET /` e
+`/v1/dashboard/resumo` foram removidos; o histórico abaixo, em "Pedidos entre agentes", descreve o que existiu). O que
+sobrou, sempre com `Authorization: Bearer <token da loja>`:
 
-```json
-{
-  "chave_loja": "string",
-  "terminal": 1,
-  "enviado_em": "2026-10-03 21:00:00",
-  "vendas": [
-    {
-      "uuid": "…", "cupom": 1234, "turno": 2, "terminal": 1,
-      "modalidade": "balcao|mesa|caderneta|entrega", "posicao": 0, "comanda": false,
-      "status": "fechada|cancelada",
-      "aberta_em": "…", "fechada_em": "…", "operador": "nome",
-      "subtotal_cent": 0, "desconto_cent": 0, "servico_cent": 0, "taxa_cent": 0,
-      "total_cent": 0, "troco_cent": 0, "vale_cent": 0, "pessoas": 1,
-      "itens": [{"codigo": "0000000000001", "nome": "…", "quantidade": 1.0,
-                 "preco_unit_cent": 350, "total_cent": 350, "cancelado": false}],
-      "pagamentos": [{"tipo": "Dinheiro", "valor_cent": 1000, "troco_cent": 0}]
-    }
-  ]
-}
-```
+- `GET /v1/saude`: sem token.
+- `GET /v1/licenca`: código de licença da loja, válido até a data paga (`python -m backend.lojas assinatura`).
+- `GET /v1/atualizacoes?versao=X.Y.Z`: versões novas publicadas (`python -m backend.atualizacoes`).
+- `GET /v1/admin/lojas`: só com o `PDV_API_TOKEN`; lista as lojas e a situação da assinatura.
 
-Campos: `posicao` é inteiro (0 fora de mesa e entrega) ou `null`; `comanda` diz se a posição é uma comanda (`true`) ou
-uma mesa (`false`, o padrão quando um PDV antigo não manda o campo): a comanda 5 e a mesa 5 são vendas diferentes; `operador` e `turno` podem ser `null`; datas
-`AAAA-MM-DD HH:MM:SS` (horário local do PDV); valores em centavos inteiros `>= 0`; `status` só `fechada` ou
-`cancelada`; no máximo 500 vendas por lote.
-
-Resposta: `200` com `{"aceitas": ["uuid", …]}`, só com as `uuid` que a nuvem JÁ TEM gravadas (novas ou repetidas).
-O PDV marca como sincronizadas apenas essas `uuid`, e somente se o status da venda ainda for o que foi no lote
-(`SyncController.confirmar(uuids, enviados)`): cancelar a venda com o lote a caminho a mantém pendente para o
-próximo envio. Outros códigos: `401` token ausente ou errado; `403` token de outra loja (a `chave_loja` do lote não é a do
-token), loja desativada ou token do administrador (`PDV_API_TOKEN` só consulta o painel); `503` servidor sem nenhuma loja
-e sem `PDV_API_TOKEN`; `422` payload inválido.
-
-Regras do servidor (`backend/main.py`):
-
-- **Idempotente por `uuid`**: reenviar não duplica itens nem pagamentos.
-- **A venda só avança**: se a `uuid` já existe e o lote traz `cancelada` sobre `fechada`, o status é atualizado;
-  status igual ou anterior não muda nada (um lote atrasado nunca desfaz um cancelamento).
-- Uma `uuid` que já pertence a outra `chave_loja` não é confirmada.
-- **A loja é a do token** (tabela `lojas` da nuvem, só com o SHA-256 do token). O painel (`/v1/dashboard/resumo`) com token
-  de loja mostra só ela (pedir outra `chave_loja` dá `403`); com o `PDV_API_TOKEN`, todas ou a pedida.
-
-Regras do PDV (`src/sync/sincronizador.py`): a cada rodada lê `api_url`, `api_token`, `chave_loja` e
-`sync_intervalo_seg` de Configurações > Nuvem; com falhas seguidas a espera dobra (até 10 min) e tudo vai para
-`logs/sync.log`. Um `422` cujo `loc` aponta a venda coloca só ela em **quarentena** (`vendas.sincronizado = 2`:
-aparece no painel e bloqueia a limpeza do movimento) e `SyncController.reenviar_rejeitadas()` a devolve à fila (`python -m src.app --sync --reenviar`). Se o `422` apontar TODAS as
-vendas do lote, nada vai para a quarentena: é tratado como contrato incompatível e conta como falha (espera crescente).
-Para rodar: `python -m src.app --sync` (no executável, `WillPDV.exe --sync`). O contrato é verificado com um
-lote montado pelo PDV real em `tests/test_nuvem.py`.
-
-Painel do dono: `GET /` (página sem dados, pede o token) e `GET /v1/dashboard/resumo?dia=AAAA-MM-DD&chave_loja=…`
-(mesmo token; só vendas fechadas com itens).
-
-Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
+O PDV (`src/sync/sincronizador.py`, `--sync`) só consulta licença e atualizações a cada rodada. A coluna `vendas.sincronizado`
+continua no banco do PDV por compatibilidade, sem uso. Quando houver pagamento online, a nuvem só precisa gravar
+`licenca_ate` da loja quando o pagamento for confirmado (hoje isso é o comando `lojas assinatura`).
 
 ## Pedidos entre agentes
 

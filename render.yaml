@@ -12,13 +12,11 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
-      - key: TZ                       # datas da nuvem no horário do Brasil (licença e recebimento das vendas)
+      - key: TZ                       # datas da nuvem no horário do Brasil (datas da licença)
         value: America/Sao_Paulo
       - key: PDV_API_TOKEN            # sua senha de administrador: o Render gera uma; veja em Environment
         generateValue: true
       - key: PDV_NUVEM_DB_URL         # cole o endereço do banco do Neon (postgresql://...)
         sync: false
-      - key: PDV_NUVEM_VIRADA_HORA
-        value: "6"
       - key: PDV_LICENCA_CHAVE        # arquivo secreto (Secret File) com a chave da licença
         value: /etc/secrets/licenca_privada.key

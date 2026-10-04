@@ -350,7 +350,8 @@ def tratar(master, funcao, *args, **kwargs):
     except ErroNegocio as e:
         erro(master, str(e))
     except Exception as e:  # noqa: BLE001 - nunca deixar a tela morrer no caixa
-        import traceback
-        traceback.print_exc()
+        from src.core import registro
+        import sys
+        registro.registrar_excecao(*sys.exc_info(), origem=getattr(funcao, "__name__", "tratar"))
         erro(master, f"Erro inesperado: {e}\nO movimento já gravado foi preservado.", "Erro")
     return False, None

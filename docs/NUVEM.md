@@ -1,15 +1,15 @@
 # Nuvem do WillPDV: como colocar no ar e acompanhar as lojas
 
-A nuvem é a parte que fica com **você**, o fornecedor. Ela faz quatro coisas:
+A nuvem é a parte que fica com **você**, o fornecedor. Ela faz três coisas (**não recebe vendas e não tem painel**: cada
+boate guarda as próprias vendas no caixa):
 
 | O quê | Para quê |
 |---|---|
-| Recebe as vendas dos caixas | Painel do dono da boate no celular, de qualquer lugar |
 | Guarda até quando cada loja pagou | O caixa renova a licença **sozinho** quando a loja está em dia |
 | Avisa sobre versão nova | Aparece uma faixa no caixa: "Nova versão disponível" |
-| Bloqueia uma loja | Desativou: a loja para de enviar e de ver o painel |
+| Bloqueia uma loja | Desativou: a loja deixa de renovar a licença e de ver avisos |
 
-O caixa **não depende** da nuvem para vender: sem internet ele continua funcionando e manda tudo depois.
+O caixa **não depende** da nuvem para vender: sem internet ele continua funcionando e tenta renovar a licença depois.
 
 Tudo o que é da nuvem está na pasta `backend/` do projeto.
 
@@ -28,8 +28,8 @@ python -m uvicorn backend.main:app --port 8000
 ```
 
 - O `criar` mostra o **token da loja**. Copie: ele só aparece uma vez.
-- Abra `http://localhost:8000/` no navegador e entre com o token. Esse é o painel do dono.
-- Para ligar um caixa nesse teste, siga o passo 4 usando o endereço `http://localhost:8000/v1/sincronizar`.
+- Abra `http://localhost:8000/v1/saude` no navegador: deve mostrar `{"status":"ok"}`.
+- Para ligar um caixa nesse teste, siga o passo 4 usando o endereço `http://localhost:8000`.
 
 Para parar o servidor, aperte `Ctrl+C`.
 
@@ -40,7 +40,7 @@ Para parar o servidor, aperte `Ctrl+C`.
 Dá para colocar a nuvem no ar **sem pagar nada**, usando dois serviços gratuitos:
 
 - **Render** ([render.com](https://render.com)): roda o programa da nuvem.
-- **Neon** ([neon.tech](https://neon.tech)): guarda os dados (lojas, licenças e vendas) num banco PostgreSQL.
+- **Neon** ([neon.tech](https://neon.tech)): guarda os dados (lojas e licenças) num banco PostgreSQL.
 
 O banco precisa ficar fora do Render porque o disco do plano grátis do Render é apagado a cada reinício: as lojas e os
 tokens sumiriam. No Neon os dados ficam guardados.
@@ -50,7 +50,7 @@ tokens sumiriam. No Neon os dados ficam guardados.
 | O quê | Na prática |
 |---|---|
 | O Render "dorme" depois de 15 minutos sem uso | O primeiro acesso depois disso demora cerca de 1 minuto. O caixa não trava: o envio tenta de novo sozinho, e a licença manual continua valendo. |
-| Neon grátis: 0,5 GB | Dá para muitos meses de vendas de algumas boates. |
+| Neon grátis: 0,5 GB | Sobra de muito: guarda só a lista de lojas e as datas pagas. |
 | Sem terminal no Render grátis | Os comandos de lojas e licenças (passos 3 e 5) rodam **no seu PC**, ligados ao banco do Neon (veja abaixo). |
 
 Quando tiver várias boates pagando, passe para o VPS da seção 2 ou para um plano pago do Render. É só mudar o endereço
@@ -73,7 +73,7 @@ no caixa.
    - Conteúdo: o conteúdo do seu `C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key`, que é uma linha de letras e números.
 5. Clique em **Deploy**. Quando terminar, o Render mostra o endereço, algo como `https://willpdv-nuvem.onrender.com`.
    Abra `https://willpdv-nuvem.onrender.com/v1/saude`: tem que aparecer `{"status":"ok"}`.
-6. A sua senha de administrador (para ver o painel de todas as lojas) está em **Environment > PDV_API_TOKEN**.
+6. A sua senha de administrador (para listar todas as lojas) está em **Environment > PDV_API_TOKEN**.
 
 ### G3. Rodar os comandos de lojas e licenças no seu PC
 Como o banco está no Neon, os comandos funcionam do seu computador. No PowerShell, dentro da pasta do projeto:
@@ -90,7 +90,7 @@ A linha do `$env:` precisa ser repetida cada vez que abrir um PowerShell novo. D
 deste guia funcionam igual: só troque `lojas` por `python -m backend.lojas` e `atualizacoes` por
 `python -m backend.atualizacoes`.
 
-No caixa (passo 4), o endereço fica: `https://willpdv-nuvem.onrender.com/v1/sincronizar`.
+No caixa (passo 4), o endereço fica: `https://willpdv-nuvem.onrender.com`.
 
 Para atualizar a nuvem quando o código mudar, não precisa fazer nada: o Render publica sozinho a cada mudança no `main`
 do GitHub.
@@ -142,13 +142,11 @@ cat > /opt/willpdv/nuvem.env <<'EOF'
 PDV_API_TOKEN=TROQUE-POR-UMA-SENHA-LONGA-SO-SUA
 PDV_NUVEM_DB_URL=sqlite:////opt/willpdv/nuvem.db
 PDV_LICENCA_CHAVE=/opt/willpdv/licenca_privada.key
-PDV_NUVEM_VIRADA_HORA=6
 EOF
 chmod 600 /opt/willpdv/nuvem.env
 ```
 
-- `PDV_API_TOKEN` é a **sua** senha de administrador. Com ela o painel mostra todas as lojas.
-- `PDV_NUVEM_VIRADA_HORA=6` faz a noite da boate contar como um dia só (das 6h às 6h).
+- `PDV_API_TOKEN` é a **sua** senha de administrador. Com ela você lista todas as lojas.
 
 ### 2.4 Deixar a nuvem ligada sempre (reinicia sozinha se cair ou se o servidor reiniciar)
 
@@ -231,30 +229,23 @@ No caixa, entre em **Configurações > Configurações > aba Nuvem**:
 | Campo | O que colocar |
 |---|---|
 | Chave da loja (licença) | `BOATE-ESTRELA` |
-| Endereço da API de sincronização | `https://nuvem.seusite.com.br/v1/sincronizar` |
+| Endereço da nuvem | `https://nuvem.seusite.com.br` |
 | Token da API | o token que o `criar` mostrou |
 
-Na instalação, marque **"Enviar as vendas para a nuvem em segundo plano"**: o envio passa a abrir sozinho junto com o
-Windows. Se o caixa já estiver instalado, rode o instalador de novo e marque essa opção.
-
-Para conferir se está enviando, olhe a tela inicial do caixa: o quadro **Nuvem** mostra as "vendas aguardando envio",
-que deve cair para 0. O histórico do envio fica em `%LOCALAPPDATA%\WILL-PDV\logs\sync.log`.
-
-O dono da boate acompanha as vendas em `https://nuvem.seusite.com.br/`, entrando com o token da loja dele.
+Na instalação, marque **"Verificar licença e atualizações na nuvem em segundo plano"**: a verificação passa a abrir
+sozinha junto com o Windows. Se o caixa já estiver instalado, rode o instalador de novo e marque essa opção. O histórico
+fica em `%LOCALAPPDATA%\WILL-PDV\logs\sync.log`.
 
 ---
 
 ## 5. Acompanhar e controlar as licenças
 
-**Pelo navegador:** abra o endereço da nuvem (ex.: `https://willpdv-nuvem.onrender.com/`), clique em **Entrar com
-outro token** e use o seu **token de administrador** (`PDV_API_TOKEN`). Aparece a tabela **Lojas e licenças**, com:
+**Pelo navegador ou `curl`:** a lista das lojas (ativa ou não, até quando pagou, "vence em" e "VENCIDA") sai em
+`https://nuvem.seusite.com.br/v1/admin/lojas`, com o cabeçalho `Authorization: Bearer <seu PDV_API_TOKEN>`:
 
-- cada loja e se está ativa;
-- até quando pagou, em verde, amarelo quando faltam 7 dias ou menos, e vermelho quando está vencida;
-- quantas vendas a loja já mandou e quando chegou o último envio.
-
-Na mesma tela, o seletor **Ver vendas de** mostra as vendas de uma loja só. Com o token de uma loja, o painel mostra
-só as vendas dela, sem a tabela.
+```bash
+curl -H "Authorization: Bearer SEU_TOKEN_DE_ADMIN" https://nuvem.seusite.com.br/v1/admin/lojas
+```
 
 **Pelo terminal** (para cadastrar, renovar e bloquear):
 
@@ -264,7 +255,7 @@ Todos estes comandos são rodados no servidor (veja a dica do atalho `lojas` no 
 lojas listar                                   # todas as lojas: ativa ou não, e até quando pagou
 lojas assinatura BOATE-ESTRELA 2026-11-30      # a loja pagou até 30/11/2026
 lojas assinatura BOATE-ESTRELA cancelar        # parou de pagar: não renova mais
-lojas desativar BOATE-ESTRELA                  # bloqueia envio e painel na hora
+lojas desativar BOATE-ESTRELA                  # bloqueia a loja na hora
 lojas ativar BOATE-ESTRELA                     # libera de novo
 lojas novo-token BOATE-ESTRELA                 # token vazou: gera outro (o antigo para de funcionar)
 ```
@@ -323,7 +314,7 @@ Colunas novas no banco da nuvem são criadas sozinhas, sem perder o que já est�
 | Sintoma | O que fazer |
 |---|---|
 | `https://.../v1/saude` não abre | `systemctl status willpdv` e `systemctl status caddy`. Confira se o domínio aponta para o IP do servidor. |
-| Caixa com "vendas aguardando envio" que não baixam | Endereço ou token errado no caixa, ou o envio não está aberto (passo 4). Veja o `sync.log`. |
+| Caixa não renova a licença nem mostra versão nova | Endereço ou token errado no caixa, ou a verificação não está aberta (passo 4). Veja o `sync.log`. |
 | "Este token é da loja X" | A chave da loja no caixa não é a mesma do `criar`. |
 | Licença não renova sozinha | `lojas listar` mostra a data paga? A data precisa ser **depois de hoje**. Confira também se o `licenca_privada.key` está no servidor (passo 2.2). |
 | Ver os erros da nuvem | `journalctl -u willpdv -n 100 --no-pager` |

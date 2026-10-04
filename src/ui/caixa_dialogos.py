@@ -53,6 +53,9 @@ def trocar_turno(master, ctx) -> bool:
         return False
     ok, res = tema.tratar(master, ctx.turnos.fechar, turno["id"], ctx.operador_id, valor)
     if ok:
+        if ctx.utilitarios.backup_automatico("troca de turno") is None:
+            tema.aviso(master, "O turno foi fechado, mas o BACKUP automático falhou.\n"
+                               "Faça um backup manual em Utilitários > Backup de dados e confira a pasta/disco.")
         PainelFechamento(master, ctx, res, vias_impressas=imprimir_fechamento(master, ctx, res))
     return ok
 

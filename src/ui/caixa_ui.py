@@ -537,12 +537,25 @@ class JanelaCaixa(tk.Toplevel):
         elif op == "conta":
             self.cancelar_conta()
 
+    def _pedir_motivo(self, titulo: str, rotulo: str, padrao: str) -> str | None:
+        """Motivo do cancelamento: obrigatório se a configuração exigir; senão a janela só aparece quando há um padrão."""
+        if not self.ctx.banco.cfg_bool("exigir_motivo_cancelamento", False):
+            return padrao
+        def validar(v: str) -> str:
+            if not v:
+                raise ValueError("Informe o motivo.")
+            return v
+        return tema.pedir_texto(self, titulo, rotulo, validar=validar)
+
     def cancelar_conta(self) -> None:
         if not self._autorizar("caixa_cancelamento", "exigir_senha_cancelamento", "Cancelar a venda exige autorização:"):
             return
         if not tema.confirmar(self, "Cancelar a venda inteira?\nTodos os itens lançados serão eliminados.", "Cancela Venda", padrao_sim=False):
             return
-        ok, _ = tema.tratar(self, self.ctx.caixa.cancelar_venda, self.venda_id, "cancelada no caixa")
+        motivo = self._pedir_motivo("Cancela Venda", "Motivo do cancelamento da venda:", "cancelada no caixa")
+        if motivo is None:
+            return
+        ok, _ = tema.tratar(self, self.ctx.caixa.cancelar_venda, self.venda_id, motivo)
         if ok:
             self.venda_id = None
             self._limpar_entrada()
@@ -566,7 +579,10 @@ class JanelaCaixa(tk.Toplevel):
             return
         nome = self.grade.valores(s)[1]
         if tema.confirmar(self, f"Cancelar o item '{nome}'?", "Cancela Item", padrao_sim=False):
-            ok, _ = tema.tratar(self, self.ctx.caixa.cancelar_item, int(s))
+            motivo = self._pedir_motivo("Cancela Item", f"Motivo do cancelamento de '{nome}':", "")
+            if motivo is None:
+                return
+            ok, _ = tema.tratar(self, self.ctx.caixa.cancelar_item, int(s), motivo)
             if ok:
                 self.modo_cancelar = False
                 self.recarregar()
@@ -843,7 +859,12 @@ class JanelaCaixa(tk.Toplevel):
         há: o operador conta a gaveta no fechamento sem ver o esperado."""
         limite = self.ctx.banco.cfg_int("limite_gaveta", 0) * 100
         turno = self.ctx.turnos.atual()
-        if limite <= 0 or turno is None or self.ctx.turnos.dinheiro_esperado(turno["id"]) <= limite:
+        if turno is None:
+            return ""
+        horario = self.ctx.turnos.sangria_do_horario(turno["id"])
+        if horario:
+            return f"ATENÇÃO: está na hora da sangria das {horario}. Faça a sangria (F7)."
+        if limite <= 0 or self.ctx.turnos.dinheiro_esperado(turno["id"]) <= limite:
             return ""
         return f"ATENÇÃO: a gaveta passou de {fmt.fmt_brl(limite)}. Faça uma sangria (F7)."
 

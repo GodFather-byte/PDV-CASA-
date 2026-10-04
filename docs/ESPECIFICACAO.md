@@ -180,10 +180,10 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 | Gaveta | Abre pelo pulso da impressora térmica (ESC p) e a abertura manual é registrada. Sem impressora térmica configurada o caixa só registra. Não testada em gaveta real. |
 | Impressora térmica em equipamento real | Testada só com impressora TCP simulada e arquivo. Faltam modelos reais: página de código, corte, pino da gaveta e velocidade serial variam. |
 | Rede com vários caixas no mesmo banco | O banco SQLite é local a cada terminal. |
-| Sincronização com a nuvem em loja | API (FastAPI) e cliente existem, com testes de contrato; falta validar em loja, HTTPS e token por loja. Cadastros descendo da nuvem: não existe. |
+| Nuvem | Só licença e atualizações (FastAPI); vendas e painel foram retirados de propósito (cada boate guarda as suas). Falta validar em loja e HTTPS. Licença liberada automaticamente no pagamento online: não existe (hoje é `lojas assinatura`). |
 | Tabela de preços por empresa (multi-loja) | Uma única tabela de preços. |
 | E-mail da loja, foto do subgrupo | Os campos são guardados; não são usados. (O logotipo da loja é impresso no cupom térmico quando a opção está ligada.) |
 | Colunas "Turno 1 a 3" e "Figura" do tipo de pagamento | O manual não explica o uso; omitidas. |
 | Acesso "Transportadoras" da versão web | Citado sem descrição; omitido. |
 | Campos de nota fiscal de compra (BC ICMS, chave de acesso...) | Fora de escopo (dependem de consultor fiscal, segundo o próprio manual). |
-| Controles de boate pesquisados e ainda não feitos | **Consumação mínima** (a casa exige um gasto mínimo por comanda e cobra a diferença na saída: exige marcar produtos que contam e uma regra no pagamento, com mudança de esquema). **Pré-pago/pulseira** (crédito carregado na entrada e debitado no consumo). **Motivo obrigatório no cancelamento de item e de cupom** (hoje o caixa grava sempre "cancelada no caixa" no cupom e, no item, só quem cancelou). **Sangria periódica por horário** (além do limite de dinheiro, já feito). **Taxa de comanda perdida** e **consumação na entrada** já funcionam cadastrando um produto e lançando-o na comanda. |
+| Controles de boate pesquisados e ainda não feitos | **Consumação mínima** já existe por comanda (valor único, faixa de números); falta o mínimo por tipo de entrada e a cobrança da comanda sem nenhum consumo. **Pré-pago/pulseira** (crédito carregado na entrada e debitado no consumo). **Taxa de comanda perdida** e **consumação na entrada** já funcionam cadastrando um produto e lançando-o na comanda. |

@@ -1,8 +1,7 @@
 """Ponto de entrada do PDV: python -m src.app  (ou iniciar_pdv.bat no Windows).
 
-Com `--sync` roda só o envio das vendas para a nuvem (sem janela), a partir do mesmo programa:
+Com `--sync` roda só a verificação de licença e de versão nova na nuvem (sem janela), a partir do mesmo programa:
 python -m src.app --sync   ou   WillPDV.exe --sync
-Com `--sync --reenviar` devolve à fila as vendas que a nuvem recusou (quarentena) e termina.
 """
 import sys
 
