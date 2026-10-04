@@ -100,6 +100,20 @@ class Versao(Base):
     publicada_em = Column(String)
 
 
+def situacao_assinatura(licenca_ate: str | None, hoje: date | None = None) -> str:
+    """'paga até 30/11/2026', com o alerta do que precisa de atenção: VENCIDA ou quantos dias faltam (7 ou menos)."""
+    if not licenca_ate:
+        return "sem assinatura"
+    ate = date.fromisoformat(licenca_ate)
+    dias = (ate - (hoje or date.today())).days
+    texto = f"paga até {ate.strftime('%d/%m/%Y')}"
+    if dias <= 0:
+        return texto + " (VENCIDA)"
+    if dias <= 7:
+        return texto + f" (vence em {dias} dia{'s' if dias > 1 else ''})"
+    return texto
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -329,6 +343,25 @@ def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{
         "ticket_medio_cent": (int(receita) + cupons // 2) // cupons if cupons else 0,   # centavos inteiros
         "top_produtos": [{"nome": n, "qtd": float(q), "total_cent": int(t)} for n, q, t in mais_vendidos],
     }
+
+
+@app.get("/v1/admin/lojas")
+def admin_lojas(acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
+    """Painel do fornecedor (só com o PDV_API_TOKEN): cada loja, se está ativa, até quando pagou e quando mandou a
+    última venda. É o 'lojas listar' na tela, para quem não tem terminal no servidor (ex.: Render grátis)."""
+    if not acesso.admin:
+        raise HTTPException(status_code=403, detail="Só o token do administrador vê a lista de lojas.")
+    envios = {chave: (n, ultima) for chave, n, ultima in
+              db.query(Venda.chave_loja, func.count(Venda.id), func.max(Venda.recebida_em)).group_by(Venda.chave_loja).all()}
+    hoje = date.today()
+    saida = []
+    for loja in db.query(Loja).order_by(Loja.chave_loja).all():
+        n, ultima = envios.get(loja.chave_loja, (0, None))
+        dias = (date.fromisoformat(loja.licenca_ate) - hoje).days if loja.licenca_ate else None
+        saida.append({"chave_loja": loja.chave_loja, "nome": loja.nome, "ativa": bool(loja.ativa),
+                      "licenca_ate": loja.licenca_ate, "dias_restantes": dias,
+                      "situacao": situacao_assinatura(loja.licenca_ate, hoje), "vendas_recebidas": n, "ultima_venda": ultima})
+    return {"lojas": saida}
 
 
 # ------------------------------------------------------------ atualizações

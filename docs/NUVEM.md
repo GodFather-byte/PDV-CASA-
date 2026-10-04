@@ -246,6 +246,18 @@ O dono da boate acompanha as vendas em `https://nuvem.seusite.com.br/`, entrando
 
 ## 5. Acompanhar e controlar as licenças
 
+**Pelo navegador:** abra o endereço da nuvem (ex.: `https://willpdv-nuvem.onrender.com/`), clique em **Entrar com
+outro token** e use o seu **token de administrador** (`PDV_API_TOKEN`). Aparece a tabela **Lojas e licenças**, com:
+
+- cada loja e se está ativa;
+- até quando pagou, em verde, amarelo quando faltam 7 dias ou menos, e vermelho quando está vencida;
+- quantas vendas a loja já mandou e quando chegou o último envio.
+
+Na mesma tela, o seletor **Ver vendas de** mostra as vendas de uma loja só. Com o token de uma loja, o painel mostra
+só as vendas dela, sem a tabela.
+
+**Pelo terminal** (para cadastrar, renovar e bloquear):
+
 Todos estes comandos são rodados no servidor (veja a dica do atalho `lojas` no passo 3):
 
 ```bash
