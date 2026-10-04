@@ -312,14 +312,21 @@ class TestePainelDoDono(BasePDV):
         self._hora["t"] = datetime(2026, 10, 4, 1, 30, 0)
         self.vender(qtd=3)
         self.enviar(SyncController(self.banco).montar_lote())
-        self.assertEqual(self.resumo().json()["dia"], "2026-10-04")           # padrão: dia da venda mais recente
-        self.assertEqual(self.resumo(dia="2026-10-04").json()["receita_cent"], 3000)
-        self.assertEqual(self.resumo(dia="2026-10-03").json()["receita_cent"], 1000)
-        self.assertEqual(self.resumo(dia="2026-10-05").json()["cupons"], 0)
+        # A noite não se divide à meia-noite: com a virada às 6h (padrão), a venda da 1h30 conta na noite de 03/10.
+        r = self.resumo().json()
+        self.assertEqual((r["dia"], r["virada"], r["cupons"], r["receita_cent"]), ("2026-10-03", 6, 2, 4000))
+        self.assertEqual(self.resumo(dia="2026-10-04").json()["cupons"], 0)
+        # Com virada 0 vale o dia do calendário, como antes.
+        self.assertEqual(self.resumo(dia="2026-10-04", virada=0).json()["receita_cent"], 3000)
+        self.assertEqual(self.resumo(dia="2026-10-03", virada=0).json()["receita_cent"], 1000)
+        self.assertEqual(self.resumo(virada=0).json()["dia"], "2026-10-04")    # padrão: dia da venda mais recente
+        with mock.patch.dict(os.environ, {"PDV_NUVEM_VIRADA_HORA": "0"}):
+            self.assertEqual(self.resumo().json()["dia"], "2026-10-04")
         self.assertEqual(self.resumo(dia="2026-10-03", chave_loja="OUTRA").json()["receita_cent"], 0)
-        self.assertEqual(self.resumo(dia="2026-10-03", chave_loja="LOJA-1").json()["receita_cent"], 1000)
+        self.assertEqual(self.resumo(dia="2026-10-03", chave_loja="LOJA-1").json()["receita_cent"], 4000)
         for ruim in ("amanha", "2026-13-40", "2026-10-3"):
             self.assertEqual(self.resumo(dia=ruim).status_code, 422, ruim)
+        self.assertEqual(self.resumo(virada=24).status_code, 422)
 
     def test_dia_padrao_do_painel_respeita_a_loja_pedida(self):
         sync = SyncController(self.banco)

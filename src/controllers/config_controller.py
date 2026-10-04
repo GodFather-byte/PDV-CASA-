@@ -61,6 +61,7 @@ CAMPOS_CONFIG = [
     ("painel_mesas_fixo", "Mostrar sempre os ícones das mesas e comandas abertas no rodapé do caixa", "sn", "Mesas e serviço"),
     ("painel_mostra_garotas", "Mostrar no rodapé do caixa as garotas com comissão a pagar", "sn", "Mesas e serviço"),
     ("num_turnos", "Número de turnos por dia", "int", "Caixa"),
+    ("virada_dia_hora", "O dia do painel vira às (hora, 0 a 23; 6 = a madrugada conta na noite anterior)", "int", "Caixa"),
     ("exigir_senha_gaveta", "Exigir senha de supervisor para abrir a gaveta", "sn", "Caixa"),
     ("exigir_senha_sangria", "Exigir senha de supervisor para sangria", "sn", "Caixa"),
     ("exigir_senha_cancelamento", "Exigir senha de supervisor para cancelamentos", "sn", "Caixa"),
@@ -190,6 +191,8 @@ class ConfigController:
                     raise ErroValidacao("O número de mesas deve ficar entre 1 e 999.", {chave: "inválido"})
                 if chave == "num_comandas" and not 0 <= int(v) <= 10000:
                     raise ErroValidacao("O número de comandas deve ficar entre 0 e 10000.", {chave: "inválido"})
+                if chave == "virada_dia_hora" and not 0 <= int(v) <= 23:
+                    raise ErroValidacao("A hora da virada do dia vai de 0 a 23.", {chave: "inválido"})
                 if chave == "num_turnos" and not 1 <= int(v) <= 9:
                     raise ErroValidacao("O número de turnos deve ficar entre 1 e 9.", {chave: "inválido"})
                 if chave == "vias_fechamento" and not 1 <= int(v) <= 3:

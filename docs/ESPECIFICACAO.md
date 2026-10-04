@@ -66,6 +66,13 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   mostra o total "fora da gaveta". Cada forma de pagamento tem a marca "Fica na gaveta" (`tipos_pagamento.na_gaveta`;
   cartão, Pix, transferência e TEF saem de fábrica). Repique e contra-vale emitido são informativos e não entram.
   (O exemplo do manual não incluía as sangrias no esperado; aqui elas reduzem o esperado porque o dinheiro saiu.)
+- **Dia operacional nos painéis:** a noite da boate atravessa a meia-noite, então o "vendas do dia" da tela principal e o
+  painel da nuvem contam das 6h às 6h do dia seguinte (`virada_dia_hora` no PDV, `PDV_NUVEM_VIRADA_HORA` na nuvem; 0 volta
+  ao dia do calendário). Os relatórios por período continuam pelas datas e horas digitadas.
+- **Licença e relógio voltado:** a data de referência da licença é a maior entre hoje, a última data vista
+  (`licenca_ultimo_uso`) e o movimento mais recente (venda encerrada ou turno aberto). Apagar ou editar a linha da data vista
+  não reabre o prazo; seria preciso adulterar o histórico de vendas. Uma licença offline em código Python não é inviolável:
+  isso só fecha o contorno fácil.
 - **Cada pagamento conta no turno em que o dinheiro entrou** (`pagamentos_venda.turno_id`, esquema v9), não no turno em que a
   conta fecha: o adiantamento de uma comanda fica no turno que o recebeu (e já entra no esperado enquanto a comanda está
   aberta, porque o dinheiro está na gaveta), e o troco sai dos pagamentos do turno que fecha a conta. Turno fechado não muda

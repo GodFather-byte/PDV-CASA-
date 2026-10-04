@@ -187,6 +187,19 @@ class TesteLicenca(BaseTeste):
         self.assertEqual(self.banco.cfg("licenca_ultimo_uso"), "2026-10-20")
         self.assertEqual(self.estado(date(2026, 10, 1)).situacao, "bloqueada")
 
+    def test_apagar_a_data_vista_nao_reabre_o_prazo(self):
+        """O movimento da loja também vale como data vista: apagar `licenca_ultimo_uso` e voltar o relógio não basta."""
+        self.ativar(self.codigo(dias=7))                                    # vence em 10/10
+        self.banco.inserir("turnos", {"numero": 1, "terminal": 1, "aberto_em": "2026-10-20 20:00:00",
+                                      "valor_inicial_cent": 0, "cupom_inicial": 1, "status": "fechado"})
+        self.banco.executar("DELETE FROM config WHERE chave = 'licenca_ultimo_uso'")
+        self.assertEqual(self.estado(date(2026, 10, 1)).situacao, "bloqueada")
+        self.banco.executar("DELETE FROM turnos")
+        self.banco.inserir("vendas", {"uuid": "x", "aberta_em": "2026-10-20 21:00:00", "fechada_em": "2026-10-20 21:30:00",
+                                      "status": "fechada", "cupom": 1})
+        self.assertEqual(self.estado(date(2026, 10, 1)).situacao, "bloqueada")
+        self.assertEqual(self.estado(date(2026, 10, 1)).dias, -10)          # conta a partir de 20/10, a data da venda
+
     def test_data_errada_no_futuro_nao_trava_a_loja_de_vez(self):
         self.ativar(self.codigo(dias=30))
         licenca.registrar_uso(self.banco, hoje=date(2030, 1, 1))        # alguém digitou o ano errado e entrou

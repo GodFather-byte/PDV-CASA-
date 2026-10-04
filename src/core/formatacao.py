@@ -190,6 +190,18 @@ def somar_dias(iso_data: str, dias: int) -> str:
     return d.strftime("%Y-%m-%d")
 
 
+def dia_operacional(iso: str | None = None, virada: int = 0) -> str:
+    """Dia a que pertence o momento (padrão: agora). Numa boate a noite atravessa a meia-noite: antes da hora de
+    virada (ex.: 6), ainda é a noite do dia anterior. Com virada 0, é o dia do calendário."""
+    momento = datetime.strptime(iso[:19], "%Y-%m-%d %H:%M:%S") if iso else agora_dt()
+    return (momento - timedelta(hours=virada)).strftime("%Y-%m-%d")
+
+
+def faixa_dia_operacional(dia: str, virada: int = 0) -> tuple[str, str]:
+    """[início, fim) do dia operacional, para comparar com colunas 'AAAA-MM-DD hh:mm:ss' (usa os índices)."""
+    return f"{dia[:10]} {virada:02d}:00:00", f"{somar_dias(dia, 1)} {virada:02d}:00:00"
+
+
 def dia_semana(iso: str) -> int:
     """1=Domingo ... 7=Sábado."""
     return (datetime.strptime(iso[:10], "%Y-%m-%d").weekday() + 1) % 7 + 1

@@ -105,7 +105,29 @@ class TesteIndicesEFiltros(BaseTeste):
         self.assertEqual(len(self.rel.cupons({"ate": "2026-10-03"})), 4)      # sem data inicial: desde o começo
         self.assertEqual(len(self.rel.cupons({})), 5)
 
-    def test_painel_conta_so_o_dia_de_hoje(self):
+    def test_painel_conta_a_noite_inteira(self):
+        # Virada às 6h (padrão): a noite de 03/10 vai de 03/10 06:00 até 04/10 05:59:59.
+        for quando in ("2026-10-03 05:59:59", "2026-10-03 06:00:00", "2026-10-03 21:00:00", "2026-10-04 02:30:00",
+                       "2026-10-04 06:00:00"):
+            self.vender_em(quando)
+        self._hora["t"] = datetime(2026, 10, 4, 3, 0, 0)          # 3h da manhã: ainda é a noite de 03/10
+        self.assertEqual(self.rel.painel()["vendas_dia"], 3)
+        self._hora["t"] = datetime(2026, 10, 3, 22, 0, 0)
+        self.assertEqual(self.rel.painel()["vendas_dia"], 3)
+
+    def test_virada_do_dia_nas_configuracoes(self):
+        from src.controllers.config_controller import CAMPOS_CONFIG, ConfigController
+        from src.core.erros import ErroValidacao
+        self.assertEqual(self.banco.cfg_int("virada_dia_hora"), 6)                # padrão de fábrica
+        self.assertIn("virada_dia_hora", [c[0] for c in CAMPOS_CONFIG])
+        ConfigController(self.banco).salvar_config({"virada_dia_hora": "5"})
+        self.assertEqual(self.banco.cfg_int("virada_dia_hora"), 5)
+        for ruim in ("24", "-1"):
+            with self.subTest(ruim), self.assertRaises(ErroValidacao):
+                ConfigController(self.banco).salvar_config({"virada_dia_hora": ruim})
+
+    def test_painel_com_virada_a_meia_noite_conta_o_dia_do_calendario(self):
+        self.banco.cfg_set("virada_dia_hora", "0")
         for quando in ("2026-10-02 23:59:59", "2026-10-03 00:00:00", "2026-10-03 21:00:00", "2026-10-04 00:00:00"):
             self.vender_em(quando)
         self._hora["t"] = datetime(2026, 10, 3, 22, 0, 0)
