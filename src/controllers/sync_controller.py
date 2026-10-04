@@ -38,7 +38,7 @@ class SyncController:
                JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id WHERE p.venda_id = ? ORDER BY p.id""", (v["id"],))
         return {
             "uuid": v["uuid"], "cupom": v["cupom"], "turno": v["turno_numero"], "terminal": v["terminal"],
-            "modalidade": v["modalidade"], "posicao": v["posicao"], "status": v["status"],
+            "modalidade": v["modalidade"], "posicao": v["posicao"], "comanda": bool(v["comanda"]), "status": v["status"],
             "aberta_em": v["aberta_em"], "fechada_em": v["fechada_em"], "operador": v["operador_nome"],
             "subtotal_cent": v["subtotal_cent"], "desconto_cent": v["desconto_cent"],
             "servico_cent": v["servico_cent"], "taxa_cent": v["taxa_cent"], "total_cent": v["total_cent"],

@@ -28,9 +28,12 @@ class Balanca:
         if not self.configurada:
             raise DispositivoIndisponivel("Balança não configurada ou sem porta COM definida.")
             
-        import serial
+        try:
+            import serial
+        except ImportError:
+            raise DispositivoIndisponivel("A balança precisa do pyserial instalado (pip install pyserial).") from None
         import time
-        
+
         try:
             # Configuração padrão de porta serial para balanças BR (9600 ou 4800, 8, N, 1)
             # Para Toledo Prix 3 e Filizola CS
@@ -51,7 +54,7 @@ class Balanca:
                 # Protocolo Toledo (STX + 5 ou 6 bytes + ETX) ou Filizola
                 # Exemplo: b'\x0201234\x03'
                 import re
-                match = re.search(b'\x02(\d{5,6})\x03', dado)
+                match = re.search(rb'\x02(\d{5,6})\x03', dado)
                 if match:
                     peso_str = match.group(1).decode('ascii')
                     # Assume 3 casas decimais (gramas -> kg)

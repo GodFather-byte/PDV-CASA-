@@ -1,22 +1,68 @@
+"""Gera o executável do PDV (PyInstaller) e, no Windows com o Inno Setup instalado, o instalador.
+
+    python build_pdv.py                  -> dist/WillPDV/WillPDV.exe  e  instalador/saida/WillPDV-Setup-<versão>.exe
+    python build_pdv.py --sem-instalador -> só o executável
+
+Requisitos (uma vez, na máquina que gera a versão): pip install pyinstaller  e  o Inno Setup 6 (jrsoftware.org).
+O compilador do Inno (ISCC.exe) é procurado na variável de ambiente ISCC e nas pastas padrão de instalação.
+"""
+from __future__ import annotations
+
 import os
+import shutil
 import subprocess
+import sys
+from pathlib import Path
 
-print("Iniciando build do PDV - WillCommerce...")
+RAIZ = Path(__file__).resolve().parent
+ICONE = RAIZ / "instalador" / "willpdv.ico"          # opcional: coloque o ícone aqui e ele vai no .exe e no instalador
+SCRIPT_INNO = RAIZ / "instalador" / "WillPDV.iss"
 
-# Garante que o pyinstaller seja chamado via módulo python
-comando = [
-    "python", "-m", "PyInstaller",
-    "--noconfirm",
-    "--onedir",
-    "--windowed", # Nao abre console CMD no fundo
-    "--name", "WillPDV",
-    "--icon", "NONE", # Depois podem adicionar um .ico
-    "--add-data", "src/database/esquema.py;src/database", 
-    "src/app.py" # Ponto de entrada
-]
 
-try:
-    subprocess.run(comando, check=True)
-    print("Build finalizado com sucesso! Executavel em ./dist/WillPDV/WillPDV.exe")
-except subprocess.CalledProcessError as e:
-    print(f"Erro no build: {e}")
+def versao() -> str:
+    sys.path.insert(0, str(RAIZ))
+    from src.versao import VERSAO
+    return VERSAO
+
+
+def gerar_executavel() -> None:
+    comando = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir",
+               "--windowed",                                # sem a janela preta do CMD atrás do caixa
+               "--name", "WillPDV", "--paths", str(RAIZ)]   # a raiz no caminho: os imports são "from src..."
+    if ICONE.exists():
+        comando += ["--icon", str(ICONE)]
+    comando.append(str(RAIZ / "src" / "app.py"))
+    subprocess.run(comando, check=True, cwd=RAIZ)
+    print(f"Executável pronto: {RAIZ / 'dist' / 'WillPDV' / 'WillPDV.exe'}")
+
+
+def achar_iscc() -> str | None:
+    candidatos = [os.environ.get("ISCC"), shutil.which("ISCC"), shutil.which("iscc")]
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
+        if base:
+            candidatos += [str(Path(base) / "Inno Setup 6" / "ISCC.exe"), str(Path(base) / "Programs" / "Inno Setup 6" / "ISCC.exe")]
+    return next((c for c in candidatos if c and Path(c).is_file()), None)
+
+
+def gerar_instalador() -> None:
+    iscc = achar_iscc()
+    if iscc is None:
+        print("Inno Setup não encontrado: instale o Inno Setup 6 (ou defina a variável ISCC com o caminho do ISCC.exe) "
+              "e rode de novo, ou abra instalador/WillPDV.iss no Inno Setup e clique em Compile.")
+        return
+    definicoes = [f"/DVersao={versao()}"] + ([f"/DIcone={ICONE}"] if ICONE.exists() else [])
+    subprocess.run([iscc, *definicoes, str(SCRIPT_INNO)], check=True, cwd=RAIZ)
+    print(f"Instalador pronto em {RAIZ / 'instalador' / 'saida'}")
+
+
+if __name__ == "__main__":
+    print(f"Gerando o WillPDV {versao()}...")
+    try:
+        gerar_executavel()
+        if "--sem-instalador" not in sys.argv[1:]:
+            if os.name == "nt":
+                gerar_instalador()
+            else:
+                print("O instalador (Inno Setup) só é gerado no Windows.")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"Erro no build: {e}")

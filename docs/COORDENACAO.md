@@ -45,7 +45,7 @@ criado na nuvem com `python -m backend.lojas criar <chave_loja> "<nome>"`) e cor
   "vendas": [
     {
       "uuid": "…", "cupom": 1234, "turno": 2, "terminal": 1,
-      "modalidade": "balcao|mesa|caderneta|entrega", "posicao": 0,
+      "modalidade": "balcao|mesa|caderneta|entrega", "posicao": 0, "comanda": false,
       "status": "fechada|cancelada",
       "aberta_em": "…", "fechada_em": "…", "operador": "nome",
       "subtotal_cent": 0, "desconto_cent": 0, "servico_cent": 0, "taxa_cent": 0,
@@ -58,7 +58,8 @@ criado na nuvem com `python -m backend.lojas criar <chave_loja> "<nome>"`) e cor
 }
 ```
 
-Campos: `posicao` é inteiro (0 fora de mesa e entrega) ou `null`; `operador` e `turno` podem ser `null`; datas
+Campos: `posicao` é inteiro (0 fora de mesa e entrega) ou `null`; `comanda` diz se a posição é uma comanda (`true`) ou
+uma mesa (`false`, o padrão quando um PDV antigo não manda o campo): a comanda 5 e a mesa 5 são vendas diferentes; `operador` e `turno` podem ser `null`; datas
 `AAAA-MM-DD HH:MM:SS` (horário local do PDV); valores em centavos inteiros `>= 0`; `status` só `fechada` ou
 `cancelada`; no máximo 500 vendas por lote.
 
