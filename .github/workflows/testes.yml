@@ -10,6 +10,7 @@ jobs:
   testes:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20          # um teste de tela travado (janela esperando resposta) vira falha, não horas de espera
     strategy:
       fail-fast: false
       matrix:

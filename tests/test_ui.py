@@ -38,6 +38,8 @@ class BaseUI(unittest.TestCase):
         self.ctx = Contexto(self.banco)
         self.banco.cfg_set("comissao_em_pontos", "N")     # os testes de tela da comissão digitam reais; pontos têm teste próprio
         self.banco.cfg_set("comissao_paga_do_caixa", "S")  # idem: os testes de pagamento esperam a sangria; o padrão N tem teste
+        # Casa já cadastrada: senão o menu abriria a janela do primeiro acesso no meio dos testes (TesteCadastroDaCasa a testa).
+        self.banco.atualizar("loja", 1, {"nome_fantasia": "Casa de Teste"})
         self.ctx.operador = self.ctx.acesso.autenticar("adm", "adm")
         cad = CadastroController(self.banco)
         sub = self.banco.valor("SELECT id FROM subgrupos")
@@ -274,6 +276,7 @@ class TesteAvisoDeVersao(BaseUI):
 class TesteCadastroDaCasa(BaseUI):
     def _menu(self):
         from src.ui.app import App
+        self.banco.atualizar("loja", 1, {"nome_fantasia": "", "razao_social": ""})   # casa ainda não cadastrada
         app = App(self.banco)
         self.addCleanup(app.root.destroy)
         self.robo.parar()
@@ -706,7 +709,6 @@ class TesteFluxoDeEntrada(BaseUI):
 
     def _app(self):
         from src.ui.app import App
-        self.ctx.config.cadastrar_loja({"nome_fantasia": "Casa"})   # casa já cadastrada: o primeiro acesso tem teste próprio
         self.root.destroy()
         app = App(self.banco)
         self.root = app.root
