@@ -38,7 +38,8 @@ usado só pelo protótipo de console até ser aposentado.
 
 ## Contrato de sincronização PDV → nuvem
 
-`POST {api_url}` com o cabeçalho `Authorization: Bearer <token>` (o `api_token` de Configurações > Nuvem; no servidor é o `PDV_API_TOKEN`) e corpo JSON:
+`POST {api_url}` com o cabeçalho `Authorization: Bearer <token>` (o `api_token` de Configurações > Nuvem: o token DA LOJA,
+criado na nuvem com `python -m backend.lojas criar <chave_loja> "<nome>"`) e corpo JSON:
 
 ```json
 {
@@ -68,7 +69,9 @@ Campos: `posicao` é inteiro (0 fora de mesa e entrega) ou `null`; `operador` e 
 Resposta: `200` com `{"aceitas": ["uuid", …]}`, só com as `uuid` que a nuvem JÁ TEM gravadas (novas ou repetidas).
 O PDV marca como sincronizadas apenas essas `uuid`, e somente se o status da venda ainda for o que foi no lote
 (`SyncController.confirmar(uuids, enviados)`): cancelar a venda com o lote a caminho a mantém pendente para o
-próximo envio. Outros códigos: `401` token ausente ou errado, `503` servidor sem `PDV_API_TOKEN`, `422` payload inválido.
+próximo envio. Outros códigos: `401` token ausente ou errado; `403` token de outra loja (a `chave_loja` do lote não é a do
+token), loja desativada ou token do administrador (`PDV_API_TOKEN` só consulta o painel); `503` servidor sem nenhuma loja
+e sem `PDV_API_TOKEN`; `422` payload inválido.
 
 Regras do servidor (`backend/main.py`):
 
@@ -76,6 +79,8 @@ Regras do servidor (`backend/main.py`):
 - **A venda só avança**: se a `uuid` já existe e o lote traz `cancelada` sobre `fechada`, o status é atualizado;
   status igual ou anterior não muda nada (um lote atrasado nunca desfaz um cancelamento).
 - Uma `uuid` que já pertence a outra `chave_loja` não é confirmada.
+- **A loja é a do token** (tabela `lojas` da nuvem, só com o SHA-256 do token). O painel (`/v1/dashboard/resumo`) com token
+  de loja mostra só ela (pedir outra `chave_loja` dá `403`); com o `PDV_API_TOKEN`, todas ou a pedida.
 
 Regras do PDV (`src/sync/sincronizador.py`): a cada rodada lê `api_url`, `api_token`, `chave_loja` e
 `sync_intervalo_seg` de Configurações > Nuvem; com falhas seguidas a espera dobra (até 10 min) e tudo vai para
@@ -418,4 +423,16 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   4. **CI** em `.github/workflows/testes.yml`: Windows e Linux, Python 3.10 e 3.12, com as dependências da API para os testes da
      nuvem não ficarem pulados. No Linux as telas rodam no `xvfb-run` com tela de 24 bits (com 8 bits o Tk cai).
      Testes novos: `tests/test_acesso.py` (8) e dois em `test_ui.py`.
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **nuvem separada por loja** (com autorização do usuário para mexer em `backend/`
+  e `src/sync/`). Antes um único `PDV_API_TOKEN` valia para todas as lojas e a `chave_loja` vinha do próprio lote: quem
+  tinha o token enviava vendas como qualquer loja e via o painel de todas.
+  1. `backend/main.py`: tabela `lojas` (chave, nome, SHA-256 do token, ativa) criada pelo `create_all`; `autenticar` devolve a
+     loja do token ou o administrador (`PDV_API_TOKEN`). `/v1/sincronizar` só aceita token de loja e recusa (`403`) lote com
+     outra `chave_loja`; o painel com token de loja fica preso a ela.
+  2. `backend/lojas.py`: `criar`, `listar`, `novo-token`, `desativar`, `ativar` (linha de comando). O token só aparece na criação.
+  3. `src/sync/sincronizador.py`: no `401`/`403` a mensagem traz o motivo da nuvem (ex.: "Loja desativada na nuvem.").
+  4. `backend/models.py` apagado: ninguém importava, e era um segundo modelo com dinheiro em `Float`.
+  **Para quem já usa a nuvem:** criar cada loja com `python -m backend.lojas criar` e colocar o token novo no PDV dela; o
+  `PDV_API_TOKEN` antigo passa a servir só para o painel. Testes: `tests/test_nuvem.py` (43).
 

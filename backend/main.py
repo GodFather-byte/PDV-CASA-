@@ -1,18 +1,24 @@
 """API de nuvem do PDV (FastAPI): recebe lotes de vendas do PDV, de forma idempotente por UUID.
 
+Cada loja tem o SEU token. A loja é identificada pelo token, nunca pelo que o lote diz: o token da loja A não
+envia vendas em nome da loja B nem vê o painel dela. Cadastro das lojas (o token aparece uma única vez):
+    python -m backend.lojas criar BOATE-CENTRO "Boate Centro"
+
 Como rodar, na raiz do repositório:
-    $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"
+    $env:PDV_API_TOKEN = "um-segredo-longo-e-aleatorio"      # token do ADMINISTRADOR (painel de todas as lojas)
     python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
-O PDV usa o mesmo valor em Configurações > Nuvem (Token da API) e envia `Authorization: Bearer <token>`.
-Sem PDV_API_TOKEN o servidor recusa os lotes (503): não existe token padrão.
-Contrato completo em docs/COORDENACAO.md.
+O PDV usa o token da loja em Configurações > Nuvem (Token da API) e envia `Authorization: Bearer <token>`.
+O token do administrador só consulta o painel: não envia vendas. Sem nenhuma loja e sem PDV_API_TOKEN o servidor
+recusa tudo (503): não existe token padrão. Contrato completo em docs/COORDENACAO.md.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import os
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List, Literal, Optional
@@ -59,6 +65,21 @@ class Venda(Base):
     atualizada_em = Column(String)
 
 
+class Loja(Base):
+    """Uma loja cliente da nuvem. Guarda só o SHA-256 do token (aleatório e longo), nunca o token."""
+    __tablename__ = "lojas"
+    id = Column(Integer, primary_key=True, index=True)
+    chave_loja = Column(String, unique=True, index=True, nullable=False)
+    nome = Column(String, nullable=False)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    ativa = Column(Boolean, nullable=False, default=True)
+    criada_em = Column(String)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 class VendaItem(Base):
     __tablename__ = "vendas_itens"
     id = Column(Integer, primary_key=True, index=True)
@@ -93,12 +114,30 @@ def get_db():
         db.close()
 
 
-def exigir_token(authorization: Optional[str] = Header(None)) -> None:
-    esperado = os.environ.get("PDV_API_TOKEN", "")
-    if not esperado:
-        raise HTTPException(status_code=503, detail="Servidor sem PDV_API_TOKEN configurado.")
-    if not authorization or not hmac.compare_digest(authorization.encode(), f"Bearer {esperado}".encode()):
-        raise HTTPException(status_code=401, detail="Token invalido")
+@dataclass(frozen=True)
+class Acesso:
+    """Quem chamou: uma loja (pelo token dela) ou o administrador (PDV_API_TOKEN), que tem `loja` None."""
+    loja: Optional[str]
+
+    @property
+    def admin(self) -> bool:
+        return self.loja is None
+
+
+def autenticar(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> Acesso:
+    admin = os.environ.get("PDV_API_TOKEN", "")
+    token = authorization[7:].strip() if authorization and authorization.startswith("Bearer ") else ""
+    if token:
+        if admin and hmac.compare_digest(token.encode("utf-8"), admin.encode("utf-8")):
+            return Acesso(None)
+        loja = db.query(Loja).filter(Loja.token_hash == hash_token(token)).first()
+        if loja is not None:
+            if not loja.ativa:
+                raise HTTPException(status_code=403, detail="Loja desativada na nuvem.")
+            return Acesso(loja.chave_loja)
+    if not admin and db.query(Loja.id).first() is None:
+        raise HTTPException(status_code=503, detail="Servidor sem lojas cadastradas nem PDV_API_TOKEN configurado.")
+    raise HTTPException(status_code=401, detail="Token invalido")
 
 
 # ---------------------------------------------------------------- esquemas
@@ -157,9 +196,14 @@ def saude():
     return {"status": "ok"}
 
 
-@app.post("/v1/sincronizar", response_model=ResponseSync, dependencies=[Depends(exigir_token)])
-def sincronizar_vendas(lote: LoteSync, db: Session = Depends(get_db)):
+@app.post("/v1/sincronizar", response_model=ResponseSync)
+def sincronizar_vendas(lote: LoteSync, acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
     """Grava cada venda do lote por UUID. `aceitas` traz só os UUIDs que a nuvem já tem (novos ou repetidos)."""
+    if acesso.admin:
+        raise HTTPException(status_code=403, detail="O token do administrador não envia vendas: use o token da loja.")
+    if lote.chave_loja != acesso.loja:
+        log.warning("Token da loja %s tentou enviar vendas como %s.", acesso.loja, lote.chave_loja)
+        raise HTTPException(status_code=403, detail=f"Este token é da loja {acesso.loja}, não de {lote.chave_loja}.")
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     uuids = [v.uuid for v in lote.vendas]
     existentes = {v.uuid: v for v in db.query(Venda).filter(Venda.uuid.in_(uuids)).all()} if uuids else {}
@@ -205,13 +249,18 @@ def painel():
     return HTMLResponse(PAGINA_PAINEL.read_text(encoding="utf-8"))
 
 
-@app.get("/v1/dashboard/resumo", dependencies=[Depends(exigir_token)])
+@app.get("/v1/dashboard/resumo")
 def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
                      chave_loja: Optional[str] = Query(None, max_length=64),
-                     db: Session = Depends(get_db)):
+                     acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
     """Faturamento, cupons, ticket médio e mais vendidos de um dia. Sem `dia`, vale o da venda mais recente
     (assim o painel não depende do fuso do servidor). Só vendas fechadas com itens; recebimentos de
-    caderneta (subtotal 0) e cancelamentos ficam de fora, como no painel do PDV."""
+    caderneta (subtotal 0) e cancelamentos ficam de fora, como no painel do PDV.
+    O token de uma loja só vê a própria loja; o do administrador vê todas ou a pedida em `chave_loja`."""
+    if not acesso.admin:
+        if chave_loja and chave_loja != acesso.loja:
+            raise HTTPException(status_code=403, detail="Este token só consulta a própria loja.")
+        chave_loja = acesso.loja
     base = [Venda.status == "fechada", Venda.subtotal_cent > 0]        # filtros que valem também para achar o dia padrão
     if chave_loja:
         base.append(Venda.chave_loja == chave_loja)
