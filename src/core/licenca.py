@@ -118,11 +118,21 @@ def _data(texto: str) -> date | None:
         return None
 
 
+def _ultimo_registro(banco) -> date | None:
+    """Data do movimento mais recente da loja (venda encerrada ou turno aberto). Voltar o relógio para antes dela
+    exigiria adulterar o histórico de vendas e turnos, não só apagar ou editar a linha `licenca_ultimo_uso`."""
+    datas = [_data(str(banco.valor(sql) or "")[:10]) for sql in (
+        "SELECT MAX(fechada_em) FROM vendas", "SELECT MAX(aberto_em) FROM turnos")]
+    datas = [d for d in datas if d]
+    return max(datas) if datas else None
+
+
 def _hoje(banco, hoje: date | None) -> date:
-    """Data de hoje, mas nunca anterior à última vista (relógio atrasado não reabre o prazo)."""
+    """Data de hoje, mas nunca anterior à última vista nem ao movimento mais recente da loja (relógio atrasado não
+    reabre o prazo). A data errada no futuro só pesa aqui se a loja chegou a vender com ela."""
     atual = hoje or date.fromisoformat(fmt.hoje())
-    ultimo = _data(banco.cfg("licenca_ultimo_uso"))
-    return max(atual, ultimo) if ultimo else atual
+    vistas = [d for d in (_data(banco.cfg("licenca_ultimo_uso")), _ultimo_registro(banco)) if d]
+    return max([atual, *vistas])
 
 
 def _br(dia: date) -> str:

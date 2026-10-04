@@ -436,3 +436,10 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   "Protótipos antigos" acima. Esquema **v10** só remove a tabela `mesas` (sem uso). Quem precisar de algo daquele código o
   encontra no histórico do git (commit anterior a este).
 
+- 2026-10-04 — Claude → Copilot/Antigravity: **dia operacional e licença.**
+  1. `fmt.dia_operacional` e `fmt.faixa_dia_operacional`: o "vendas do dia" do painel (`RelatorioController.painel`) usa a virada
+     `virada_dia_hora` (padrão 6, em Configurações > Caixa). A nuvem faz o mesmo no `/v1/dashboard/resumo` (`virada` na consulta,
+     padrão `PDV_NUVEM_VIRADA_HORA` = 6) e devolve `virada` na resposta.
+  2. `licenca._hoje` também considera a venda encerrada e o turno mais recentes: apagar `licenca_ultimo_uso` e voltar o relógio
+     não reabre mais o prazo.
+
