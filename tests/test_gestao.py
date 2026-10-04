@@ -333,6 +333,17 @@ class TesteRelatorios(BaseCaixa):
         m = self.rel.caixa_movimentos(self.f)
         self.assertEqual(m.rodape[1], ("Total de saídas (sangrias)", "5,00"))
 
+    def test_fechamento_e_sangria_da_madrugada_contam_na_noite(self):
+        self.avancar(hours=6)                                    # 04/10 às 3h: ainda é a noite de 03/10
+        self.turnos.movimentar(self.turno, self.adm, "saida", 500, "gelo")
+        self.turnos.fechar(self.turno, self.adm, 10000 + 1950 - 500)
+        noite = {"de": self.hoje, "ate": self.hoje}
+        self.assertEqual(len(self.rel.fechamentos(noite).linhas), 1)
+        self.assertEqual(self.rel.caixa_movimentos(noite).rodape[1], ("Total de saídas (sangrias)", "5,00"))
+        dia_seguinte = {"de": fmt.somar_dias(self.hoje, 1), "ate": fmt.somar_dias(self.hoje, 1)}
+        self.assertEqual(self.rel.fechamentos(dia_seguinte).linhas, [])
+        self.assertEqual(self.rel.caixa_movimentos(dia_seguinte).linhas, [])
+
 
 class TesteImpressao(BaseCaixa):
     def setUp(self):

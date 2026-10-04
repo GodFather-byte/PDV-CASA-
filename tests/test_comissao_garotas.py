@@ -263,6 +263,15 @@ class TesteRelatorioDeComissao(BaseComissao):
         ontem = fmt.somar_dias(fmt.hoje(), -1)
         self.assertEqual(self.rel.comissoes_garotas({"de": ontem, "ate": ontem}).linhas, [])
 
+    def test_comissao_da_madrugada_conta_na_noite_anterior(self):
+        hoje = fmt.hoje()                                       # 03/10 às 21h
+        self.avancar(hours=5)                                   # 04/10 às 2h: ainda é a noite de 03/10 (virada às 6h)
+        self.lancar(180, 10)
+        r = self.rel.comissoes_garotas({"de": hoje, "ate": hoje, "garota": "180"})
+        self.assertEqual(r.linhas[0][2:4], ["3", "65,00"])
+        amanha = fmt.somar_dias(hoje, 1)
+        self.assertEqual(self.rel.comissoes_garotas({"de": amanha, "ate": amanha}).linhas, [])
+
     def test_detalhado_lista_cada_lancamento_com_situacao_e_operador(self):
         r = self.rel.comissoes_garotas({**self.f, "detalhar": True})
         self.assertEqual(r.titulo, "Comissão das garotas (lançamentos)")

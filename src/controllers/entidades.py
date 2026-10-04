@@ -100,11 +100,13 @@ def _mesmo_codigo(a, b) -> bool:
 
 
 def _antes_produto(banco, d, id_):
-    reservado = (banco.cfg("codigo_comissao", "50") or "").strip()
-    if reservado and any(_mesmo_codigo(d.get(c), reservado) for c in ("codigo", "cbarra", "atalho")):
-        raise ErroValidacao(f"O código {reservado} é reservado para lançar a comissão das garotas no caixa "
-                            "(Configurações). Use outro código, atalho ou código de barras para este produto.",
-                            {"codigo": "reservado"})
+    for chave, padrao, uso in (("codigo_comissao", "50", "lançar a comissão das garotas"),
+                               ("codigo_saida", "1002", "liberar a saída da comanda sem consumo")):
+        reservado = (banco.cfg(chave, padrao) or "").strip()
+        if reservado and any(_mesmo_codigo(d.get(c), reservado) for c in ("codigo", "cbarra", "atalho")):
+            raise ErroValidacao(f"O código {reservado} é reservado para {uso} no caixa "
+                                "(Configurações). Use outro código, atalho ou código de barras para este produto.",
+                                {"codigo": "reservado"})
     if d.get("preco_cent", 0) < 0:
         raise ErroValidacao("O preço de venda não pode ser negativo.", {"preco_cent": "negativo"})
     if d.get("cbarra") is not None and not re.fullmatch(r"\d{1,14}", d["cbarra"]):

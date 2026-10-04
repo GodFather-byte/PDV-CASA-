@@ -1,6 +1,7 @@
 """Relatório da comissão das garotas: por número (total, pago e a pagar) ou lançamento a lançamento."""
 from __future__ import annotations
 
+from src.controllers.relatorio_vendas import periodo_operacional
 from src.core import formatacao as fmt
 from src.core.relatorio import Coluna, Relatorio
 
@@ -19,11 +20,8 @@ class RelatoriosComissoes:
         else:
             onde, p = ["c.status <> 'cancelada'"], []
         criterios = []
-        # Faixa em vez de date(coluna): assim o índice de criado_em é usado ('AAAA-MM-DD' <= 'AAAA-MM-DD hh:mm:ss').
-        if f.get("de"):
-            onde.append("c.criado_em >= ?"); p.append(f["de"])
-        if f.get("ate"):
-            onde.append("c.criado_em < ?"); p.append(fmt.somar_dias(f["ate"], 1))
+        # O dia é o operacional (a noite inteira, até a virada), como nas vendas: a comissão das 2h conta na noite anterior.
+        periodo_operacional(self.banco, f, "c.criado_em", onde, p)
         if f.get("de") or f.get("ate"):
             criterios.append(f"Período: {fmt.fmt_data(f.get('de')) or '...'} a {fmt.fmt_data(f.get('ate')) or '...'}")
         if f.get("turno"):
