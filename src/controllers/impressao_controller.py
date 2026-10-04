@@ -33,6 +33,8 @@ _ESTILOS = {
     "fechamento": {"negrito_linhas": 1, "grande_prefixos": ("RESULTADO", "Valor esperado", "SOBROU", "FALTOU", "CAIXA CONFERIDO")},
     "pedido": {"negrito_linhas": 1},
     "comprovante": {"negrito_linhas": 1, "grande_prefixos": ("Valor",)},
+    # Ticket de saída (1002): título e nome da casa em negrito; aviso, data/hora e a comanda liberada em letra alta.
+    "saida": {"negrito_linhas": 6, "grande_prefixos": ("FAVOR ENTREGAR", "TICKET NA SAIDA", "DATA:", "CARTAO:", "MESA:")},
     "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "Pontos desta", "TOTAL A RECEBER")},
     "relatorio": {"negrito_linhas": 1},
 }
@@ -280,15 +282,23 @@ class ImpressaoController:
                                               f"Operador: {operador}", "", "_" * w, "Assinatura".center(w)])
 
     def comprovante_saida(self, info: dict, operador: str) -> str:
-        """Papel de saída do código 1002: o cliente mostra na porta. Comanda em destaque, data e hora, sem consumo."""
+        """Ticket de saída do código 1002: o cliente que não consumiu entrega este papel na porta. Só o nome da casa no topo,
+        o aviso em destaque, data e hora, quem liberou, o nº do ticket e a comanda (ou mesa) liberada."""
         w = self.largura()
-        linhas = self.cabecalho(w) + ["=" * w, "COMPROVANTE DE SAÍDA".center(w), "-" * w,
-                                      info["nome"].upper().center(w), "",
-                                      _lr("Data", fmt.fmt_datahora(info["quando"])[:10], w),
-                                      _lr("Hora", fmt.fmt_datahora(info["quando"])[11:16], w),
-                                      _lr("Consumo", "SEM CONSUMO", w),
-                                      _lr("Turno", str(info["turno"]), w), _lr("Liberado por", operador or "", w),
-                                      "-" * w, "Saída liberada.".center(w), "=" * w]
+        l = self.config.loja()
+        fantasia, razao = (l["nome_fantasia"] or "").strip(), (l["razao_social"] or "").strip()
+        casa = [n.upper()[:w].center(w) for n in dict.fromkeys(x for x in (fantasia or razao or "PDV", razao) if x)]
+        quando = fmt.fmt_datahora(info["quando"])                       # dd/mm/aaaa hh:mm:ss
+        tipo = "CARTAO" if info.get("comanda", True) else "MESA"
+        posicao = info.get("rotulo") or str(info.get("numero", ""))
+        numero = f"{info['ticket']:06d}" if info.get("ticket") else ""
+        linhas = ["=" * w, "TICKET DE SAIDA".center(w), "=" * w, *casa, "=" * w,
+                  *(["FAVOR ENTREGAR ESTE TICKET NA SAIDA".center(w)] if w >= 35       # fita de 58mm: em duas linhas
+                    else ["FAVOR ENTREGAR ESTE".center(w), "TICKET NA SAIDA".center(w)]), "=" * w,
+                  _lr(f"DATA: {quando[:10]}", f"HORA: {quando[11:19]}", w), "-" * w,
+                  _lr(f"OPERADOR: {operador or ''}", f"TICKET: {numero}" if numero else "", w),
+                  f"POSICAO DE ORIGEM: {posicao}"[:w], "-" * w,
+                  f"{tipo}: {posicao}  LIBERADO"[:w], "=" * w]
         return "\n".join(linhas)
 
     def via_comissao(self, lancamento: dict, pendentes: list[dict], nome: str, operador: str) -> str:
