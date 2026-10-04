@@ -4,64 +4,33 @@ import unittest
 from pathlib import Path
 
 from src.controllers.produto_controller import ProdutoController
-from src.controllers.venda_controller import VendaController
 from src.database.conexao import BancoDados
 from src.database.esquema import VERSAO_ESQUEMA
 from tests.base import BaseTeste
 
 
 class BancoSQLiteTests(BaseTeste):
-    def test_adaptador_do_caixa_cadastra_e_busca_no_esquema_atual(self):
+    def test_busca_por_codigo_e_preco_promocional(self):
+        self.novo_produto("Refrigerante", preco=850, codigo="789", promo_de="03/10/2026", promo_ate="03/10/2026",
+                          promo_preco_cent="7,50")
         produtos = ProdutoController(self.banco)
-        sucesso, mensagem = produtos.cadastrar_produto(
-            "Refrigerante", "8,50", "789", estoque_inicial=4
-        )
-        self.assertTrue(sucesso, mensagem)
-        produto = produtos.buscar_por_codigo("789")
-        self.assertEqual(produto[2:5], ("Refrigerante", 8.5, 4))
-
-    def test_esquema_novo_e_venda_completa(self):
-        produto_id = self.novo_produto(
-            "Refrigerante", preco=850, codigo="789", estoque=True, qt=2,
-            promo_de="03/10/2026", promo_ate="03/10/2026", promo_preco_cent="7,50",
-        )
-        produtos = ProdutoController(self.banco)
-        vendas = VendaController(self.banco)
         produto = produtos.buscar_codigo("789")
         self.assertEqual(produto["nome"], "Refrigerante")
         self.assertEqual(produtos.preco_vigente(produto), 750)
-        venda_id = vendas.iniciar_venda()
-        self.assertIsNotNone(venda_id)
-        self.assertTrue(vendas.adicionar_item(venda_id, produto_id, 1, 8.5))
-        self.assertEqual(produtos.por_id(produto_id)["qt_atual"], 1)
-        self.assertEqual(
-            self.banco.valor(
-                "SELECT total_cent FROM vendas WHERE id = ?", (venda_id,)
-            ),
-            750,
-        )
 
-        self.assertTrue(vendas.finalizar_venda(venda_id, 7.5, "Pix"))
-        pendentes = vendas.listar_vendas_pendentes()
-        self.assertEqual(len(pendentes), 1)
-        self.assertEqual((pendentes[0][2], pendentes[0][3]), (750, "fechada"))
-
-    def test_nao_permite_vender_mais_que_o_estoque(self):
-        produto_id = self.novo_produto(
-            "Agua", preco=300, codigo="123", estoque=True, qt=1
-        )
-        produtos = ProdutoController(self.banco)
-        vendas = VendaController(self.banco)
-        venda_id = vendas.iniciar_venda()
-
-        self.assertFalse(vendas.adicionar_item(venda_id, produto_id, 2, 3))
-        self.assertEqual(produtos.por_id(produto_id)["qt_atual"], 1)
-        self.assertEqual(
-            self.banco.valor(
-                "SELECT COUNT(*) FROM itens_venda WHERE venda_id = ?", (venda_id,)
-            ),
-            0,
-        )
+    def test_tabela_mesas_do_prototipo_some_na_v10(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / "v9.db"
+            b = BancoDados(caminho)
+            b.executar("CREATE TABLE mesas (id INTEGER PRIMARY KEY, numero INTEGER)")    # como estava no banco v9
+            b.executar("PRAGMA user_version = 9")
+            b.fechar()
+            b = BancoDados(caminho)
+            try:
+                self.assertEqual(b.valor("PRAGMA user_version"), VERSAO_ESQUEMA)
+                self.assertIsNone(b.valor("SELECT name FROM sqlite_master WHERE name = 'mesas'"))
+            finally:
+                b.fechar()
 
     def test_arquiva_banco_legado_e_cria_esquema_novo(self):
         with tempfile.TemporaryDirectory() as pasta:

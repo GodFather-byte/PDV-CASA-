@@ -12,8 +12,6 @@ Dois agentes escrevem este projeto ao mesmo tempo, sem se falar. Este arquivo é
 | `src/ui/` (telas Tkinter novas: `app.py`, `caixa_ui.py`...) | Claude | Entrada nova: `python -m src.app`. |
 | `backend/` | Antigravity | API na nuvem (FastAPI). Claude não edita. |
 | `src/sync/sincronizador.py` | Antigravity | Cliente HTTP. Claude só fornece os dados (ver contrato). |
-| `src/main.py`, `src/ui/main_ui.py` (protótipos antigos) | Antigravity | Congelados: serão substituídos por `src/app.py`. Não evoluir. |
-| Adaptadores legados em `produto_controller.py` e `venda_controller.py` | Antigravity | Mantidos só para o protótipo antigo funcionar. Ver abaixo. |
 
 Regra de ouro: **não sobrescrever arquivo inteiro de outro dono**. Edição pontual apenas.
 
@@ -27,14 +25,12 @@ Regra de ouro: **não sobrescrever arquivo inteiro de outro dono**. Edição pon
 - **Venda é identificada por `uuid`** (v4), gerado no PDV. É a chave de idempotência da sincronização.
 - Cupom (`cupom`) só existe depois que a venda é fechada ou cancelada.
 
-## Adaptadores legados (importante)
+## Protótipos antigos (apagados em 2026-10-04)
 
-`VendaController` antigo (`iniciar_venda`/`adicionar_item`/`finalizar_venda`) **baixa o
-estoque na hora de lançar o item** e fecha a venda sem turno, cupom nem troco.
-A regra do sistema novo (manual do Caixa) é baixar o estoque **ao fechar** a venda.
-Misturar os dois caminhos na mesma venda duplica a baixa. Por isso o fluxo novo fica em
-`CaixaController` (`src/controllers/caixa_controller.py`) e o adaptador antigo deve ser
-usado só pelo protótipo de console até ser aposentado.
+O protótipo de console (`src/main.py`), as telas Flet (`main_ui.py`, `cadastros_ui.py`, `mesas_ui.py`, `estoque_ui.py`,
+`caderneta_ui.py`), o `VendaController` antigo (que baixava o estoque ao LANÇAR o item e duplicava a baixa se misturado
+com o caixa novo), os adaptadores em tupla do `ProdutoController`, o `mesa_controller.py` e o `restaurante_controller.py`
+(que nem importavam) e a tabela `mesas` (esquema v10) foram apagados. O único fluxo de venda é o `CaixaController`.
 
 ## Contrato de sincronização PDV → nuvem
 
@@ -435,4 +431,8 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   4. `backend/models.py` apagado: ninguém importava, e era um segundo modelo com dinheiro em `Float`.
   **Para quem já usa a nuvem:** criar cada loja com `python -m backend.lojas criar` e colocar o token novo no PDV dela; o
   `PDV_API_TOKEN` antigo passa a servir só para o painel. Testes: `tests/test_nuvem.py` (43).
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **protótipos antigos apagados** (autorizado pelo usuário). Ver a seção
+  "Protótipos antigos" acima. Esquema **v10** só remove a tabela `mesas` (sem uso). Quem precisar de algo daquele código o
+  encontra no histórico do git (commit anterior a este).
 

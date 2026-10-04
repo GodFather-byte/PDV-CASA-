@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 9
+VERSAO_ESQUEMA = 10
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -33,16 +33,6 @@ MAQUINAS_DDL = """CREATE TABLE IF NOT EXISTS maquinas (
 )"""
 
 TABELAS = [
-    """CREATE TABLE IF NOT EXISTS mesas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        numero INTEGER NOT NULL UNIQUE,
-        status TEXT DEFAULT 'fechada',
-        venda_id INTEGER,
-        garcom_id INTEGER,
-        total_cent INTEGER DEFAULT 0,
-        servico_cent INTEGER DEFAULT 0
-    )""",
-
     # ------------------------------------------------------------ infraestrutura
     """CREATE TABLE IF NOT EXISTS config (
         chave TEXT PRIMARY KEY,
@@ -523,5 +513,9 @@ MIGRACOES = {
         ("coluna", "pagamentos_venda", "turno_id", "INTEGER REFERENCES turnos(id)"),
         "UPDATE pagamentos_venda SET turno_id = (SELECT v.turno_id FROM vendas v WHERE v.id = pagamentos_venda.venda_id)"
         " WHERE turno_id IS NULL",
+    ],
+    # v10: some a tabela `mesas` do protótipo Flet (apagado). As mesas e comandas são vendas de modalidade 'mesa'.
+    10: [
+        "DROP TABLE IF EXISTS mesas",
     ],
 }

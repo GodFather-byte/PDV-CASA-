@@ -36,9 +36,7 @@ Cinco senhas erradas seguidas bloqueiam aquele usuário (ou a senha de superviso
 entram direto no caixa. O primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
 
 O sistema local usa só a biblioteca padrão (Tkinter e SQLite). Quem usa a sincronização, a balança ou a
-impressão RAW do Windows precisa de `pip install -r requirements.txt`. A pasta `src/ui/` ainda contém telas Flet antigas
-(`main_ui.py`, `cadastros_ui.py`, `mesas_ui.py`...) que estão **congeladas e não fazem parte do
-sistema novo**; o protótipo de console `src/main.py` também é legado.
+impressão RAW do Windows precisa de `pip install -r requirements.txt`.
 
 ## O que já existe
 
