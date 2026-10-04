@@ -37,6 +37,7 @@ class BaseUI(unittest.TestCase):
         self.banco = BancoDados(":memory:")
         self.ctx = Contexto(self.banco)
         self.banco.cfg_set("comissao_em_pontos", "N")     # os testes de tela da comissão digitam reais; pontos têm teste próprio
+        self.banco.cfg_set("comissao_paga_do_caixa", "S")  # idem: os testes de pagamento esperam a sangria; o padrão N tem teste
         self.ctx.operador = self.ctx.acesso.autenticar("adm", "adm")
         cad = CadastroController(self.banco)
         sub = self.banco.valor("SELECT id FROM subgrupos")

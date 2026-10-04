@@ -752,3 +752,22 @@ class TesteComissaoEmPontosNaTela(BaseNaTela):
         self.assertIn("0,1 em 0,1", self.status())
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM comissoes_garotas"), 0)
         self.sem_travar()
+
+
+class TesteComissaoPagaSoComoRegistro(BaseNaTela):
+    """Padrão de fábrica: nem sempre sobra dinheiro, então pagar a comissão só registra (sem sangria)."""
+
+    def test_padrao_nao_tira_do_caixa(self):
+        self.banco.cfg_set("comissao_paga_do_caixa", "N")
+        self.dar(180, 25)
+        esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
+        recibos = []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.dialogos({"Pagar comissão": "Pagar"})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(self.com.pendente(180), 0)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
+        self.assertEqual(self.ctx.turnos.resumo(self.turno)["esperado"], esperado)
+        self.assertIn("Pago fora do caixa.", recibos[0])
+        self.sem_travar()
