@@ -288,7 +288,9 @@ O PDV envia as vendas fechadas e canceladas a uma API (`backend/`, FastAPI), de 
    Cada loja tem o próprio token, e a nuvem identifica a loja por ele: o token de uma loja não envia vendas em nome de
    outra nem vê o painel dela. O token aparece só na criação (a nuvem guarda apenas o hash); `python -m backend.lojas
    novo-token BOATE-CENTRO` troca um token vazado e `desativar`/`ativar` bloqueiam e liberam a loja. O painel do dono
-   abre em `http://servidor:8000/`: com o token da loja mostra só ela; com o `PDV_API_TOKEN`, todas.
+   abre em `http://servidor:8000/`: com o token da loja mostra só ela; com o `PDV_API_TOKEN`, todas. O "dia" do painel
+   vai das 6h às 6h do dia seguinte, para a noite da boate não se dividir à meia-noite (`PDV_NUVEM_VIRADA_HORA` muda a
+   hora; 0 volta ao dia do calendário). O painel do PDV segue a mesma regra (Configurações > "O dia do painel vira às").
 2. No PDV, em Configurações > Nuvem, informe o endereço (`http://servidor:8000/v1/sincronizar`), o token da loja e a
    chave da loja (a mesma usada no `criar`).
 3. Deixe o envio rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`).

@@ -39,6 +39,15 @@ DATA_HORA = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
 ORDEM_STATUS = {"fechada": 1, "cancelada": 2}
 
 
+def virada_padrao() -> int:
+    """Hora em que o "dia" do painel vira (PDV_NUVEM_VIRADA_HORA, padrão 6): a noite da boate não se divide à meia-noite."""
+    try:
+        hora = int(os.environ.get("PDV_NUVEM_VIRADA_HORA", "6"))
+    except ValueError:
+        return 6
+    return hora if 0 <= hora <= 23 else 6
+
+
 class Venda(Base):
     __tablename__ = "vendas"
     id = Column(Integer, primary_key=True, index=True)
@@ -252,11 +261,14 @@ def painel():
 @app.get("/v1/dashboard/resumo")
 def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
                      chave_loja: Optional[str] = Query(None, max_length=64),
+                     virada: Optional[int] = Query(None, ge=0, le=23),
                      acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
     """Faturamento, cupons, ticket médio e mais vendidos de um dia. Sem `dia`, vale o da venda mais recente
     (assim o painel não depende do fuso do servidor). Só vendas fechadas com itens; recebimentos de
     caderneta (subtotal 0) e cancelamentos ficam de fora, como no painel do PDV.
-    O token de uma loja só vê a própria loja; o do administrador vê todas ou a pedida em `chave_loja`."""
+    O token de uma loja só vê a própria loja; o do administrador vê todas ou a pedida em `chave_loja`.
+    O dia vai da hora de `virada` (padrão PDV_NUVEM_VIRADA_HORA, 6) até a mesma hora do dia seguinte: a venda das
+    2h de sábado conta na noite de sexta."""
     if not acesso.admin:
         if chave_loja and chave_loja != acesso.loja:
             raise HTTPException(status_code=403, detail="Este token só consulta a própria loja.")
@@ -264,23 +276,25 @@ def dashboard_resumo(dia: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{
     base = [Venda.status == "fechada", Venda.subtotal_cent > 0]        # filtros que valem também para achar o dia padrão
     if chave_loja:
         base.append(Venda.chave_loja == chave_loja)
+    virada = virada_padrao() if virada is None else virada
     if dia is None:
         ultima = db.query(func.max(Venda.fechada_em)).filter(*base).scalar()
-        dia = ultima[:10] if ultima else date.today().isoformat()
+        dia = ((datetime.strptime(ultima[:19], "%Y-%m-%d %H:%M:%S") - timedelta(hours=virada)).date().isoformat()
+               if ultima else date.today().isoformat())
     try:
         inicio = date.fromisoformat(dia)
     except ValueError:
         raise HTTPException(status_code=422, detail="dia inválido")
     filtro = [*base,
-              Venda.fechada_em >= f"{inicio.isoformat()} 00:00:00",
-              Venda.fechada_em < f"{(inicio + timedelta(days=1)).isoformat()} 00:00:00"]
+              Venda.fechada_em >= f"{inicio.isoformat()} {virada:02d}:00:00",
+              Venda.fechada_em < f"{(inicio + timedelta(days=1)).isoformat()} {virada:02d}:00:00"]
     receita, cupons = db.query(func.coalesce(func.sum(Venda.total_cent), 0), func.count(Venda.id)).filter(*filtro).one()
     mais_vendidos = (db.query(VendaItem.nome, func.sum(VendaItem.quantidade), func.sum(VendaItem.total_cent))
                      .join(Venda, Venda.uuid == VendaItem.venda_uuid)
                      .filter(*filtro, VendaItem.cancelado.is_(False))
                      .group_by(VendaItem.nome).order_by(func.sum(VendaItem.quantidade).desc()).limit(5).all())
     return {
-        "dia": dia, "receita_cent": int(receita), "cupons": cupons,
+        "dia": dia, "virada": virada, "receita_cent": int(receita), "cupons": cupons,
         "ticket_medio_cent": (int(receita) + cupons // 2) // cupons if cupons else 0,   # centavos inteiros
         "top_produtos": [{"nome": n, "qtd": float(q), "total_cent": int(t)} for n, q, t in mais_vendidos],
     }

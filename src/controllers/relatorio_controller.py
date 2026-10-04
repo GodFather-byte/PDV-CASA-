@@ -21,11 +21,12 @@ class RelatorioController(RelatoriosVendas, RelatoriosGestao, RelatoriosComissoe
                       COALESCE(SUM(qt_atual > 0 AND qt_atual <= estoque_minimo), 0) AS ponto,
                       COALESCE(SUM(qt_atual > 0 AND qt_atual > estoque_minimo), 0) AS normal
                FROM produtos WHERE controla_estoque = 1 AND ativo = 1""")
-        hoje = fmt.hoje()
+        # "Vendas do dia" é a noite inteira: com a virada às 6h, a venda das 2h ainda conta na noite que começou ontem.
+        virada = b.cfg_int("virada_dia_hora", 6)
         v = b.um(
             """SELECT COUNT(*) AS n, COALESCE(SUM(total_cent), 0) AS total FROM vendas
                WHERE status = 'fechada' AND fechada_em >= ? AND fechada_em < ? AND subtotal_cent > 0""",
-            (hoje, fmt.somar_dias(hoje, 1)))
+            fmt.faixa_dia_operacional(fmt.dia_operacional(virada=virada), virada))
         contas = ContasController(b).painel()
         return {
             "atualizado_em": fmt.agora(),
