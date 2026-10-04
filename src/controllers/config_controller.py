@@ -88,6 +88,7 @@ CAMPOS_CONFIG = [
     ("usar_contas", "Contas a pagar/receber, plano de contas e relatórios financeiros", "sn", "Módulos"),
     ("programa_comunicacao", "Programa de comunicação (caminho do executável)", "texto", "Utilitários"),
     ("pasta_backup", "Pasta do backup (vazio = pasta Backup do sistema)", "texto", "Utilitários"),
+    ("pasta_backup_extra", "Cópia extra do backup: pendrive, outro disco ou pasta de rede (vazio = sem cópia extra)", "texto", "Utilitários"),
     ("email_loja", "E-mail da loja", "texto", "E-mail"), ("email_destino", "E-mail de destino dos relatórios", "texto", "E-mail"),
     ("smtp_servidor", "Servidor de e-mail (provedor)", "texto", "E-mail"),
     ("chave_loja", "Chave da loja (licença)", "texto", "Nuvem"), ("api_url", "Endereço da nuvem (licença e atualizações)", "texto", "Nuvem"),

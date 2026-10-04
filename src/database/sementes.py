@@ -77,7 +77,7 @@ CONFIG_PADRAO = {
     # Módulos que a boate não usa ficam escondidos (Configurações > Módulos liga cada um).
     "usar_delivery": "N", "usar_caderneta": "N", "usar_contas": "N",
     "api_url": "", "api_token": "", "sync_intervalo_seg": "60",
-    "programa_comunicacao": "", "pasta_backup": "",
+    "programa_comunicacao": "", "pasta_backup": "", "pasta_backup_extra": "", "backup_erro": "", "backup_extra_erro": "",
     "email_loja": "", "email_destino": "", "smtp_servidor": "",
 }
 

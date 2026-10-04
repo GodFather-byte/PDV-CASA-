@@ -43,7 +43,9 @@ RELATORIOS = [
 ]
 
 UTILITARIOS = [("limpeza", "Limpeza do movimento", "util_limpeza"), ("comunicacao", "Programa de comunicação", "util_comunicacao"),
-               ("backup", "Backup de dados", "util_backup"), ("fila_impressao", "Fila de impressão", "util_fila_impressao")]
+               ("backup", "Backup de dados", "util_backup"), ("restaurar", "Restaurar backup", "util_backup"),
+               ("suporte", "Pacote de suporte (log de erros)", "util_backup"),
+               ("fila_impressao", "Fila de impressão", "util_fila_impressao")]
 CONFIGURACOES = [("acessos", "Acessos", "cfg_acessos"), ("loja", "Loja", "cfg_loja"),
                  ("configuracoes", "Configurações", "cfg_configuracoes"), ("maquinas", "Máquinas", "cfg_maquinas")]
 
@@ -63,14 +65,37 @@ class App:
         self.servico_impressao: ServicoFilaImpressao | None = None
         self.menu: tk.Frame | None = None
         self.root.protocol("WM_DELETE_WINDOW", self.sair)
+        self.root.report_callback_exception = self._erro_na_tela      # erro dentro de uma tela: registra e avisa, não derruba
+        self._ultimo_erro = (0.0, "")
         self._relogio_id = None
         self._consulta_versao: dict | None = None      # {"pronta": bool, "dados": ...}: a thread da rede escreve aqui
 
     # ---------------------------------------------------------------- fluxo
+    def _erro_na_tela(self, tipo, valor, tb) -> None:
+        """Exceção que escapou de um evento da tela (clique, tecla, temporizador). Fica no log com o traceback completo; o
+        operador vê uma mensagem clara (a mesma falha repetida em sequência só avisa uma vez)."""
+        import time
+        from src.core import registro
+        registro.registrar_excecao(tipo, valor, tb, "tela")
+        agora, anterior = time.monotonic(), self._ultimo_erro
+        chave = f"{tipo.__name__}:{valor}"
+        self._ultimo_erro = (agora, chave)
+        if chave == anterior[1] and agora - anterior[0] < 10:
+            return
+        try:
+            tema.erro(self.root, "Ocorreu um erro inesperado nesta tela.\nO que já estava gravado foi preservado.\n"
+                                 "Se repetir, gere o pacote de suporte em Utilitários e envie ao fornecedor.", "Erro")
+        except tk.TclError:
+            pass
+
     def run(self) -> None:
         self._iniciar_fila_impressao()
+        idade = self.ctx.utilitarios.idade_backup_horas()
+        if idade is None or idade >= 12:                 # abriu o caixa e a última cópia é antiga: faz uma agora
+            self.ctx.utilitarios.backup_automatico("início")
         self.root.after(80, self.entrar)
         self.root.mainloop()
+        self.ctx.utilitarios.backup_automatico("saída", minimo_min=60)
         if self.servico_impressao is not None:
             self.servico_impressao.parar()
         self.banco.fechar()
@@ -221,8 +246,8 @@ class App:
                 valor = p[chave]
             lbl.configure(text=str(valor))
         self.lbl_atualiz.configure(text=f"Última atualização:  {fmt.fmt_datahora(p['atualizado_em'])}")
-        self.lbl_backup.configure(text=f"Último backup: {fmt.fmt_datahora(p['ultimo_backup'])}" if p["ultimo_backup"]
-                                  else "Não há backup nesta máquina")
+        nivel, texto = self.ctx.utilitarios.situacao_backup()
+        self.lbl_backup.configure(text=texto, fg="#ffd24d" if nivel == "ok" else "#ff6b6b")
         self.mostrar_aviso_versao()
         op = self.ctx.operador
         self.lbl_operador.configure(text=f"Operador: {op.nome}\nNível de acesso: {op.nivel}")
@@ -368,7 +393,14 @@ class App:
 
 
 def main() -> None:
-    App().run()
+    from src.ui import inicializacao
+    trava = inicializacao.iniciar()          # instância única, restauração marcada e checagem de integridade do banco
+    if trava is None:
+        return
+    try:
+        App().run()
+    finally:
+        trava.liberar()
 
 
 if __name__ == "__main__":
