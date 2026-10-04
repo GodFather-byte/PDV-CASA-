@@ -214,6 +214,8 @@ class ImpressaoController:
                               ("Repique", "repique"), ("Venda caderneta", "venda_caderneta"),
                               ("Pagtos caderneta (+)", "pagtos_caderneta"), ("Entradas financ. (+)", "entradas"),
                               ("Saídas financ. (-)", "saidas")):
+            if chave == "desconto" and not resumo[chave] and not self.banco.cfg_bool("usar_desconto", False):
+                continue                                    # casa sem desconto (boate): a linha zerada só polui a fita
             linhas.append(_lr(rotulo, M(resumo[chave]), w))
         linhas += ["-" * w, _lr("TC (cupons)", str(resumo["tc"]), w), _lr("TM", M(resumo["tm"]), w),
                    _lr("Pessoas", str(resumo["pessoas"]), w), _lr("Valor por pessoa", M(resumo["valor_por_pessoa"]), w),
