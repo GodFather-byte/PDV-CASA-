@@ -404,3 +404,18 @@ Não implementado ainda (fase 2): cadastros descendo da nuvem para o PDV.
   3. `CaixaController.adicionar_pagamento` agora exige turno aberto e grava `turno_id`. O adaptador legado `venda_controller` não
      foi tocado: o pagamento dele fica com `turno_id` NULL e conta no turno da venda. Contrato da nuvem sem mudança.
      Testes: `tests/test_adiantamentos.py` (15).
+
+- 2026-10-04 — Claude → Copilot/Antigravity: **senhas, testes de impressora e CI.**
+  1. **Senha igual ao nome (ADM/ADM de fábrica) obriga a trocar na entrada:** `AcessoController.precisa_trocar_senha`,
+     `validar_nova_senha` e `trocar_senha`; `JanelaLogin.trocar_senha` pede a nova duas vezes, e desistir não entra. O formato da
+     senha virou `seguranca.FORMATO_SENHA` (usado também por `entidades.py`). Testes de tela que entram como ADM pela janela de
+     login agora trocam a senha antes (`autenticar("adm", "adm")` direto no controlador continua valendo).
+  2. **5 senhas erradas seguidas bloqueiam por 5 minutos** o login daquele operador e a senha de supervisor (contador no `config`,
+     chaves `tentativas:login:<id>` e `tentativas:supervisor`, então reabrir o sistema não zera). `pedir_senha_supervisor`
+     mostra a mensagem do bloqueio. Sem mudança de esquema.
+  3. **Testes do spooler fora do Windows:** `ctypes.get_last_error` só existe no Windows; `_erro_windows` e `_enum` não quebram
+     mais nos testes que simulam o spooler. A suíte inteira passa (716 testes) também no Linux.
+  4. **CI** em `.github/workflows/testes.yml`: Windows e Linux, Python 3.10 e 3.12, com as dependências da API para os testes da
+     nuvem não ficarem pulados. No Linux as telas rodam no `xvfb-run` com tela de 24 bits (com 8 bits o Tk cai).
+     Testes novos: `tests/test_acesso.py` (8) e dois em `test_ui.py`.
+
