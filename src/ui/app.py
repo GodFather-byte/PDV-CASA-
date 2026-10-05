@@ -13,7 +13,6 @@ from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
 from src.ui import tema
 from src.ui.contexto import Contexto
-from src.ui.licenca_ui import GuardaLicenca
 from src.ui.login import JanelaLogin
 from src.versao import VERSAO
 
@@ -47,7 +46,6 @@ RELATORIOS = [
 UTILITARIOS = [("limpeza", "Limpeza do movimento", "util_limpeza"), ("comunicacao", "Programa de comunicação", "util_comunicacao"),
                ("backup", "Backup de dados", "util_backup"), ("restaurar", "Restaurar backup", "util_backup"),
                ("suporte", "Pacote de suporte (log de erros)", "util_backup"),
-               ("licenca", "Licença", "util_backup"),
                ("fila_impressao", "Fila de impressão", "util_fila_impressao")]
 CONFIGURACOES = [("acessos", "Acessos", "cfg_acessos"), ("loja", "Loja", "cfg_loja"),
                  ("configuracoes", "Configurações", "cfg_configuracoes"), ("maquinas", "Máquinas", "cfg_maquinas")]
@@ -64,7 +62,6 @@ class App:
         self.root.withdraw()
         tema.aplicar_tema(self.root)
         self.ctx = Contexto(self.banco)
-        self.licenca = GuardaLicenca(self)             # licenciamento: um único ponto (src/core/servico_licenca.py)
         self.janelas: dict[str, tk.Toplevel] = {}
         self.servico_impressao: ServicoFilaImpressao | None = None
         self.menu: tk.Frame | None = None
@@ -97,7 +94,6 @@ class App:
         idade = self.ctx.utilitarios.idade_backup_horas()
         if idade is None or idade >= 12:                 # abriu o caixa e a última cópia é antiga: faz uma agora
             self.ctx.utilitarios.backup_automatico("início")
-        self.licenca.iniciar()                           # chave na 1ª execução + checagem em thread (não trava a tela)
         self.root.after(80, self.entrar)
         self.root.mainloop()
         self.ctx.utilitarios.backup_automatico("saída", minimo_min=60)
@@ -119,10 +115,7 @@ class App:
         dlg = JanelaLogin(self.root, self.ctx, self.ctx.config.nome_loja())
         self.root.wait_window(dlg)
         if dlg.operador is None:
-            try:
-                self.root.destroy()
-            except tk.TclError:                           # "Sair" na tela de bloqueio da licença já a destruiu
-                pass
+            self.root.destroy()
             return
         self.ctx.operador = dlg.operador
         self.banco.log("login", dlg.operador.nome, dlg.operador.id)
@@ -225,8 +218,6 @@ class App:
         self.lbl_versao = tk.Label(self.painel, text="", bg="#0e1a3a", fg="#ffd24d", font=tema.FONTE_B, cursor="hand2",
                                    wraplength=360, justify="left")
         self.lbl_versao.bind("<Button-1>", lambda e: self.abrir_aviso_versao())
-        self.lbl_licenca = tk.Label(self.painel, text="", bg="#0e1a3a", fg="#ffd24d", font=tema.FONTE, wraplength=360,
-                                    justify="left")                   # faixa de aviso (mensalidade em atraso), não bloqueia
         self.lbl_backup = tk.Label(self.painel, text="", bg="#0e1a3a", fg="#ffd24d", font=tema.FONTE_B)
         self.lbl_backup.pack(anchor="w")
         self.lbl_atualiz = tk.Label(self.painel, text="", bg="#0e1a3a", fg="white", font=tema.FONTE_B)
@@ -259,7 +250,6 @@ class App:
         nivel, texto = self.ctx.utilitarios.situacao_backup()
         self.lbl_backup.configure(text=texto, fg="#ffd24d" if nivel == "ok" else "#ff6b6b")
         self.mostrar_aviso_versao()
-        self.licenca.atualizar_faixa()
         op = self.ctx.operador
         self.lbl_operador.configure(text=f"Operador: {op.nome}\nNível de acesso: {op.nivel}")
         self._relogio_id = self.root.after(30_000, self.atualizar_painel)
@@ -373,7 +363,6 @@ class App:
         from src.ui.caixa_ui import JanelaCaixa
         j = JanelaCaixa(self.root, self.ctx)
         self.root.wait_window(j)
-        self.licenca.avaliar()                         # bloqueio adiado durante a venda vale agora que o caixa fechou
         if self.menu is not None:
             self.atualizar_painel()
 
@@ -399,8 +388,6 @@ class App:
         self._unica("cfg_" + chave, lambda: config_ui.abrir(self.root, self.ctx, chave))
 
     def utilitario(self, chave: str) -> None:
-        if chave == "licenca":
-            return self.licenca.abrir_status()
         from src.ui import utilitarios_ui
         utilitarios_ui.executar(self.root, self.ctx, chave)
         self.atualizar_painel()

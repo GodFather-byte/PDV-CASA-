@@ -72,7 +72,7 @@ CONFIG_PADRAO = {
     # Comissão na tela do caixa e documentos da boate (chaves novas: bancos existentes ganham o padrão na próxima abertura).
     "comissao_na_linha": "S", "imprimir_via_comissao": "S", "painel_mostra_garotas": "S",
     "imprimir_fechamento_ao_trocar": "S", "vias_fechamento": "1", "limite_gaveta": "0",
-    "chave_loja": "",
+    "chave_loja": "", "licenca_ativa": "1",
     "virada_dia_hora": "6",     # o "dia" do painel vai das 6h às 6h do dia seguinte (a noite da boate não se divide)
     "usar_desconto": "N",       # boate não dá desconto: o campo some do fechamento da conta (Configurações > Caixa liga)
     # Módulos que a boate não usa ficam escondidos (Configurações > Módulos liga cada um).

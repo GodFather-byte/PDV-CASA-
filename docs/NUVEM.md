@@ -5,14 +5,11 @@ boate guarda as próprias vendas no caixa):
 
 | O quê | Para quê |
 |---|---|
-| Guarda a lista de lojas | Cada boate tem o seu token |
+| Guarda até quando cada loja pagou | O caixa renova a licença **sozinho** quando a loja está em dia |
 | Avisa sobre versão nova | Aparece uma faixa no caixa: "Nova versão disponível" |
-| Desativa uma loja | Desativou: a loja deixa de ver os avisos |
+| Bloqueia uma loja | Desativou: a loja deixa de renovar a licença e de ver avisos |
 
-O caixa **não depende** da nuvem para vender: sem internet ele continua funcionando e consulta de novo depois.
-
-> A **licença** do PDV não passa por aqui: ela é validada pelo servidor `/validar` e administrada pelo bot do Telegram
-> (veja "Licenciamento por servidor" no `README.md`).
+O caixa **não depende** da nuvem para vender: sem internet ele continua funcionando e tenta renovar a licença depois.
 
 Tudo o que é da nuvem está na pasta `backend/` do projeto.
 
@@ -43,7 +40,7 @@ Para parar o servidor, aperte `Ctrl+C`.
 Dá para colocar a nuvem no ar **sem pagar nada**, usando dois serviços gratuitos:
 
 - **Render** ([render.com](https://render.com)): roda o programa da nuvem.
-- **Neon** ([neon.tech](https://neon.tech)): guarda os dados (as lojas) num banco PostgreSQL.
+- **Neon** ([neon.tech](https://neon.tech)): guarda os dados (lojas e licenças) num banco PostgreSQL.
 
 O banco precisa ficar fora do Render porque o disco do plano grátis do Render é apagado a cada reinício: as lojas e os
 tokens sumiriam. No Neon os dados ficam guardados.
@@ -52,9 +49,9 @@ tokens sumiriam. No Neon os dados ficam guardados.
 
 | O quê | Na prática |
 |---|---|
-| O Render "dorme" depois de 15 minutos sem uso | O primeiro acesso depois disso demora cerca de 1 minuto. O caixa não trava: a consulta tenta de novo sozinha. |
-| Neon grátis: 0,5 GB | Sobra de muito: guarda só a lista de lojas e as versões publicadas. |
-| Sem terminal no Render grátis | Os comandos de lojas (passos 3 e 5) rodam **no seu PC**, ligados ao banco do Neon (veja abaixo). |
+| O Render "dorme" depois de 15 minutos sem uso | O primeiro acesso depois disso demora cerca de 1 minuto. O caixa não trava: o envio tenta de novo sozinho, e a licença manual continua valendo. |
+| Neon grátis: 0,5 GB | Sobra de muito: guarda só a lista de lojas e as datas pagas. |
+| Sem terminal no Render grátis | Os comandos de lojas e licenças (passos 3 e 5) rodam **no seu PC**, ligados ao banco do Neon (veja abaixo). |
 
 Quando tiver várias boates pagando, passe para o VPS da seção 2 ou para um plano pago do Render. É só mudar o endereço
 no caixa.
@@ -71,11 +68,14 @@ no caixa.
 2. Clique em **New > Blueprint** e escolha o repositório. O Render lê o arquivo `render.yaml` do projeto e já
    preenche tudo.
 3. Ele pede o valor de **PDV_NUVEM_DB_URL**: cole o endereço do Neon (passo G1).
-4. Clique em **Deploy**. Quando terminar, o Render mostra o endereço, algo como `https://willpdv-nuvem.onrender.com`.
+4. Para a renovação automática da licença: no serviço criado, abra **Environment > Secret Files > Add Secret File**.
+   - Nome do arquivo: `licenca_privada.key`
+   - Conteúdo: o conteúdo do seu `C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key`, que é uma linha de letras e números.
+5. Clique em **Deploy**. Quando terminar, o Render mostra o endereço, algo como `https://willpdv-nuvem.onrender.com`.
    Abra `https://willpdv-nuvem.onrender.com/v1/saude`: tem que aparecer `{"status":"ok"}`.
-5. A sua senha de administrador (para listar todas as lojas) está em **Environment > PDV_API_TOKEN**.
+6. A sua senha de administrador (para listar todas as lojas) está em **Environment > PDV_API_TOKEN**.
 
-### G3. Rodar os comandos de lojas no seu PC
+### G3. Rodar os comandos de lojas e licenças no seu PC
 Como o banco está no Neon, os comandos funcionam do seu computador. No PowerShell, dentro da pasta do projeto:
 
 ```powershell
@@ -83,6 +83,7 @@ pip install -r backend\requirements.txt
 $env:PDV_NUVEM_DB_URL = "postgresql://...cole-aqui-o-endereco-do-neon..."
 python -m backend.lojas criar BOATE-ESTRELA "Boate Estrela"
 python -m backend.lojas listar
+python -m backend.lojas assinatura BOATE-ESTRELA 2026-11-30
 ```
 
 A linha do `$env:` precisa ser repetida cada vez que abrir um PowerShell novo. Daí em diante, os passos **3 a 6**
@@ -117,19 +118,37 @@ python3 -m venv /opt/willpdv/venv
 > O repositório é privado, então o `git clone` vai pedir usuário e senha do GitHub. No lugar da senha use um
 > **token de acesso pessoal** (GitHub > Settings > Developer settings > Personal access tokens).
 
-### 2.2 Configuração (senhas e caminhos)
+### 2.2 A chave da licença (para a renovação automática)
+
+Copie o seu arquivo `licenca_privada.key`, que fica no seu PC em `C:\Users\SEU_USUARIO\.pdv-casa\`, para o servidor.
+Rode isto **no seu PC**:
+
+```powershell
+scp C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key root@IP-DO-SERVIDOR:/opt/willpdv/
+```
+
+Depois, **no servidor**:
+
+```bash
+chmod 600 /opt/willpdv/licenca_privada.key
+```
+
+Sem esse arquivo a nuvem funciona, mas não emite licença: aí você manda o código manual como antes.
+
+### 2.3 Configuração (senhas e caminhos)
 
 ```bash
 cat > /opt/willpdv/nuvem.env <<'EOF'
 PDV_API_TOKEN=TROQUE-POR-UMA-SENHA-LONGA-SO-SUA
 PDV_NUVEM_DB_URL=sqlite:////opt/willpdv/nuvem.db
+PDV_LICENCA_CHAVE=/opt/willpdv/licenca_privada.key
 EOF
 chmod 600 /opt/willpdv/nuvem.env
 ```
 
 - `PDV_API_TOKEN` é a **sua** senha de administrador. Com ela você lista todas as lojas.
 
-### 2.3 Deixar a nuvem ligada sempre (reinicia sozinha se cair ou se o servidor reiniciar)
+### 2.4 Deixar a nuvem ligada sempre (reinicia sozinha se cair ou se o servidor reiniciar)
 
 ```bash
 cat > /etc/systemd/system/willpdv.service <<'EOF'
@@ -150,7 +169,7 @@ systemctl daemon-reload && systemctl enable --now willpdv
 systemctl status willpdv --no-pager
 ```
 
-### 2.4 HTTPS (cadeado) com o Caddy
+### 2.5 HTTPS (cadeado) com o Caddy
 
 O Caddy coloca o cadeado de graça e renova sozinho. Sem HTTPS, o token da loja trafega aberto na internet.
 
@@ -167,7 +186,7 @@ systemctl reload caddy
 Troque `nuvem.seusite.com.br` pelo seu domínio. Para testar, abra `https://nuvem.seusite.com.br/v1/saude`: tem
 que aparecer `{"status":"ok"}`.
 
-### 2.5 Backup diário da nuvem
+### 2.6 Backup diário da nuvem
 
 ```bash
 mkdir -p /opt/willpdv/backup
@@ -195,6 +214,8 @@ set -a; . /opt/willpdv/nuvem.env; set +a
 
 Guarde o **token** que aparecer: ele vai no caixa da boate e não aparece de novo.
 
+Use **o mesmo nome de loja** (`BOATE-ESTRELA`) na licença manual (`tools.gerar_licenca emitir --loja BOATE-ESTRELA`).
+
 > Dica: para não repetir as duas primeiras linhas toda vez, crie um atalho:
 > `echo 'alias lojas="cd /opt/willpdv/app && set -a && . /opt/willpdv/nuvem.env && set +a && /opt/willpdv/venv/bin/python -m backend.lojas"' >> ~/.bashrc`
 > e abra o terminal de novo. Daí em diante basta `lojas listar`, `lojas criar ...` e assim por diante.
@@ -207,31 +228,34 @@ No caixa, entre em **Configurações > Configurações > aba Nuvem**:
 
 | Campo | O que colocar |
 |---|---|
-| Chave da loja (nuvem) | `BOATE-ESTRELA` |
+| Chave da loja (licença) | `BOATE-ESTRELA` |
 | Endereço da nuvem | `https://nuvem.seusite.com.br` |
 | Token da API | o token que o `criar` mostrou |
 
-Na instalação, marque **"Verificar atualizações na nuvem em segundo plano"**: a verificação passa a abrir
+Na instalação, marque **"Verificar licença e atualizações na nuvem em segundo plano"**: a verificação passa a abrir
 sozinha junto com o Windows. Se o caixa já estiver instalado, rode o instalador de novo e marque essa opção. O histórico
 fica em `%LOCALAPPDATA%\WILL-PDV\logs\sync.log`.
 
 ---
 
-## 5. Acompanhar e controlar as lojas
+## 5. Acompanhar e controlar as licenças
 
-**Pelo navegador ou `curl`:** a lista das lojas (e se estão ativas) sai em `https://nuvem.seusite.com.br/v1/admin/lojas`,
-com o cabeçalho `Authorization: Bearer <seu PDV_API_TOKEN>`:
+**Pelo navegador ou `curl`:** a lista das lojas (ativa ou não, até quando pagou, "vence em" e "VENCIDA") sai em
+`https://nuvem.seusite.com.br/v1/admin/lojas`, com o cabeçalho `Authorization: Bearer <seu PDV_API_TOKEN>`:
 
 ```bash
 curl -H "Authorization: Bearer SEU_TOKEN_DE_ADMIN" https://nuvem.seusite.com.br/v1/admin/lojas
 ```
 
-**Pelo terminal** (para cadastrar e desativar). Todos estes comandos são rodados no servidor (veja a dica do atalho
-`lojas` no passo 3):
+**Pelo terminal** (para cadastrar, renovar e bloquear):
+
+Todos estes comandos são rodados no servidor (veja a dica do atalho `lojas` no passo 3):
 
 ```bash
-lojas listar                                   # todas as lojas e se estão ativas
-lojas desativar BOATE-ESTRELA                  # a loja deixa de ver os avisos de versão na hora
+lojas listar                                   # todas as lojas: ativa ou não, e até quando pagou
+lojas assinatura BOATE-ESTRELA 2026-11-30      # a loja pagou até 30/11/2026
+lojas assinatura BOATE-ESTRELA cancelar        # parou de pagar: não renova mais
+lojas desativar BOATE-ESTRELA                  # bloqueia a loja na hora
 lojas ativar BOATE-ESTRELA                     # libera de novo
 lojas novo-token BOATE-ESTRELA                 # token vazou: gera outro (o antigo para de funcionar)
 ```
@@ -239,12 +263,23 @@ lojas novo-token BOATE-ESTRELA                 # token vazou: gera outro (o anti
 O `listar` mostra algo assim:
 
 ```
-BOATE-ESTRELA            ativa    Boate Estrela
-BOATE-LUA                INATIVA  Boate Lua
+BOATE-ESTRELA            ativa    paga até 30/11/2026                    Boate Estrela
+BOATE-SOL                ativa    paga até 06/10/2026 (vence em 2 dias)  Boate Sol
+BOATE-LUA                INATIVA  paga até 01/09/2026 (VENCIDA)          Boate Lua
 ```
 
-> Pagamento, bloqueio e troca de computador da **licença** não são feitos aqui: são no bot do Telegram (veja o
-> `README.md`, "Licenciamento por servidor").
+Fique de olho nas marcadas com **vence em** (cobrar) e **VENCIDA**.
+
+**Como a renovação funciona no dia a dia:**
+
+1. A boate paga o mês.
+2. Você roda `lojas assinatura BOATE-ESTRELA <nova data>`.
+3. Em até 6 horas o caixa busca o código novo sozinho. Ao entrar no sistema com a licença vencida, ele também tenta
+   na hora.
+4. Se a boate não pagar, a data não muda. O caixa avisa 7 dias antes, dá 5 dias de carência e nunca trava com o
+   turno aberto.
+
+Uma boate sem internet continua usando o código manual: `python -m tools.gerar_licenca emitir --loja ... --dias 30`.
 
 ---
 
@@ -270,7 +305,7 @@ cd /opt/willpdv/app && git pull
 systemctl restart willpdv
 ```
 
-Tabelas novas no banco da nuvem são criadas sozinhas, sem perder o que já está lá.
+Colunas novas no banco da nuvem são criadas sozinhas, sem perder o que já está lá.
 
 ---
 
@@ -279,6 +314,7 @@ Tabelas novas no banco da nuvem são criadas sozinhas, sem perder o que já est�
 | Sintoma | O que fazer |
 |---|---|
 | `https://.../v1/saude` não abre | `systemctl status willpdv` e `systemctl status caddy`. Confira se o domínio aponta para o IP do servidor. |
-| Caixa não mostra versão nova | Endereço ou token errado no caixa, ou a verificação não está aberta (passo 4). Veja o `sync.log`. |
+| Caixa não renova a licença nem mostra versão nova | Endereço ou token errado no caixa, ou a verificação não está aberta (passo 4). Veja o `sync.log`. |
 | "Este token é da loja X" | A chave da loja no caixa não é a mesma do `criar`. |
+| Licença não renova sozinha | `lojas listar` mostra a data paga? A data precisa ser **depois de hoje**. Confira também se o `licenca_privada.key` está no servidor (passo 2.2). |
 | Ver os erros da nuvem | `journalctl -u willpdv -n 100 --no-pager` |

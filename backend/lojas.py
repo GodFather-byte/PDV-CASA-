@@ -1,10 +1,12 @@
 """Cadastro das lojas da nuvem. Cada loja tem o próprio token; o token aparece UMA vez e só o hash fica guardado.
 
     python -m backend.lojas criar BOATE-CENTRO "Boate Centro"   # mostra o token da loja
-    python -m backend.lojas listar                              # todas as lojas e se estão ativas
+    python -m backend.lojas listar                              # todas as lojas e até quando pagaram (avisa as vencidas)
     python -m backend.lojas novo-token BOATE-CENTRO             # troca o token (o antigo para de funcionar)
-    python -m backend.lojas desativar BOATE-CENTRO              # a loja deixa de receber avisos de versão
+    python -m backend.lojas desativar BOATE-CENTRO              # bloqueia envio e painel (ex.: assinatura vencida)
     python -m backend.lojas ativar BOATE-CENTRO
+    python -m backend.lojas assinatura BOATE-CENTRO 2026-11-30  # pagou até essa data: o PDV renova a licença sozinho
+    python -m backend.lojas assinatura BOATE-CENTRO cancelar    # não emite mais (a licença do caixa vence no prazo)
 
 No PDV da loja, em Configurações > Nuvem: a chave da loja (ex.: BOATE-CENTRO) e o token mostrado aqui.
 Usa o mesmo banco da API (PDV_NUVEM_DB_URL).
@@ -14,11 +16,11 @@ from __future__ import annotations
 import re
 import secrets
 import sys
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from backend.main import Loja, SessionLocal, hash_token
+from backend.main import Loja, SessionLocal, hash_token, situacao_assinatura
 
 CHAVE_VALIDA = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
@@ -67,6 +69,12 @@ def definir_ativa(db: Session, chave: str, ativa: bool) -> None:
     db.commit()
 
 
+def definir_assinatura(db: Session, chave: str, ate: date | None) -> None:
+    """Até quando a loja pagou (None cancela). A nuvem passa a emitir licença até essa data para o PDV dela."""
+    _obter(db, chave).licenca_ate = ate.isoformat() if ate else None
+    db.commit()
+
+
 def listar(db: Session) -> list[Loja]:
     return db.query(Loja).order_by(Loja.chave_loja).all()
 
@@ -84,10 +92,22 @@ def main(argv: list[str] | None = None) -> int:
         elif comando in ("ativar", "desativar") and len(resto) == 1:
             definir_ativa(db, resto[0], comando == "ativar")
             print(f"Loja {resto[0]} {'ativada' if comando == 'ativar' else 'desativada'}.")
+        elif comando == "assinatura" and len(resto) == 2:
+            if resto[1] == "cancelar":
+                definir_assinatura(db, resto[0], None)
+                print(f"Assinatura da loja {resto[0]} cancelada: a nuvem não emite mais licença para ela.")
+            else:
+                try:
+                    ate = date.fromisoformat(resto[1])
+                except ValueError:
+                    raise ErroLoja("Informe a data como AAAA-MM-DD (ex.: 2026-11-30) ou 'cancelar'.") from None
+                definir_assinatura(db, resto[0], ate)
+                print(f"Loja {resto[0]} com assinatura paga até {ate.strftime('%d/%m/%Y')}. O PDV renova sozinho.")
         elif comando == "listar" and not resto:
             lojas = listar(db)
             for loja in lojas:
-                print(f"{loja.chave_loja:<24} {'ativa  ' if loja.ativa else 'INATIVA'}  {loja.nome}")
+                print(f"{loja.chave_loja:<24} {'ativa  ' if loja.ativa else 'INATIVA'}  {situacao_assinatura(loja.licenca_ate):<38} "
+                      f"{loja.nome}")
             if not lojas:
                 print("Nenhuma loja cadastrada.")
         else:

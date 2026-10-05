@@ -1,7 +1,8 @@
-"""API de nuvem do PDV (FastAPI): aviso de versão nova do PDV (a licença é do servidor /validar, fora deste projeto).
+"""API de nuvem do PDV (FastAPI): licença das lojas e aviso de versão nova.
 
 A nuvem NÃO recebe vendas nem tem painel de faturamento: o PDV funciona sozinho em cada boate. Ela só guarda a lista de
-lojas (cada uma com o SEU token) e publica as versões novas do PDV. Cadastro das lojas (o token aparece uma única vez):
+lojas (cada uma com o SEU token e a data até quando pagou), entrega o código de licença a quem está em dia e publica as
+versões novas do PDV. Cadastro das lojas (o token aparece uma única vez):
     python -m backend.lojas criar BOATE-CENTRO "Boate Centro"
 
 Como rodar, na raiz do repositório:
@@ -18,6 +19,8 @@ import hmac
 import logging
 import os
 from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -25,6 +28,7 @@ from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
+from src.core import ed25519, licenca as licenca_pdv
 from src.versao import chave, mais_nova, valida      # a mesma regra de comparação de versões do PDV
 
 log = logging.getLogger("pdv.nuvem")
@@ -38,6 +42,7 @@ class Loja(Base):
     token_hash = Column(String, unique=True, index=True, nullable=False)
     ativa = Column(Boolean, nullable=False, default=True)
     criada_em = Column(String)
+    licenca_ate = Column(String, nullable=True)     # AAAA-MM-DD: até quando a assinatura está paga (backend.lojas assinatura)
 
 
 class Versao(Base):
@@ -51,11 +56,40 @@ class Versao(Base):
     publicada_em = Column(String)
 
 
+def situacao_assinatura(licenca_ate: str | None, hoje: date | None = None) -> str:
+    """'paga até 30/11/2026', com o alerta do que precisa de atenção: VENCIDA ou quantos dias faltam (7 ou menos)."""
+    if not licenca_ate:
+        return "sem assinatura"
+    ate = date.fromisoformat(licenca_ate)
+    dias = (ate - (hoje or date.today())).days
+    texto = f"paga até {ate.strftime('%d/%m/%Y')}"
+    if dias <= 0:
+        return texto + " (VENCIDA)"
+    if dias <= 7:
+        return texto + f" (vence em {dias} dia{'s' if dias > 1 else ''})"
+    return texto
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def _acrescentar_colunas() -> None:
+    """create_all não altera tabela existente: colunas novas de tabelas que já existiam entram aqui."""
+    from sqlalchemy import inspect, text
+    novas = {"lojas": {"licenca_ate": "VARCHAR"}}
+    with engine.begin() as con:
+        for tabela, colunas in novas.items():
+            existentes = {c["name"] for c in inspect(con).get_columns(tabela)}
+            for nome, tipo in colunas.items():
+                if nome not in existentes:
+                    con.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}"))
+
+
+_acrescentar_colunas()
 
 app = FastAPI(title="WillPDV - API de nuvem")
 
@@ -101,12 +135,15 @@ def saude():
 
 @app.get("/v1/admin/lojas")
 def admin_lojas(acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
-    """Lista do fornecedor (só com o PDV_API_TOKEN): cada loja e se está ativa. É o 'lojas listar' na tela, para quem
-    não tem terminal no servidor (ex.: Render grátis)."""
+    """Lista do fornecedor (só com o PDV_API_TOKEN): cada loja, se está ativa e até quando pagou. É o 'lojas listar' na
+    tela, para quem não tem terminal no servidor (ex.: Render grátis)."""
     if not acesso.admin:
         raise HTTPException(status_code=403, detail="Só o token do administrador vê a lista de lojas.")
+    hoje = date.today()
     return {"lojas": [
-        {"chave_loja": l.chave_loja, "nome": l.nome, "ativa": bool(l.ativa)}
+        {"chave_loja": l.chave_loja, "nome": l.nome, "ativa": bool(l.ativa), "licenca_ate": l.licenca_ate,
+         "dias_restantes": (date.fromisoformat(l.licenca_ate) - hoje).days if l.licenca_ate else None,
+         "situacao": situacao_assinatura(l.licenca_ate, hoje)}
         for l in db.query(Loja).order_by(Loja.chave_loja).all()]}
 
 
@@ -129,3 +166,36 @@ def atualizacoes(versao: str = Query(..., max_length=20), acesso: Acesso = Depen
         "versoes": [{"versao": v.versao, "notas": v.notas, "critica": bool(v.critica), "publicada_em": v.publicada_em}
                     for v in novas[:20]],
     }
+
+
+# ------------------------------------------------------------- licença
+def semente_licenca() -> Optional[bytes]:
+    """Chave privada do fornecedor (a mesma de tools.gerar_licenca): PDV_LICENCA_CHAVE ou ~/.pdv-casa/licenca_privada.key."""
+    arquivo = Path(os.environ.get("PDV_LICENCA_CHAVE") or Path.home() / ".pdv-casa" / "licenca_privada.key")
+    try:
+        semente = bytes.fromhex(arquivo.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return None
+    return semente if len(semente) == 32 else None
+
+
+@app.get("/v1/licenca")
+def licenca(acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
+    """Código de licença da loja do token, válido até a data paga (`python -m backend.lojas assinatura`). O PDV renova
+    sozinho com ele; se a loja não pagou, a data não avança e a licença vence normalmente no caixa."""
+    if acesso.admin:
+        raise HTTPException(status_code=403, detail="Use o token da loja.")
+    loja = db.query(Loja).filter(Loja.chave_loja == acesso.loja).first()
+    if not loja.licenca_ate:
+        raise HTTPException(status_code=404, detail="Nenhuma assinatura registrada para esta loja.")
+    ate = date.fromisoformat(loja.licenca_ate)
+    hoje = date.today()
+    if ate <= hoje:
+        raise HTTPException(status_code=409, detail=f"Assinatura paga até {ate.strftime('%d/%m/%Y')}: renove com o fornecedor.")
+    semente = semente_licenca()
+    if semente is None or ed25519.chave_publica(semente).hex() != licenca_pdv.CHAVE_PUBLICA_HEX:
+        log.error("Licença pedida pela loja %s, mas a nuvem não tem a chave privada do fornecedor certa.", loja.chave_loja)
+        raise HTTPException(status_code=503, detail="A nuvem não está configurada para emitir licenças.")
+    return {"codigo": licenca_pdv.gerar_licenca(semente, loja.chave_loja, (ate - hoje).days, hoje),
+            "expira_em": ate.isoformat()}
+

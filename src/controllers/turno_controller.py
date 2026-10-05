@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from src.controllers import conferencia_turno
 from src.core import formatacao as fmt
+from src.core import licenca
 from src.core.erros import ErroNegocio
 
 # Pagamento que conta no turno `?` (aliases p = pagamentos_venda, v = vendas). Vale o turno em que o dinheiro ENTROU:
@@ -66,6 +67,9 @@ class TurnoController:
 
     # ------------------------------------------------------------- abertura
     def abrir(self, operador_id: int, numero: int, valor_inicial_cent: int) -> int:
+        est = licenca.estado(self.banco)
+        if est.bloqueia:
+            raise ErroNegocio(f"{est.mensagem} Renove a licença na tela de entrada antes de abrir um turno.")
         if self.atual():
             raise ErroNegocio("Já existe um turno aberto neste caixa.")
         if numero < 1:
@@ -79,6 +83,8 @@ class TurnoController:
                 "aberto_em": fmt.agora(), "valor_inicial_cent": valor_inicial_cent,
                 "cupom_inicial": cupom_inicial, "status": "aberto"})
             self.banco.log("turno_aberto", f"turno {numero}, fundo {fmt.fmt_brl(valor_inicial_cent)}", operador_id)
+            if licenca.exigida(self.banco):
+                licenca.registrar_uso(self.banco)
         return tid
 
     # ---------------------------------------------- sangria e repique
@@ -246,6 +252,8 @@ class TurnoController:
                 "cupom_final": res["cupom_final"], "esperado_cent": res["esperado"],
                 "resultado_cent": resultado, "fechado_por": operador_id, "status": "fechado"})
             self.banco.log("turno_fechado", f"turno {res['turno']['numero']} resultado {fmt.fmt_brl(resultado)}", operador_id)
+            if licenca.exigida(self.banco):
+                licenca.registrar_uso(self.banco)
         res = self.resumo(turno_id)
         res["valor_final"] = valor_final_cent
         res["resultado"] = resultado

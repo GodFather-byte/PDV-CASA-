@@ -5,7 +5,7 @@
 Sistema de ponto de venda offline-first para bares, casas noturnas e operações de
 alimentação. O objetivo é evoluir para um PDV confiável de ponta a ponta: vendas,
 mesas e comandas, turnos, pagamentos, estoque, clientes, financeiro, relatórios e
-licença por servidor e atualizações pela nuvem.
+licença mensal e atualizações pela nuvem.
 
 > **Estado do projeto:** em desenvolvimento. O sistema local (cadastros, caixa, mesas,
 > caderneta, entrega, estoque, contas, relatórios, utilitários e configurações dos
@@ -13,7 +13,7 @@ licença por servidor e atualizações pela nuvem.
 > por testes automatizados de regras e de telas. Ainda **não foi validado em loja**: não há
 > emissão fiscal, TEF nem leitura real de balança, e a impressora térmica e a gaveta só foram testadas com
 > impressora simulada (ver
-> [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a nuvem (atualizações) e a licença por servidor ainda não foram testadas em loja.
+> [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a nuvem (licença e atualizações) ainda não foi testada em loja.
 
 ## Começar
 
@@ -274,8 +274,8 @@ como impresso; reimprima pela 2ª via).
 - `src/ui/`: interface Tkinter (`app.py` é a janela principal, `caixa_ui.py` o caixa); telas Flet antigas congeladas.
 - `tests/`: regras de negócio, telas (com um robô que opera as janelas modais) e o teste de fumaça.
 - `src/sync/`: transporte PDV ↔ nuvem.
-- `backend/`: API de nuvem (FastAPI) de avisos de versão; não é usada pelo PDV local.
-- `pdv_licenca.py`: cliente do servidor de licença (criptografia e rede); as regras ficam em `src/core/servico_licenca.py`.
+- `backend/`: API de nuvem (FastAPI) de licença e atualizações; não é usada pelo PDV local.
+- `tools/`: ferramentas do fornecedor (licença); não vão no instalador.
 
 ## Banco local e dados
 
@@ -299,13 +299,12 @@ Convenções obrigatórias entre as camadas:
 - timestamps locais são armazenados em ISO (`YYYY-MM-DD HH:MM:SS`);
 - UUID identifica a venda e permite reenvio idempotente.
 
-## Nuvem (só atualizações)
+## Nuvem (só licença e atualizações)
 
-> Passo a passo para colocar a nuvem no ar e cadastrar boates: [`docs/NUVEM.md`](docs/NUVEM.md). A **licença** não é
-> desta nuvem: é do servidor `/validar` e do bot do Telegram ([Licenciamento por servidor](#licenciamento-por-servidor-e-bot-do-telegram)).
+> Passo a passo para colocar a nuvem no ar, cadastrar boates e acompanhar as licenças: [`docs/NUVEM.md`](docs/NUVEM.md).
 
 Cada boate tem o seu PDV e as vendas ficam só nele (use o backup). A nuvem (`backend/`, FastAPI) **não recebe vendas e não
-tem painel**: ela guarda a lista de lojas (cada uma com o seu token) e avisa sobre versão nova.
+tem painel**: ela guarda até quando cada loja pagou, entrega o código de licença e avisa sobre versão nova.
 
 1. No servidor (`pip install -r backend/requirements.txt`), na raiz do repositório:
 
@@ -321,6 +320,20 @@ tem painel**: ela guarda a lista de lojas (cada uma com o seu token) e avisa sob
    mesma usada no `criar`).
 3. Deixe a verificação rodando em outra janela: `python -m src.app --sync` (no executável: `WillPDV.exe --sync`). Ela
    registra em `logs/sync.log`, espera cada vez mais se a nuvem cair e não faz nada se o endereço estiver vazio.
+
+### Licença renovada pela nuvem
+
+Com a chave privada do fornecedor no servidor (o mesmo arquivo de `tools.gerar_licenca`, em `PDV_LICENCA_CHAVE` ou
+`~/.pdv-casa/licenca_privada.key`), basta registrar até quando cada loja pagou:
+
+```powershell
+python -m backend.lojas assinatura BOATE-CENTRO 2026-11-30   # pagou até 30/11
+python -m backend.lojas assinatura BOATE-CENTRO cancelar     # não renova mais
+```
+
+O PDV da loja busca o código sozinho (pela verificação em segundo plano, a cada 6 horas, e na entrada quando a licença está vencida) e o
+ativa se estender o prazo. Se a loja não pagar, a data não avança e a licença vence normalmente, com aviso e carência.
+O código manual (`python -m tools.gerar_licenca emitir`) continua valendo para lojas sem internet.
 
 ### Avisar as lojas sobre uma versão nova
 
@@ -344,11 +357,11 @@ uma instalação que falhasse no meio do expediente pararia o caixa.
 Antes de operar comercialmente ainda é necessário: HTTPS (proxy reverso ou túnel), teste em loja com a
 rotina real do caixa, backup e restauração testados, hardware fiscal/periféricos e homologação no ambiente da loja.
 
-## Executável e instalador
+## Licença mensal e executável
 
 `python build_pdv.py` gera o executável (PyInstaller) em `dist/WillPDV/`. No executável os dados (banco, Backup,
-impressao, logs) ficam em `%LOCALAPPDATA%\WILL-PDV`. O executável já leva `pdv_licenca.py` e a biblioteca `cryptography`
-(licenciamento por servidor, mais abaixo).
+impressao, logs) ficam em `%LOCALAPPDATA%\WILL-PDV` e a licença é sempre exigida; rodando do código-fonte ela só vale com
+`licenca_exigir = S` nas configurações.
 
 ### Instalador (Inno Setup)
 
@@ -366,162 +379,54 @@ novo). A cada versão:
 Para atualizar, rode o instalador novo no mesmo PC (com o turno fechado): ele substitui o programa e mantém as vendas,
 que ficam em `%LOCALAPPDATA%\WILL-PDV`. Desinstalar também não apaga esses dados; faça o backup antes de trocar de PC.
 
-## Licenciamento por servidor e bot do Telegram
-
-Esta é a licença **por computador**: cada caixa se identifica (`machine_id`), pergunta ao seu servidor se pode funcionar e
-guarda a resposta assinada por 7 dias. Quem administra tudo (criar licença, bloquear, trocar de computador) é o seu **bot
-do Telegram**, que conversa com o servidor. O PDV nunca fala com o Telegram: só com o servidor.
-
-```text
-   Você  ──Telegram──►  Bot  ──►  Servidor  ◄── POST /validar ──  PDV (cada caixa)
-                                  (guarda as licenças e                (só tem a chave PÚBLICA)
-                                   a chave PRIVADA)
-```
-
-> **O servidor `/validar` e o bot do Telegram não estão neste repositório.** Aqui está só o lado do PDV (arquivos
-> `pdv_licenca.py`, `src/core/servico_licenca.py` e `src/ui/licenca_ui.py`). Os passos 1 a 3 descrevem o que o servidor e o
-> bot precisam fazer para o PDV funcionar; os comandos exatos do bot são os do seu bot.
-
-> **Este é o único sistema de licença do PDV.** A licença mensal antiga (código `PDVL1`, `tools/gerar_licenca.py` e a
-> renovação por `/v1/licenca` na nuvem) foi removida. Enquanto `SERVER` e `PUBLIC_KEY_PEM` não forem preenchidos (passo 4),
-> o PDV roda **sem nenhuma exigência de licença**.
-
-### Passo 1: gerar o par de chaves (uma vez só)
-
-O servidor assina com a chave **privada**; o PDV confere com a chave **pública**. Gere o par no seu computador:
+A licença é um código assinado (Ed25519) com a chave da loja e o último dia de validade. O PDV só guarda a chave
+pública; a privada fica com o fornecedor, fora do repositório (`~/.pdv-casa/licenca_privada.key`):
 
 ```powershell
-openssl genpkey -algorithm ED25519 -out licenca_servidor.key
-openssl pkey -in licenca_servidor.key -pubout -out licenca_servidor_publica.pem
+python -m tools.gerar_licenca emitir --loja CASAVERDE-01 --dias 30
 ```
 
-Sem o `openssl` no Windows, use o Python (precisa de `pip install cryptography`):
+O operador cola o código em "Código de licença..." na tela de entrada. O sistema avisa 7 dias antes de vencer, dá 5
+dias de carência depois e nunca bloqueia com o turno aberto. Para criar o par de chaves (uma única vez) rode
+`python -m tools.gerar_licenca novo-par` e cole a chave pública em `CHAVE_PUBLICA_HEX` (`src/core/licenca.py`); trocar a
+chave invalida os códigos já emitidos.
+
+## Como emitir as licenças no seu computador (sem servidor, sem bot, sem nuvem)
+
+Você, o fornecedor, cria o código de cada loja no **seu** PC. O caixa só **confere** a assinatura com a chave pública que
+já vai dentro do programa e funciona **sem internet**. Não há servidor de licença nem bot.
+
+**Uma vez só (se ainda não tiver a chave):**
 
 ```powershell
-python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as K; from cryptography.hazmat.primitives import serialization as s; k=K.generate(); open('licenca_servidor.key','wb').write(k.private_bytes(s.Encoding.PEM, s.PrivateFormat.PKCS8, s.NoEncryption())); open('licenca_servidor_publica.pem','wb').write(k.public_key().public_bytes(s.Encoding.PEM, s.PublicFormat.SubjectPublicKeyInfo))"
+python -m tools.gerar_licenca novo-par
 ```
 
-- `licenca_servidor.key` é a **privada**. Vai **só** para o servidor (como variável de ambiente ou arquivo secreto). Nunca vai
-  para o GitHub, para o PDV, para o bot nem para ninguém. O `.gitignore` já ignora `*.key`. Faça uma cópia segura (se
-  perder, todos os caixas precisam de uma chave pública nova).
-- `licenca_servidor_publica.pem` é a **pública**: é a que entra no PDV (passo 4). Não é segredo.
+Ele grava a chave **privada** em `C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key` e mostra a **pública**. Cole a pública em
+`CHAVE_PUBLICA_HEX` (`src/core/licenca.py`) e gere o instalador de novo. **Faça backup da privada e nunca a coloque no
+GitHub nem no PC do cliente**; trocar o par invalida todos os códigos já emitidos.
 
-### Passo 2: o que o servidor precisa responder
+**Para cada loja:**
 
-`POST {SERVER}/validar` com `{"license_key": "...", "machine_id": "..."}`.
+```powershell
+python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --dias 30        # mensal: vence em 30 dias
+python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --permanente     # sem vencimento na prática (100 anos)
+python -m tools.gerar_licenca ver CODIGO                                   # confere um código já emitido
+```
 
-| Situação no servidor | Resposta |
-|---|---|
-| Licença em dia, máquina vinculada a ela (ou ainda sem máquina: vincula a primeira que pedir) | `200` `{"status": "ok", "payload": "...", "signature": "..."}` |
-| Mensalidade em atraso (ainda liberada) | `200` com `"status": "atraso"` (o PDV mostra uma faixa de aviso, sem bloquear) |
-| Você bloqueou a licença | `403` `{"status": "bloqueada"}` |
-| Chave que não existe | `403` `{"status": "invalida"}` |
-| Chave já vinculada a **outro** computador | `403` `{"status": "outra_maquina"}` |
+Mande a linha impressa (começa por `PDVL1.`) ao cliente. No caixa dele, na tela de entrada, **Código de licença...**: cole e
+confirme. A primeira ativação grava o nome da loja; depois o caixa só aceita códigos **da mesma loja**.
 
-Só um `403` com um desses três `status` bloqueia o caixa. Um `403` sem corpo ou com outro corpo (portal de Wi-Fi, proxy,
-firewall) é tratado como falha de rede: o caixa segue com o último token salvo.
+Como o caixa se comporta:
 
-O que o PDV exige do `200`:
+- Avisa **7 dias antes** de vencer, dá **5 dias de carência** e só então bloqueia a entrada. **Nunca** bloqueia com um turno
+  recente aberto, e não deixa abrir turno novo com a licença bloqueada.
+- Voltar o relógio do Windows não reabre o prazo.
+- Para renovar uma loja, emita outro código (mais novo) e mande de novo; ela cola no mesmo lugar. Um código mais antigo que o
+  atual é recusado.
+- Rodando do código-fonte (desenvolvimento) a licença não é exigida; no `.exe` ela é sempre.
 
-- `payload` é um **texto** JSON, por exemplo `{"license_key": "A1B2-C3D4", "machine_id": "<o mesmo recebido>", "exp": 1790000000}`.
-  `exp` é o vencimento em segundos Unix (7 dias à frente). Também são aceitos `expira_em`, `expires_at` ou `valido_ate` (data ISO 8601),
-  ou `iat`/`emitido_em` (aí vale emissão + 7 dias).
-- `signature` é a assinatura Ed25519 dos bytes UTF-8 **desse mesmo texto** `payload`, em base64 comum. O texto tem que
-  seguir byte a byte como foi assinado (não reserialize o JSON depois de assinar).
-- Inclua no `payload` o vencimento (`exp`). Sem nenhuma data, o PDV usa recebimento + 7 dias, e quem redirecionar o servidor
-  para um falso poderia reutilizar um token antigo para sempre.
-- Se `machine_id` ou `license_key` vierem no payload, têm que ser os da requisição; senão o PDV recusa o token.
-- Use **HTTPS** (o PDV recusa `http://`, exceto `localhost`, porque a chave da licença viaja no corpo do pedido).
-
-### Passo 3: o que o bot precisa conseguir fazer
-
-Se o seu bot já existe, só confira se ele cobre isto (cada item termina em uma mudança no banco do servidor):
-
-| Ação | Para quê |
-|---|---|
-| Criar uma licença para uma boate (gera a `license_key`) | Cliente novo: você manda a chave para ele |
-| Consultar uma licença (status, até quando pagou, `machine_id` vinculado) | Conferir o cliente |
-| Marcar mensalidade em atraso / em dia | Faixa de aviso no caixa; depois do prazo, bloquear |
-| Bloquear e desbloquear | `bloqueada` no caixa (o caixa só bloqueia quando não há venda ou comanda aberta) |
-| **Liberar ou trocar o computador** (limpar ou alterar o `machine_id` vinculado) | Cliente trocou de PC: sem isso aparece `outra_maquina` |
-
-Se ainda vai criar o bot no Telegram:
-
-1. No Telegram, abra o **@BotFather**, mande `/newbot`, escolha nome e usuário (termina em `bot`). Ele devolve o **token do bot**.
-2. Guarde o token só no servidor onde o bot roda (variável de ambiente), nunca no PDV nem no repositório.
-3. Faça o bot responder **somente ao seu usuário** (confira o `id` numérico do remetente a cada comando). Qualquer pessoa
-   que ache o bot não pode criar nem liberar licença.
-4. Faça o bot usar a mesma chave privada do passo 1 só através do servidor (o bot não precisa conhecê-la se o servidor assina).
-
-### Passo 4: configurar o PDV (você, antes de gerar a versão)
-
-1. Abra `src/core/servico_licenca.py` e troque os dois valores marcados como PREENCHER:
-
-   ```python
-   SERVER = "https://licencas.seudominio.com.br"     # sem barra no final
-   PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
-   (as linhas do arquivo licenca_servidor_publica.pem)
-   -----END PUBLIC KEY-----"""
-   ```
-
-   Enquanto os textos `COLE-AQUI` estiverem lá, o licenciamento por servidor fica **desligado** e o PDV funciona como antes.
-2. Gere a nova versão: `pip install -r requirements.txt` e `python build_pdv.py` (veja [Instalador](#instalador-inno-setup)).
-   O `.exe` já leva `pdv_licenca.py` e a biblioteca `cryptography` por dentro.
-3. (Opcional) Em cada caixa, em **Configurações > Configurações > Nuvem**, preencha **Contato de suporte mostrado na tela de
-   bloqueio** com o seu contato (por exemplo `@seu_bot`). Sem isso aparece "Fale com o suporte do fornecedor.".
-
-### Passo 5: ativar uma boate (o dia a dia)
-
-1. No bot, crie a licença da boate e copie a **`license_key`**.
-2. No caixa novo, abra o PDV. Na primeira vez ele pede a chave: cole e confirme.
-3. O caixa se vincula ao computador na primeira validação. Para conferir, abra **Utilitários > Licença**: aparecem o status,
-   a licença com só os 4 últimos caracteres e o **ID da máquina** (botão Copiar). É esse ID que o bot guarda.
-4. Pronto. Daí em diante o PDV confere ao abrir e a cada 4 horas, sempre em segundo plano, sem travar a tela.
-
-### Licença permanente (só você, dono, emite)
-
-Para um caixa que nunca deve vencer nem depender de servidor ou internet (a sua boate, um parceiro, um caso especial), você
-emite um **código permanente** no seu computador, com a **chave privada** do passo 1. O PDV só confere com a chave pública.
-
-1. Peça ao cliente (ou veja no bot) o **ID da máquina**: no caixa, **Utilitários > Licença > Copiar** (também aparece na tela de
-   bloqueio).
-2. No **seu** computador, na pasta do projeto (precisa de `pip install cryptography`):
-
-   ```powershell
-   python -m tools.gerar_licenca_permanente --chave-privada licenca_servidor.key --machine-id COLE_O_ID_AQUI --nome "Boate Estrela"
-   ```
-
-   Ele imprime uma linha começando por `PDVP1.`. Essa é a licença. Guarde uma cópia: ela não pode ser revogada.
-3. Mande o código ao cliente. No caixa: **Utilitários > Licença > Licença permanente...** (ou o botão **Licença permanente** na tela de
-   bloqueio), cole e confirme. Fica "Ativa — licença permanente".
-
-Como funciona e o que ela **não** faz:
-
-- Vale **só naquele computador** (amarrada ao `machine_id`): copiar o arquivo para outro PC não funciona; se a loja trocar de
-  computador, emita outro código com o ID novo.
-- Não expira, não consulta o servidor e não exige a chave de licença. O bot **não consegue** bloqueá-la depois.
-- A única forma de invalidar todos os códigos já emitidos é trocar o par de chaves (e gerar uma versão nova do PDV).
-- A ferramenta `tools/` fica no repositório, mas **não vai no instalador**. Nunca copie a chave privada para o PC do cliente.
-- O código fica em `%LOCALAPPDATA%\WILL-PDV\licenca_permanente.json`.
-
-### Casos comuns
-
-| O que aconteceu | O que o operador vê | O que você faz |
-|---|---|---|
-| Internet caiu | Nada: segue com o último token salvo (vale até 7 dias) | Nada |
-| Mais de 7 dias sem internet nem validação | Tela "Licença não liberada" (não foi possível confirmar) | Voltar a internet e clicar **Tentar novamente** |
-| Mensalidade atrasou | Faixa amarela no painel, o caixa continua | Regularizar com o cliente e marcar em dia no bot |
-| Bloqueio pelo bot | Tela de bloqueio, mas **só quando não há venda ou comanda aberta** | Desbloquear no bot; o operador clica **Tentar novamente** |
-| Trocou de computador | `outra_maquina` | No bot, liberar/trocar o computador da licença; no PC novo, **Tentar novamente** |
-| Chave digitada errada | `invalida` | **Informar outra chave** na própria tela de bloqueio |
-
-O token fica em `%LOCALAPPDATA%\WILL-PDV\licenca.json` e a chave de licença na configuração do caixa. Nenhum dos dois vai
-para o log do PDV.
-
-### Testar antes de usar em loja
-
-1. Rode o servidor (ou um servidor de teste) em `http://localhost:8000` e ponha `SERVER = "http://localhost:8000"` só na sua máquina de teste.
-2. `python -m src.app`: ele pede a chave. Confira **Utilitários > Licença**.
-3. Faça o servidor responder `403 bloqueada` e abra uma comanda: nada acontece até a comanda fechar; depois a tela de bloqueio aparece.
-4. Desligue a internet e reabra o PDV: ele segue com o token salvo.
-5. Antes de entregar a uma loja, gere o `.exe` (`python build_pdv.py --sem-instalador`) e repita 2 a 4 com ele.
+Limites: o código vale para a **loja** (nome), não para um computador específico, então ele funciona em qualquer PC dessa
+loja, e uma cópia do código funciona onde for colada. Não dá para revogar um código já emitido (só deixar vencer ou trocar o
+par de chaves). A renovação automática pela nuvem (`docs/NUVEM.md`) é **opcional**: sem endereço da nuvem configurado ela não
+faz nada.

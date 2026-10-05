@@ -4,6 +4,9 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from src.controllers.turno_controller import TurnoController
+from src.core import formatacao as fmt
+from src.core import licenca
 from src.core.erros import ErroNegocio
 from src.ui import tema
 
@@ -37,6 +40,8 @@ class JanelaLogin(tk.Toplevel):
         self.lbl_msg = tk.Label(quadro, text="", bg=tema.COR["marinho"], fg="#ffb4b4", font=tema.FONTE_B)
         self.lbl_msg.pack(pady=(4, 6))
         ttk.Button(quadro, text="Entrar", command=self.entrar).pack(fill="x")
+        if licenca.exigida(ctx.banco):
+            ttk.Button(quadro, text="Código de licença...", command=self.pedir_licenca).pack(fill="x", pady=(6, 0))
         self.ent_usuario.bind("<Return>", lambda e: self.ent_senha.focus_set())
         self.ent_senha.bind("<Return>", lambda e: self.entrar())
         self.protocol("WM_DELETE_WINDOW", self.destroy)
@@ -47,6 +52,17 @@ class JanelaLogin(tk.Toplevel):
         (self.ent_senha if self.var_usuario.get() else self.ent_usuario).focus_set()
 
     def entrar(self) -> None:
+        estado = licenca.estado(self.ctx.banco)
+        turno = TurnoController(self.ctx.banco).atual()
+        if estado.bloqueia and self._renovar_pela_nuvem():
+            estado = licenca.estado(self.ctx.banco)
+        if estado.bloqueia and not licenca.turno_vale_como_isencao(self.ctx.banco, turno):
+            # Com um turno recente aberto a loja continua operando (só avisa); sem ele, exige a renovação.
+            self.ctx.banco.log("licenca_bloqueio", estado.mensagem)
+            self.lbl_msg.configure(text=estado.mensagem)
+            if not self.pedir_licenca(estado.mensagem):
+                return
+            estado = licenca.estado(self.ctx.banco)
         senha = self.var_senha.get()
         try:
             operador = self.ctx.acesso.autenticar(self.var_usuario.get(), senha)
@@ -61,6 +77,13 @@ class JanelaLogin(tk.Toplevel):
             self.ent_senha.focus_set()
             return
         self.operador = operador
+        if licenca.exigida(self.ctx.banco):
+            licenca.registrar_uso(self.ctx.banco)
+        if estado.bloqueia:
+            tema.mensagem(self, f"{estado.mensagem}\nO turno aberto pode ser trabalhado e fechado normalmente; "
+                                "a próxima entrada exigirá o código de renovação.", "Licença", "aviso")
+        elif estado.avisa:
+            tema.mensagem(self, estado.mensagem, "Licença", "aviso")
         self.destroy()
 
     def trocar_senha(self, operador) -> bool:
@@ -82,3 +105,26 @@ class JanelaLogin(tk.Toplevel):
         self.ctx.acesso.trocar_senha(operador, nova)
         tema.mensagem(self, "Senha trocada. Use a senha nova nas próximas entradas.", "Senha")
         return True
+
+    def _renovar_pela_nuvem(self) -> bool:
+        """Licença bloqueada: antes de pedir o código, tenta a renovação pela nuvem (a loja pode já ter pago)."""
+        from src.sync import licenca_nuvem
+        self.lbl_msg.configure(text="Verificando a licença na nuvem...", fg="white")
+        self.update_idletasks()
+        renovou = licenca_nuvem.renovar(self.ctx.banco, forcar=True, timeout=(3, 5))
+        self.lbl_msg.configure(text="")
+        return renovou
+
+    def pedir_licenca(self, motivo: str = "") -> bool:
+        """Pede o código de licença e o ativa. Devolve True se a licença ficou liberada para entrar."""
+        texto = (f"{motivo}\n\n" if motivo else "") + "Cole o código de licença fornecido:"
+        codigo = tema.pedir_texto(self, "Código de licença", texto, largura=64)
+        if not codigo:
+            return False
+        try:
+            lic = licenca.ativar(self.ctx.banco, codigo)
+        except ErroNegocio as e:
+            self.lbl_msg.configure(text=str(e), fg="#ffb4b4")
+            return False
+        self.lbl_msg.configure(text=f"Licença ativada até {fmt.fmt_data(lic['expira_em'].isoformat())}.", fg="#5be39a")
+        return not licenca.estado(self.ctx.banco).bloqueia
