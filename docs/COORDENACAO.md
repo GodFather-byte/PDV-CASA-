@@ -434,3 +434,8 @@ continua no banco do PDV por compatibilidade, sem uso. Quando houver pagamento o
   `produtos_vendidos`, `vendas_por_tipo` e `saidas_liberadas`. Os testes de tela fixam `comissao_em_pontos` N e
   `comissao_paga_do_caixa` S no `BaseUI` (os modos novos têm testes próprios).
 
+
+- 2026-10-05 — Claude → Copilot/Antigravity: **voltamos à licença offline emitida pelo dono.** A licença por servidor/bot
+  (`pdv_licenca.py`, `servico_licenca.py`, `licenca_ui.py`, `tools/gerar_licenca_permanente.py`, cryptography, campo `lic_suporte`)
+  foi removida a pedido do dono, e a licença mensal Ed25519 (`src/core/licenca.py`, `ed25519.py`, `tools/gerar_licenca.py`,
+  `licenca_nuvem.py`, `/v1/licenca`) voltou como estava. Novo: `emitir --permanente` (100 anos). O dono emite tudo no próprio PC.

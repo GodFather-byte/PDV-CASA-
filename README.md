@@ -391,13 +391,42 @@ dias de carência depois e nunca bloqueia com o turno aberto. Para criar o par d
 `python -m tools.gerar_licenca novo-par` e cole a chave pública em `CHAVE_PUBLICA_HEX` (`src/core/licenca.py`); trocar a
 chave invalida os códigos já emitidos.
 
-## Licenciamento por servidor
+## Como emitir as licenças no seu computador (sem servidor, sem bot, sem nuvem)
 
-O PDV valida a licença em `POST {SERVER}/validar` (cliente em `pdv_licenca.py`, regras em `src/core/servico_licenca.py`,
-telas em `src/ui/licenca_ui.py`). Só a chave **pública** Ed25519 fica no PDV. O token vale 7 dias e, sem internet, o
-último token salvo (`%LOCALAPPDATA%\WILL-PDV\licenca.json`) continua valendo até vencer.
+Você, o fornecedor, cria o código de cada loja no **seu** PC. O caixa só **confere** a assinatura com a chave pública que
+já vai dentro do programa e funciona **sem internet**. Não há servidor de licença nem bot.
 
-Fica **desligado** até o fornecedor preencher `SERVER` e `PUBLIC_KEY_PEM` em `src/core/servico_licenca.py`. A chave da
-licença é digitada na primeira execução e guardada na configuração (`lic_chave`); o contato de suporte da tela de
-bloqueio vem de `lic_suporte`. A checagem roda ao abrir e a cada 4 horas, sempre em thread, e **nunca** bloqueia com
-venda ou comanda aberta. Tela de conferência: Utilitários > Licença.
+**Uma vez só (se ainda não tiver a chave):**
+
+```powershell
+python -m tools.gerar_licenca novo-par
+```
+
+Ele grava a chave **privada** em `C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key` e mostra a **pública**. Cole a pública em
+`CHAVE_PUBLICA_HEX` (`src/core/licenca.py`) e gere o instalador de novo. **Faça backup da privada e nunca a coloque no
+GitHub nem no PC do cliente**; trocar o par invalida todos os códigos já emitidos.
+
+**Para cada loja:**
+
+```powershell
+python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --dias 30        # mensal: vence em 30 dias
+python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --permanente     # sem vencimento na prática (100 anos)
+python -m tools.gerar_licenca ver CODIGO                                   # confere um código já emitido
+```
+
+Mande a linha impressa (começa por `PDVL1.`) ao cliente. No caixa dele, na tela de entrada, **Código de licença...**: cole e
+confirme. A primeira ativação grava o nome da loja; depois o caixa só aceita códigos **da mesma loja**.
+
+Como o caixa se comporta:
+
+- Avisa **7 dias antes** de vencer, dá **5 dias de carência** e só então bloqueia a entrada. **Nunca** bloqueia com um turno
+  recente aberto, e não deixa abrir turno novo com a licença bloqueada.
+- Voltar o relógio do Windows não reabre o prazo.
+- Para renovar uma loja, emita outro código (mais novo) e mande de novo; ela cola no mesmo lugar. Um código mais antigo que o
+  atual é recusado.
+- Rodando do código-fonte (desenvolvimento) a licença não é exigida; no `.exe` ela é sempre.
+
+Limites: o código vale para a **loja** (nome), não para um computador específico, então ele funciona em qualquer PC dessa
+loja, e uma cópia do código funciona onde for colada. Não dá para revogar um código já emitido (só deixar vencer ou trocar o
+par de chaves). A renovação automática pela nuvem (`docs/NUVEM.md`) é **opcional**: sem endereço da nuvem configurado ela não
+faz nada.

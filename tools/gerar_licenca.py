@@ -5,6 +5,7 @@ Não faz parte do instalador. A chave privada fica FORA do repositório (padrão
 
   python -m tools.gerar_licenca novo-par                           # uma única vez
   python -m tools.gerar_licenca emitir --loja CASAVERDE-01 --dias 30
+  python -m tools.gerar_licenca emitir --loja CASAVERDE-01 --permanente     # sem vencimento na prática (100 anos)
   python -m tools.gerar_licenca ver CODIGO
 """
 from __future__ import annotations
@@ -16,6 +17,9 @@ import sys
 from pathlib import Path
 
 from src.core import ed25519, licenca
+
+
+DIAS_PERMANENTE = 36500
 
 
 def _arquivo_padrao() -> Path:
@@ -71,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("emitir", help="gera o código de licença de uma loja")
     p.add_argument("--loja", required=True, help="chave da loja (a mesma de Configurações > Nuvem)")
     p.add_argument("--dias", type=int, default=30)
+    p.add_argument("--permanente", action="store_true", help=f"sem vencimento na prática: {DIAS_PERMANENTE} dias (100 anos)")
     p.add_argument("--arquivo", type=Path, default=None)
     p = sub.add_parser("ver", help="confere a assinatura de um código")
     p.add_argument("codigo")
@@ -79,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.comando == "novo-par":
             novo_par(args.arquivo or _arquivo_padrao())
         elif args.comando == "emitir":
-            emitir(args.arquivo or _arquivo_padrao(), args.loja, args.dias)
+            emitir(args.arquivo or _arquivo_padrao(), args.loja, DIAS_PERMANENTE if args.permanente else args.dias)
         else:
             ver(args.codigo)
     except (ValueError, licenca.LicencaInvalida) as e:

@@ -276,6 +276,12 @@ class TesteLicenca(BaseTeste):
                     ferramenta.emitir(arquivo, "LOJA-9", 30)
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(ferramenta.main(["ver", "lixo"]), 1)
+            with mock.patch.object(licenca, "CHAVE_PUBLICA_HEX", publica_hex):          # --permanente: 100 anos
+                saida = io.StringIO()
+                with contextlib.redirect_stdout(saida):
+                    self.assertEqual(ferramenta.main(["emitir", "--loja", "LOJA-9", "--permanente", "--arquivo", str(arquivo)]), 0)
+                lic = licenca.ler_licenca(saida.getvalue().strip().splitlines()[-1])
+                self.assertGreater((lic["expira_em"] - lic["emitida_em"]).days, 36000)
 
 
 class TesteTurnoComLicenca(BaseTeste):
