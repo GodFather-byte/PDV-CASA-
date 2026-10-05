@@ -391,13 +391,132 @@ dias de carência depois e nunca bloqueia com o turno aberto. Para criar o par d
 `python -m tools.gerar_licenca novo-par` e cole a chave pública em `CHAVE_PUBLICA_HEX` (`src/core/licenca.py`); trocar a
 chave invalida os códigos já emitidos.
 
-## Licenciamento por servidor
+## Licenciamento por servidor e bot do Telegram
 
-O PDV valida a licença em `POST {SERVER}/validar` (cliente em `pdv_licenca.py`, regras em `src/core/servico_licenca.py`,
-telas em `src/ui/licenca_ui.py`). Só a chave **pública** Ed25519 fica no PDV. O token vale 7 dias e, sem internet, o
-último token salvo (`%LOCALAPPDATA%\WILL-PDV\licenca.json`) continua valendo até vencer.
+Esta é a licença **por computador**: cada caixa se identifica (`machine_id`), pergunta ao seu servidor se pode funcionar e
+guarda a resposta assinada por 7 dias. Quem administra tudo (criar licença, bloquear, trocar de computador) é o seu **bot
+do Telegram**, que conversa com o servidor. O PDV nunca fala com o Telegram: só com o servidor.
 
-Fica **desligado** até o fornecedor preencher `SERVER` e `PUBLIC_KEY_PEM` em `src/core/servico_licenca.py`. A chave da
-licença é digitada na primeira execução e guardada na configuração (`lic_chave`); o contato de suporte da tela de
-bloqueio vem de `lic_suporte`. A checagem roda ao abrir e a cada 4 horas, sempre em thread, e **nunca** bloqueia com
-venda ou comanda aberta. Tela de conferência: Utilitários > Licença.
+```text
+   Você  ──Telegram──►  Bot  ──►  Servidor  ◄── POST /validar ──  PDV (cada caixa)
+                                  (guarda as licenças e                (só tem a chave PÚBLICA)
+                                   a chave PRIVADA)
+```
+
+> **O servidor `/validar` e o bot do Telegram não estão neste repositório.** Aqui está só o lado do PDV (arquivos
+> `pdv_licenca.py`, `src/core/servico_licenca.py` e `src/ui/licenca_ui.py`). Os passos 1 a 3 descrevem o que o servidor e o
+> bot precisam fazer para o PDV funcionar; os comandos exatos do bot são os do seu bot.
+
+> **Atenção (executável):** a licença mensal antiga (código `PDVL1`, seção [Licença mensal e executável](#licença-mensal-e-executável))
+> **continua ativa** e não foi removida. No `.exe` ela segue sendo exigida no login, além desta. Enquanto as duas existirem,
+> a loja precisa passar nas duas. Para ficar só com esta, é preciso uma mudança à parte no PDV.
+
+### Passo 1: gerar o par de chaves (uma vez só)
+
+O servidor assina com a chave **privada**; o PDV confere com a chave **pública**. Gere o par no seu computador:
+
+```powershell
+openssl genpkey -algorithm ED25519 -out licenca_servidor.key
+openssl pkey -in licenca_servidor.key -pubout -out licenca_servidor_publica.pem
+```
+
+Sem o `openssl` no Windows, use o Python (precisa de `pip install cryptography`):
+
+```powershell
+python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as K; from cryptography.hazmat.primitives import serialization as s; k=K.generate(); open('licenca_servidor.key','wb').write(k.private_bytes(s.Encoding.PEM, s.PrivateFormat.PKCS8, s.NoEncryption())); open('licenca_servidor_publica.pem','wb').write(k.public_key().public_bytes(s.Encoding.PEM, s.PublicFormat.SubjectPublicKeyInfo))"
+```
+
+- `licenca_servidor.key` é a **privada**. Vai **só** para o servidor (como variável de ambiente ou arquivo secreto). Nunca vai
+  para o GitHub, para o PDV, para o bot nem para ninguém. O `.gitignore` já ignora `*.key`. Faça uma cópia segura (se
+  perder, todos os caixas precisam de uma chave pública nova).
+- `licenca_servidor_publica.pem` é a **pública**: é a que entra no PDV (passo 4). Não é segredo.
+- Não reaproveite a chave da licença mensal antiga (`licenca_privada.key`): são sistemas separados.
+
+### Passo 2: o que o servidor precisa responder
+
+`POST {SERVER}/validar` com `{"license_key": "...", "machine_id": "..."}`.
+
+| Situação no servidor | Resposta |
+|---|---|
+| Licença em dia, máquina vinculada a ela (ou ainda sem máquina: vincula a primeira que pedir) | `200` `{"status": "ok", "payload": "...", "signature": "..."}` |
+| Mensalidade em atraso (ainda liberada) | `200` com `"status": "atraso"` (o PDV mostra uma faixa de aviso, sem bloquear) |
+| Você bloqueou a licença | `403` `{"status": "bloqueada"}` |
+| Chave que não existe | `403` `{"status": "invalida"}` |
+| Chave já vinculada a **outro** computador | `403` `{"status": "outra_maquina"}` |
+
+O que o PDV exige do `200`:
+
+- `payload` é um **texto** JSON, por exemplo `{"license_key": "A1B2-C3D4", "machine_id": "<o mesmo recebido>", "exp": 1790000000}`.
+  `exp` é o vencimento em segundos Unix (7 dias à frente). Também são aceitos `expira_em`, `expires_at` ou `valido_ate` (data ISO 8601),
+  ou `iat`/`emitido_em` (aí vale emissão + 7 dias).
+- `signature` é a assinatura Ed25519 dos bytes UTF-8 **desse mesmo texto** `payload`, em base64 comum. O texto tem que
+  seguir byte a byte como foi assinado (não reserialize o JSON depois de assinar).
+- Se `machine_id` ou `license_key` vierem no payload, têm que ser os da requisição; senão o PDV recusa o token.
+- Use **HTTPS** (o PDV recusa `http://`, exceto `localhost`, porque a chave da licença viaja no corpo do pedido).
+
+### Passo 3: o que o bot precisa conseguir fazer
+
+Se o seu bot já existe, só confira se ele cobre isto (cada item termina em uma mudança no banco do servidor):
+
+| Ação | Para quê |
+|---|---|
+| Criar uma licença para uma boate (gera a `license_key`) | Cliente novo: você manda a chave para ele |
+| Consultar uma licença (status, até quando pagou, `machine_id` vinculado) | Conferir o cliente |
+| Marcar mensalidade em atraso / em dia | Faixa de aviso no caixa; depois do prazo, bloquear |
+| Bloquear e desbloquear | `bloqueada` no caixa (o caixa só bloqueia quando não há venda ou comanda aberta) |
+| **Liberar ou trocar o computador** (limpar ou alterar o `machine_id` vinculado) | Cliente trocou de PC: sem isso aparece `outra_maquina` |
+
+Se ainda vai criar o bot no Telegram:
+
+1. No Telegram, abra o **@BotFather**, mande `/newbot`, escolha nome e usuário (termina em `bot`). Ele devolve o **token do bot**.
+2. Guarde o token só no servidor onde o bot roda (variável de ambiente), nunca no PDV nem no repositório.
+3. Faça o bot responder **somente ao seu usuário** (confira o `id` numérico do remetente a cada comando). Qualquer pessoa
+   que ache o bot não pode criar nem liberar licença.
+4. Faça o bot usar a mesma chave privada do passo 1 só através do servidor (o bot não precisa conhecê-la se o servidor assina).
+
+### Passo 4: configurar o PDV (você, antes de gerar a versão)
+
+1. Abra `src/core/servico_licenca.py` e troque os dois valores marcados como PREENCHER:
+
+   ```python
+   SERVER = "https://licencas.seudominio.com.br"     # sem barra no final
+   PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
+   (as linhas do arquivo licenca_servidor_publica.pem)
+   -----END PUBLIC KEY-----"""
+   ```
+
+   Enquanto os textos `COLE-AQUI` estiverem lá, o licenciamento por servidor fica **desligado** e o PDV funciona como antes.
+2. Gere a nova versão: `pip install -r requirements.txt` e `python build_pdv.py` (veja [Instalador](#instalador-inno-setup)).
+   O `.exe` já leva `pdv_licenca.py` e a biblioteca `cryptography` por dentro.
+3. (Opcional) Em cada caixa, em **Configurações > Configurações > Nuvem**, preencha **Contato de suporte mostrado na tela de
+   bloqueio** com o seu contato (por exemplo `@seu_bot`). Sem isso aparece "Fale com o suporte do fornecedor.".
+
+### Passo 5: ativar uma boate (o dia a dia)
+
+1. No bot, crie a licença da boate e copie a **`license_key`**.
+2. No caixa novo, abra o PDV. Na primeira vez ele pede a chave: cole e confirme.
+3. O caixa se vincula ao computador na primeira validação. Para conferir, abra **Utilitários > Licença**: aparecem o status,
+   a licença com só os 4 últimos caracteres e o **ID da máquina** (botão Copiar). É esse ID que o bot guarda.
+4. Pronto. Daí em diante o PDV confere ao abrir e a cada 4 horas, sempre em segundo plano, sem travar a tela.
+
+### Casos comuns
+
+| O que aconteceu | O que o operador vê | O que você faz |
+|---|---|---|
+| Internet caiu | Nada: segue com o último token salvo (vale até 7 dias) | Nada |
+| Mais de 7 dias sem internet nem validação | Tela "Licença não liberada" (não foi possível confirmar) | Voltar a internet e clicar **Tentar novamente** |
+| Mensalidade atrasou | Faixa amarela no painel, o caixa continua | Regularizar com o cliente e marcar em dia no bot |
+| Bloqueio pelo bot | Tela de bloqueio, mas **só quando não há venda ou comanda aberta** | Desbloquear no bot; o operador clica **Tentar novamente** |
+| Trocou de computador | `outra_maquina` | No bot, liberar/trocar o computador da licença; no PC novo, **Tentar novamente** |
+| Chave digitada errada | `invalida` | **Informar outra chave** na própria tela de bloqueio |
+
+O token fica em `%LOCALAPPDATA%\WILL-PDV\licenca.json` e a chave de licença na configuração do caixa. Nenhum dos dois vai
+para o log do PDV.
+
+### Testar antes de usar em loja
+
+1. Rode o servidor (ou um servidor de teste) em `http://localhost:8000` e ponha `SERVER = "http://localhost:8000"` só na sua máquina de teste.
+2. `python -m src.app`: ele pede a chave. Confira **Utilitários > Licença**.
+3. Faça o servidor responder `403 bloqueada` e abra uma comanda: nada acontece até a comanda fechar; depois a tela de bloqueio aparece.
+4. Desligue a internet e reabra o PDV: ele segue com o token salvo.
+5. Antes de entregar a uma loja, gere o `.exe` (`python build_pdv.py --sem-instalador`) e repita 2 a 4 com ele.
