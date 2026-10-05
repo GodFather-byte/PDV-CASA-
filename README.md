@@ -418,6 +418,9 @@ python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519
 | Chave que não existe | `403` `{"status": "invalida"}` |
 | Chave já vinculada a **outro** computador | `403` `{"status": "outra_maquina"}` |
 
+Só um `403` com um desses três `status` bloqueia o caixa. Um `403` sem corpo ou com outro corpo (portal de Wi-Fi, proxy,
+firewall) é tratado como falha de rede: o caixa segue com o último token salvo.
+
 O que o PDV exige do `200`:
 
 - `payload` é um **texto** JSON, por exemplo `{"license_key": "A1B2-C3D4", "machine_id": "<o mesmo recebido>", "exp": 1790000000}`.
@@ -425,6 +428,8 @@ O que o PDV exige do `200`:
   ou `iat`/`emitido_em` (aí vale emissão + 7 dias).
 - `signature` é a assinatura Ed25519 dos bytes UTF-8 **desse mesmo texto** `payload`, em base64 comum. O texto tem que
   seguir byte a byte como foi assinado (não reserialize o JSON depois de assinar).
+- Inclua no `payload` o vencimento (`exp`). Sem nenhuma data, o PDV usa recebimento + 7 dias, e quem redirecionar o servidor
+  para um falso poderia reutilizar um token antigo para sempre.
 - Se `machine_id` ou `license_key` vierem no payload, têm que ser os da requisição; senão o PDV recusa o token.
 - Use **HTTPS** (o PDV recusa `http://`, exceto `localhost`, porque a chave da licença viaja no corpo do pedido).
 

@@ -28,6 +28,7 @@ INTERVALO_SEGUNDOS = 4 * 3600
 _PLACEHOLDER = "COLE-AQUI"
 
 MENSAGENS = {
+    "sem_chave": "Este caixa ainda não tem chave de licença. Informe a chave fornecida pelo suporte.",
     "bloqueada": "Esta licença está bloqueada.",
     "invalida": "A chave de licença informada não é válida.",
     "outra_maquina": "Esta licença está em uso em outro computador.",

@@ -23,12 +23,14 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 VALIDADE_TOKEN_DIAS = 7
 TOLERANCIA_RELOGIO = timedelta(minutes=10)    # relógio ligeiramente atrás do último visto não conta como adulteração
+SALTO_MAXIMO = timedelta(days=3)              # a "maior data vista" avança no máximo isto por consulta: data errada no futuro não trava a loja
 ARQUIVO_TOKEN = "licenca.json"
 MOTIVOS_403 = ("bloqueada", "invalida", "outra_maquina")
 AVISO_ATRASO = "Mensalidade em atraso. Regularize o pagamento para evitar o bloqueio do sistema."
@@ -56,8 +58,28 @@ def machine_id() -> str:
         except OSError:
             bruto = ""
     if not bruto:
-        bruto = f"mac-{uuid.getnode():012x}"
+        no = uuid.getnode()
+        # Sem MAC o Python devolve um número ALEATÓRIO (bit 40 ligado) a cada execução: o id mudaria sempre. Nesse caso
+        # sorteia um uma única vez e guarda na pasta de dados.
+        bruto = f"mac-{no:012x}" if not (no >> 40) & 1 else _id_sorteado()
     return hashlib.sha256(f"pdv-machine|{bruto}".encode("utf-8")).hexdigest()[:32]
+
+
+def _id_sorteado() -> str:
+    arquivo = pasta_dados() / "machine_id.txt"
+    try:
+        valor = arquivo.read_text(encoding="ascii").strip()
+        if valor:
+            return valor
+    except OSError:
+        pass
+    valor = f"rnd-{uuid.uuid4().hex}"
+    try:
+        arquivo.parent.mkdir(parents=True, exist_ok=True)
+        arquivo.write_text(valor, encoding="ascii")
+    except OSError:
+        pass
+    return valor
 
 
 def pasta_dados() -> Path:
@@ -74,6 +96,16 @@ def caminho_token(pasta: Path | str | None = None) -> Path:
 
 
 # ------------------------------------------------------------------ assinatura
+def _b64(texto: str) -> bytes:
+    """Base64 comum ou URL-safe, com ou sem preenchimento e com quebras de linha."""
+    limpo = "".join(texto.split())
+    limpo += "=" * (-len(limpo) % 4)
+    try:
+        return base64.b64decode(limpo, validate=True)
+    except ValueError:
+        return base64.urlsafe_b64decode(limpo)
+
+
 def verificar_assinatura(public_key_pem: str, payload: str, assinatura_b64: str) -> bool:
     try:
         from cryptography.exceptions import InvalidSignature
@@ -85,7 +117,7 @@ def verificar_assinatura(public_key_pem: str, payload: str, assinatura_b64: str)
         chave = load_pem_public_key(public_key_pem.encode("utf-8"))
         if not isinstance(chave, Ed25519PublicKey):
             return False
-        chave.verify(base64.b64decode(assinatura_b64, validate=True), payload.encode("utf-8"))
+        chave.verify(_b64(assinatura_b64), payload.encode("utf-8"))
         return True
     except (InvalidSignature, ValueError, TypeError):
         return False
@@ -171,7 +203,8 @@ def apagar_token(pasta: Path | str | None = None) -> None:
 # ------------------------------------------------------------------ rede
 def _url_segura(url: str) -> bool:
     """A license_key viaja no corpo do POST: só https (http apenas para testes locais)."""
-    return url.startswith("https://") or url.startswith(("http://localhost", "http://127.0.0.1"))
+    p = urlparse(url)
+    return bool(p.hostname) and (p.scheme == "https" or (p.scheme == "http" and p.hostname in ("localhost", "127.0.0.1")))
 
 
 def _post_json(url: str, corpo: dict, timeout: float) -> tuple[int, dict]:
@@ -187,6 +220,10 @@ def _post_json(url: str, corpo: dict, timeout: float) -> tuple[int, dict]:
             return e.code, {}
 
 
+def _avancar_visto(visto: datetime | None, agora: datetime) -> datetime:
+    return agora if visto is None else max(visto, min(agora, visto + SALTO_MAXIMO))
+
+
 def checar_licenca(server: str, license_key: str, public_key_pem: str, pasta: Path | str | None = None, *,
                    http=None, agora: datetime | None = None, mid: str | None = None, timeout: float = 8) -> Resultado:
     """Consulta o servidor e, se não houver resposta, usa o último token salvo. Bloqueia (rede, disco): chame sempre
@@ -195,40 +232,45 @@ def checar_licenca(server: str, license_key: str, public_key_pem: str, pasta: Pa
     mid = mid or machine_id()
     license_key = (license_key or "").strip()
     server = (server or "").strip().rstrip("/")
-    if not license_key or not _url_segura(server):
+    if not license_key:
+        return Resultado(False, "sem_chave")
+    if not _url_segura(server):
         return Resultado(False, "sem_token_valido")
     salvo = carregar_token(pasta) or {}
     visto = _data(salvo.get("visto_em"))
-    if visto and agora < visto - TOLERANCIA_RELOGIO:     # relógio voltado para estender o token offline
-        agora = visto
     try:
         status, resposta = (http or _post_json)(f"{server}/validar", {"license_key": license_key, "machine_id": mid}, timeout)
     except (OSError, ValueError):
         status, resposta = 0, {}
-    if status == 403:
+    motivo = resposta.get("status") if isinstance(resposta, dict) else None
+    if status == 403 and motivo in MOTIVOS_403:           # só um 403 do NOSSO servidor vale; portal cativo/proxy não bloqueia
         apagar_token(pasta)                               # bloqueada/inválida/outra máquina: o token antigo não vale mais
-        motivo = resposta.get("status") if isinstance(resposta, dict) else None
-        return Resultado(False, motivo if motivo in MOTIVOS_403 else "invalida")
+        return Resultado(False, motivo)
     if status == 200 and isinstance(resposta, dict):
         novo = {"status": resposta.get("status"), "payload": resposta.get("payload"),
                 "signature": resposta.get("signature"), "recebido_em": agora.isoformat(), "visto_em": agora.isoformat()}
         resultado = interpretar_token(novo, license_key, mid, public_key_pem, agora)
         if resultado:
-            salvar_token(novo, pasta)
+            try:
+                salvar_token(novo, pasta)                 # falha ao gravar (disco/permissão) não pode bloquear quem está em dia
+            except OSError:
+                pass
             return resultado
         # 200 com assinatura que não confere (servidor falso, proxy): não troca nem apaga o token bom que já existe.
-    return _pelo_token_salvo(salvo, license_key, mid, public_key_pem, agora, pasta)
+    return _pelo_token_salvo(salvo, license_key, mid, public_key_pem, agora, visto, pasta)
 
 
-def _pelo_token_salvo(salvo: dict, license_key: str, mid: str, public_key_pem: str, agora: datetime, pasta) -> Resultado:
+def _pelo_token_salvo(salvo: dict, license_key: str, mid: str, public_key_pem: str, agora: datetime,
+                      visto: datetime | None, pasta) -> Resultado:
     if not salvo:
         return Resultado(False, "sem_token_valido")
-    try:                                              # guarda a maior data vista mesmo com o token vencido (relógio voltado)
-        salvo["visto_em"] = max(agora, _data(salvo.get("visto_em")) or agora).isoformat()
+    efetivo = visto if visto and agora < visto - TOLERANCIA_RELOGIO else agora   # relógio voltado não estende o token
+    try:                                              # guarda a maior data vista mesmo com o token vencido
+        salvo["visto_em"] = _avancar_visto(visto, agora).isoformat()
         salvar_token(salvo, pasta)
     except OSError:
         pass
-    resultado = interpretar_token(salvo, license_key, mid, public_key_pem, agora)
+    resultado = interpretar_token(salvo, license_key, mid, public_key_pem, efetivo)
     if resultado is None:
         return Resultado(False, "sem_token_valido")
     return Resultado(True, resultado.motivo, resultado.aviso, resultado.expira_em, offline=True)

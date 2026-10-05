@@ -134,11 +134,59 @@ class TesteCliente(unittest.TestCase):
 
     def test_relogio_voltado_nao_estende_o_token_offline(self):
         self.checar(Rede(_resposta(self.privada)))
-        self.checar(Rede(cai=True), agora=AGORA + timedelta(days=6))            # registra que o relógio chegou ao dia 6
-        r = self.checar(Rede(cai=True), agora=AGORA + timedelta(days=8))
-        self.assertFalse(r.permitido)
-        r = self.checar(Rede(cai=True), agora=AGORA)                            # relógio voltou ao dia 0: continua vencido
-        self.assertFalse(r.permitido)
+        for dias in (2, 5):                                                     # a data vista avança aos poucos
+            self.checar(Rede(cai=True), agora=AGORA + timedelta(days=dias))
+        self.assertFalse(self.checar(Rede(cai=True), agora=AGORA + timedelta(days=8)).permitido)   # venceu
+        self.assertFalse(self.checar(Rede(cai=True), agora=AGORA).permitido)    # relógio voltou ao dia 0: continua vencido
+
+    def test_data_errada_no_futuro_nao_trava_a_loja(self):
+        self.checar(Rede(_resposta(self.privada)))
+        self.checar(Rede(cai=True), agora=AGORA + timedelta(days=400))           # alguém digitou o ano errado
+        r = self.checar(Rede(cai=True), agora=AGORA + timedelta(days=1))         # corrigiu o relógio
+        self.assertTrue(r.permitido)                                             # a data vista só avançou o limite por consulta
+        # com o servidor respondendo, nunca fica preso a uma data vista errada
+        r = self.checar(Rede(_resposta(self.privada, emitido=AGORA + timedelta(days=1))), agora=AGORA + timedelta(days=1))
+        self.assertTrue(r.permitido and not r.offline)
+
+    def test_403_que_nao_e_do_servidor_nao_bloqueia_nem_apaga_o_token(self):
+        self.checar(Rede(_resposta(self.privada)))
+        for resposta in ((403, {}), (403, {"status": "qualquer"}), (403, "<html>portal cativo</html>")):
+            with self.subTest(resposta=resposta):
+                r = self.checar(Rede(resposta), agora=AGORA + timedelta(days=1))
+                self.assertTrue(r.permitido and r.offline)
+                self.assertTrue((self.pasta / "licenca.json").exists())
+
+    def test_falha_ao_gravar_o_token_nao_bloqueia_quem_esta_em_dia(self):
+        from unittest import mock
+        with mock.patch.object(pdv_licenca, "salvar_token", side_effect=PermissionError("somente leitura")):
+            r = self.checar(Rede(_resposta(self.privada)))
+        self.assertTrue(r.permitido)
+
+    def test_sem_chave_tem_motivo_proprio_e_nao_consulta_a_rede(self):
+        rede = Rede(_resposta(self.privada))
+        r = checar_licenca(SERVER, "  ", self.pem, self.pasta, http=rede, mid=MID)
+        self.assertEqual((r.permitido, r.motivo), (False, "sem_chave"))
+        self.assertEqual(rede.chamadas, [])
+
+    def test_assinatura_em_base64_urlsafe_e_aceita(self):
+        status, resposta = _resposta(self.privada)
+        bruta = base64.b64decode(resposta["signature"])
+        resposta["signature"] = base64.urlsafe_b64encode(bruta).decode().rstrip("=")
+        self.assertTrue(self.checar(Rede((status, resposta))).permitido)
+
+    def test_url_segura_so_aceita_https_ou_localhost_de_verdade(self):
+        for url in ("https://licencas.exemplo.test", "http://localhost:8000", "http://127.0.0.1:8000"):
+            self.assertTrue(pdv_licenca._url_segura(url), url)
+        for url in ("http://servidor.exemplo.test", "http://localhost.malicioso.com", "http://127.0.0.1.evil.com",
+                    "ftp://localhost", "https://", ""):
+            self.assertFalse(pdv_licenca._url_segura(url), url)
+
+    def test_machine_id_e_estavel_mesmo_sem_mac_nem_guid(self):
+        from unittest import mock
+        with mock.patch.dict("os.environ", {"PDV_LICENCA_DIR": str(self.pasta)}), \
+                mock.patch.object(pdv_licenca.sys, "platform", "linux"), \
+                mock.patch.object(pdv_licenca.uuid, "getnode", side_effect=[1 << 40 | 5, 1 << 40 | 9]):
+            self.assertEqual(pdv_licenca.machine_id(), pdv_licenca.machine_id())   # o MAC aleatório muda; o id não
 
     def test_servidor_sem_https_e_chave_vazia_nao_consultam(self):
         rede = Rede(_resposta(self.privada))
@@ -203,7 +251,7 @@ class TesteServico(BaseTeste):
         self.assertFalse(s.bloqueio_pendente)
 
     def test_bloqueada_bloqueia_com_mensagem_pelo_motivo(self):
-        for motivo, trecho in (("bloqueada", "bloqueada"), ("invalida", "não é válida"), ("outra_maquina", "outro computador"),
+        for motivo, trecho in (("sem_chave", "chave de licença"), ("bloqueada", "bloqueada"), ("invalida", "não é válida"), ("outra_maquina", "outro computador"),
                                ("sem_token_valido", "internet")):
             with self.subTest(motivo=motivo):
                 s = self.servico(Resultado(False, motivo))

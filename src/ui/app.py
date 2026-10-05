@@ -119,7 +119,10 @@ class App:
         dlg = JanelaLogin(self.root, self.ctx, self.ctx.config.nome_loja())
         self.root.wait_window(dlg)
         if dlg.operador is None:
-            self.root.destroy()
+            try:
+                self.root.destroy()
+            except tk.TclError:                           # "Sair" na tela de bloqueio da licença já a destruiu
+                pass
             return
         self.ctx.operador = dlg.operador
         self.banco.log("login", dlg.operador.nome, dlg.operador.id)
