@@ -92,9 +92,12 @@ ALIQUOTAS = [("ISENTO", 0, "II"), ("SUBSTITUIÇÃO TRIBUTÁRIA", 0, "FF"),
 
 # (tipo, ordem, permite_troco, emite_vale, na_gaveta). Dinheiro sempre na primeira posição.
 # Cartão e Pix não ficam na gaveta: o operador confere na maquininha, não contando dinheiro.
-TIPOS_PAGAMENTO = [("Dinheiro", 1, 1, 0, 1), ("Cheque", 2, 0, 0, 1), ("Ticket", 3, 0, 1, 1),
-                   ("Contra Vale", 4, 0, 1, 1), ("Cartão Débito", 5, 0, 0, 0),
-                   ("Cartão Crédito", 6, 0, 0, 0), ("Pix", 7, 0, 0, 0)]
+TIPOS_PAGAMENTO = [("Dinheiro", 1, 1, 0, 1), ("Cartão Débito", 2, 0, 0, 0),
+                   ("Cartão Crédito", 3, 0, 0, 0), ("Pix", 4, 0, 0, 0)]
+
+# Formas que existiam nos modelos antigos e saíram das opções (a boate só recebe dinheiro, débito, crédito e Pix). Em bancos
+# que já têm vendas elas não podem ser apagadas (histórico): ficam INATIVAS, uma única vez, e o dono pode reativar.
+FORMAS_APOSENTADAS = ("Cheque", "Ticket", "Contra Vale")
 
 # (nome, código, débito(1=saída), afeta_resultado, [subplanos])
 PLANOS = [
@@ -134,6 +137,11 @@ def aplicar(banco) -> None:
         banco.executar(
             "INSERT OR IGNORE INTO maquinas(terminal, nome_computador, descricao) VALUES (1, ?, ?)",
             (socket.gethostname(), "Caixa 1"))
+
+        if not banco.valor("SELECT valor FROM config WHERE chave = 'formas_pagamento_enxutas'"):
+            marcas = ",".join("?" * len(FORMAS_APOSENTADAS))
+            banco.executar(f"UPDATE tipos_pagamento SET ativo = 0 WHERE tipo IN ({marcas})", FORMAS_APOSENTADAS)
+            banco.executar("INSERT OR REPLACE INTO config(chave, valor) VALUES ('formas_pagamento_enxutas', '1')")
 
         if banco.valor("SELECT valor FROM config WHERE chave = 'semeado'"):
             return  # cadastros-modelo só na primeira vez (o usuário pode apagá-los depois)

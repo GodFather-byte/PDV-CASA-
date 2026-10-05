@@ -131,11 +131,12 @@ class TesteVenda(BaseCaixa):
 
     def test_excesso_em_forma_sem_troco_e_recusado(self):
         vid = self.vender((self.skol, 1))
-        self.pagar(vid, "Cheque", 1000)
+        self.pagar(vid, "Pix", 1000)
         with self.assertRaises(ErroNegocio):
             self.caixa.fechar(vid)
 
-    def test_ticket_com_excesso_emite_contra_vale(self):
+    def test_forma_que_emite_vale_com_excesso_emite_contra_vale(self):
+        self.banco.inserir("tipos_pagamento", {"tipo": "Ticket", "ordem": 50, "emite_vale": 1})
         vid = self.vender((self.skol, 1))
         self.pagar(vid, "Ticket", 1000)
         v = self.caixa.fechar(vid)

@@ -370,7 +370,8 @@ class TesteCupomTermico(BaseCaixa):
         self.caixa.fechar(vid)
         return vid
 
-    def test_gaveta_abre_para_dinheiro_cheque_e_ticket_mas_nao_para_cartao_ou_pix(self):
+    def test_gaveta_abre_para_dinheiro_e_forma_na_gaveta_mas_nao_para_cartao_ou_pix(self):
+        self.banco.inserir("tipos_pagamento", {"tipo": "Cheque", "ordem": 50})        # forma cadastrada pelo dono: fica na gaveta
         self.assertTrue(self.imp.opcoes_cupom(self.vender_e_fechar("Dinheiro", 800))["abrir_gaveta"])
         self.assertTrue(self.imp.opcoes_cupom(self.vender_e_fechar("Cheque", 800))["abrir_gaveta"])
         self.assertFalse(self.imp.opcoes_cupom(self.vender_e_fechar("Pix", 800))["abrir_gaveta"])

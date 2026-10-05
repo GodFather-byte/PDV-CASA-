@@ -98,7 +98,8 @@ class TesteDinheiroEsperado(BaseBoate):
         self.pagar_tudo(self.comanda(8, (self.skol, 1)), "Pix")
         self.assertEqual(self.confere(), 10000)
 
-    def test_cheque_fica_na_gaveta(self):
+    def test_forma_cadastrada_pelo_dono_fica_na_gaveta(self):
+        self.banco.inserir("tipos_pagamento", {"tipo": "Cheque", "ordem": 50})        # padrão: fica na gaveta
         self.pagar_tudo(self.comanda(7, (self.skol, 1)), "Cheque")
         self.assertEqual(self.confere(), 10000 + 880)
 
