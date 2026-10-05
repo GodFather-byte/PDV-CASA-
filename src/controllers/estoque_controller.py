@@ -129,10 +129,11 @@ class EstoqueController:
 
     # ----------------------------------------------------------- itens
     def adicionar_item(self, lanc_id: int, produto_id: int, quantidade: float, valor_cent: int = 0,
-                       desconto_cent: int = 0, estoque_minimo: float | None = None) -> int:
+                       desconto_cent: int = 0, estoque_minimo: float | None = None, ligar_controle: bool = False) -> int:
         """Lança um item e já atualiza o estoque (como o sistema original).
 
-        `valor_cent` é o total do item na nota (não o unitário)."""
+        `valor_cent` é o total do item na nota (não o unitário). Com `ligar_controle`, uma compra/entrada/contagem de produto
+        que ainda não controla estoque liga o controle (o saldo parte de 0); sem ele, o produto é recusado."""
         lanc = self.lancamento(lanc_id)
         tipo = lanc["tipo"]
         p = self.produtos.por_id(produto_id)
@@ -143,13 +144,19 @@ class EstoqueController:
             raise ErroNegocio("Informe uma quantidade maior que zero.")
         if tipo == "desc_acabados" and not self.produtos.composicao(produto_id):
             raise ErroNegocio(f"'{p['nome']}' não tem composição (ficha técnica) cadastrada.")
+        liga_controle = False
         if tipo not in ("inicial", "desc_acabados") and not p["controla_estoque"]:
-            raise ErroNegocio(f"'{p['nome']}' não controla estoque. Marque 'Controla estoque' no cadastro do produto.")
+            if not ligar_controle or tipo not in ("compra", "entrada", "contagem"):
+                raise ErroNegocio(f"'{p['nome']}' não controla estoque. Marque 'Controla estoque' no cadastro do produto.")
+            liga_controle = True
         if tipo in ("inicial", "contagem") and self.banco.um(
                 "SELECT 1 FROM itens_estoque WHERE lancamento_id = ? AND produto_id = ?", (lanc_id, produto_id)):
             raise ErroNegocio(f"'{p['nome']}' já foi lançado neste movimento. Exclua o item para lançá-lo de novo.")
 
         with self.banco.transacao():
+            if liga_controle:
+                self.banco.executar("UPDATE produtos SET controla_estoque = 1 WHERE id = ?", (produto_id,))
+                self.banco.log("estoque_controle_ligado", p["nome"], self.operador_id)
             item_id = self.banco.inserir("itens_estoque", {
                 "lancamento_id": lanc_id, "produto_id": produto_id, "quantidade": quantidade,
                 "preco_unit_cent": fmt.dividir_cent(max(valor_cent - desconto_cent, 0), quantidade),
