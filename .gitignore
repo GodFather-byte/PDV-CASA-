@@ -44,3 +44,5 @@ dist/
 
 # Instalador gerado pelo Inno Setup (build_pdv.py)
 instalador/saida/
+logs/
+logs/
