@@ -390,3 +390,14 @@ O operador cola o código em "Código de licença..." na tela de entrada. O sist
 dias de carência depois e nunca bloqueia com o turno aberto. Para criar o par de chaves (uma única vez) rode
 `python -m tools.gerar_licenca novo-par` e cole a chave pública em `CHAVE_PUBLICA_HEX` (`src/core/licenca.py`); trocar a
 chave invalida os códigos já emitidos.
+
+## Licenciamento por servidor
+
+O PDV valida a licença em `POST {SERVER}/validar` (cliente em `pdv_licenca.py`, regras em `src/core/servico_licenca.py`,
+telas em `src/ui/licenca_ui.py`). Só a chave **pública** Ed25519 fica no PDV. O token vale 7 dias e, sem internet, o
+último token salvo (`%LOCALAPPDATA%\WILL-PDV\licenca.json`) continua valendo até vencer.
+
+Fica **desligado** até o fornecedor preencher `SERVER` e `PUBLIC_KEY_PEM` em `src/core/servico_licenca.py`. A chave da
+licença é digitada na primeira execução e guardada na configuração (`lic_chave`); o contato de suporte da tela de
+bloqueio vem de `lic_suporte`. A checagem roda ao abrir e a cada 4 horas, sempre em thread, e **nunca** bloqueia com
+venda ou comanda aberta. Tela de conferência: Utilitários > Licença.

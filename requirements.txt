@@ -1,6 +1,7 @@
 # Dependências OPCIONAIS do PDV local (ele roda só com a biblioteca padrão do Python).
 # Instale com `pip install -r requirements.txt` somente o que for usar.
 requests>=2.31                              # sincronização com a nuvem (python -m src.app --sync)
+cryptography>=42                            # licenciamento (pdv_licenca.py): assinatura Ed25519 do token; obrigatória se o servidor de licença estiver configurado
 pyserial>=3.5                               # balança e impressora térmica serial
 # Para gerar o executável: pip install pyinstaller  (python build_pdv.py)
 # A API de nuvem tem as suas próprias dependências em backend/requirements.txt

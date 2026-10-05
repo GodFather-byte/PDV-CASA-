@@ -33,5 +33,28 @@ class TesteDadosDoExecutavel(unittest.TestCase):
             self.assertIn(padrao, linhas)
 
 
+class TesteEmpacotamentoDaLicenca(unittest.TestCase):
+    raiz = Path(__file__).resolve().parents[1]
+
+    def test_requirements_traz_cryptography(self):
+        texto = (self.raiz / "requirements.txt").read_text(encoding="utf-8")
+        self.assertTrue(any(l.startswith("cryptography") for l in texto.splitlines()))
+
+    def test_executavel_inclui_modulo_e_biblioteca_de_criptografia(self):
+        sys.path.insert(0, str(self.raiz))
+        self.addCleanup(sys.path.remove, str(self.raiz))
+        import build_pdv
+        opcoes = " ".join(build_pdv.OPCOES_LICENCA)
+        for item in ("pdv_licenca", "src.core.servico_licenca", "cryptography"):
+            self.assertIn(item, opcoes)
+        self.assertTrue((self.raiz / "pdv_licenca.py").exists())
+
+    def test_nenhuma_chave_privada_nem_licenca_no_repositorio(self):
+        for caminho in self.raiz.rglob("*.py"):
+            if "tests" in caminho.parts or ".venv" in caminho.parts:
+                continue
+            self.assertNotIn("PRIVATE KEY", caminho.read_text(encoding="utf-8", errors="ignore"), caminho)
+
+
 if __name__ == "__main__":
     unittest.main()
