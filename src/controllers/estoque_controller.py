@@ -57,10 +57,22 @@ class EstoqueController:
         for it in self.banco.todos(
                 "SELECT id, produto_id, quantidade FROM itens_venda WHERE venda_id = ? AND cancelado = 0", (venda_id,)):
             partes = self.banco.todos("SELECT produto_id, fracao FROM itens_venda_partes WHERE item_id = ?", (it["id"],))
-            alvos = [(p["produto_id"], it["quantidade"] * p["fracao"]) for p in partes] or [(it["produto_id"], it["quantidade"])]
+            alvos = self._dividir_em_partes(it["quantidade"], partes) or [(it["produto_id"], it["quantidade"])]
             for pid, qtd in alvos:
                 for consumo_id, q in self.produtos.consumos(pid, qtd):
                     self._mover(consumo_id, -q, "venda", "venda", venda_id)
+
+    @staticmethod
+    def _dividir_em_partes(quantidade: float, partes) -> list[tuple[int, float]]:
+        """Reparte a quantidade vendida entre as partes (meio a meio, três sabores...). Cada baixa é arredondada na precisão
+        do estoque; a ÚLTIMA parte leva o que falta, para a soma ser exatamente a quantidade vendida (1/3 três vezes
+        arredondado dava 0,9999 e uma sobra a cada venda)."""
+        alvos, usado = [], 0.0
+        for i, p in enumerate(partes):
+            q = round(quantidade - usado, fmt.CASAS_QTD) if i == len(partes) - 1 else round(quantidade * p["fracao"], fmt.CASAS_QTD)
+            usado += q
+            alvos.append((p["produto_id"], q))
+        return alvos
 
     def estornar_venda(self, venda_id: int) -> None:
         """Desfaz a baixa da venda. Idempotente: um segundo estorno não faz nada."""

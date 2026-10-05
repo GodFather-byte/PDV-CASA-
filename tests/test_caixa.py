@@ -387,6 +387,18 @@ class TesteMontagem(BaseCaixa):
         self.mussarela = self.novo_produto("PIZZA MUSSARELA", 3200, estoque=True, qt=10, montagem="S")
         self.meio = self.novo_produto("PIZZA MEIO A MEIO", 0, partes="2", maior="S")
 
+    def test_tres_partes_baixam_exatamente_uma_unidade_no_total(self):
+        terco = self.novo_produto("PIZZA TRES SABORES", 0, partes="3", maior="S")
+        sabores = [self.novo_produto(f"SABOR {i}", 1000, estoque=True, qt=10, montagem="S") for i in range(3)]
+        vid = self.caixa.abrir_balcao()
+        item = self.caixa.adicionar_item(vid, terco, 1, partes=sabores)
+        fracoes = [r["fracao"] for r in self.banco.todos("SELECT fracao FROM itens_venda_partes WHERE item_id = ?", (item,))]
+        self.assertEqual(sum(fracoes), 1.0)                  # 3 x 0.333333 deixaria 0.999999 e uma sobra a cada venda
+        self.pagar(vid, "Dinheiro", 1000)
+        self.caixa.fechar(vid)
+        baixado = sum(10 - self.prod.por_id(p)["qt_atual"] for p in sabores)
+        self.assertAlmostEqual(baixado, 1.0, places=9)
+
     def test_meio_a_meio_cobra_pelo_maior_e_baixa_metade_de_cada(self):
         vid = self.caixa.abrir_balcao()
         self.caixa.adicionar_item(vid, self.meio, 1, partes=[self.calabresa, self.mussarela])
