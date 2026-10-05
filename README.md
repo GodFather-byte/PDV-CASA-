@@ -415,7 +415,7 @@ python -m tools.gerar_licenca ver CODIGO                                   # con
 ```
 
 Mande a linha impressa (começa por `PDVL1.`) ao cliente. No caixa dele, na tela de entrada, **Código de licença...**: cole e
-confirme. A primeira ativação grava o nome da loja; depois o caixa só aceita códigos **da mesma loja**.
+confirme. A primeira ativação grava o nome da loja; depois o caixa só aceita códigos **da mesma loja** (maiúsculas e minúsculas não importam). A validade máxima é 36500 dias.
 
 Como o caixa se comporta:
 

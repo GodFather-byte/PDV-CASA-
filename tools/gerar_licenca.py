@@ -19,7 +19,7 @@ from pathlib import Path
 from src.core import ed25519, licenca
 
 
-DIAS_PERMANENTE = 36500
+DIAS_PERMANENTE = licenca.MAX_DIAS
 
 
 def _arquivo_padrao() -> Path:
