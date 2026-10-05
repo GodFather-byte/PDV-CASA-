@@ -19,6 +19,11 @@ ICONE = RAIZ / "instalador" / "willpdv.ico"          # opcional: coloque o ícon
 SCRIPT_INNO = RAIZ / "instalador" / "WillPDV.iss"
 
 
+# Licenciamento: o módulo da raiz e a biblioteca de criptografia entram no executável (nada de .py solto na pasta).
+OPCOES_LICENCA = ["--hidden-import", "pdv_licenca", "--hidden-import", "src.core.servico_licenca",
+                  "--collect-submodules", "cryptography", "--collect-binaries", "cryptography"]
+
+
 def versao() -> str:
     sys.path.insert(0, str(RAIZ))
     from src.versao import VERSAO
@@ -29,6 +34,7 @@ def gerar_executavel() -> None:
     comando = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir",
                "--windowed",                                # sem a janela preta do CMD atrás do caixa
                "--name", "WillPDV", "--paths", str(RAIZ)]   # a raiz no caminho: os imports são "from src..."
+    comando += OPCOES_LICENCA
     if ICONE.exists():
         comando += ["--icon", str(ICONE)]
     comando.append(str(RAIZ / "src" / "app.py"))
