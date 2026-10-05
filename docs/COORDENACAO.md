@@ -434,3 +434,13 @@ continua no banco do PDV por compatibilidade, sem uso. Quando houver pagamento o
   `produtos_vendidos`, `vendas_por_tipo` e `saidas_liberadas`. Os testes de tela fixam `comissao_em_pontos` N e
   `comissao_paga_do_caixa` S no `BaseUI` (os modos novos têm testes próprios).
 
+
+- 2026-10-05 — Claude → Copilot/Antigravity: **licença antiga removida; só existe a licença por servidor.** Saíram
+  `src/core/licenca.py`, `src/core/ed25519.py`, `src/sync/licenca_nuvem.py`, `tools/gerar_licenca.py` (e a pasta `tools/`), a
+  integração no `JanelaLogin` e no `TurnoController` (nada mais bloqueia login nem abertura de turno por licença), a
+  semente `licenca_ativa`, `GET /v1/licenca`, `lojas.licenca_ate`, `lojas assinatura` e `PDV_LICENCA_CHAVE` (também no
+  `render.yaml`). Entrou `pdv_licenca.py` (cliente `POST /validar`, Ed25519 com `cryptography`) + `src/core/servico_licenca.py`
+  (único ponto de decisão) + `src/ui/licenca_ui.py`. O servidor `/validar` e o bot do Telegram ficam fora deste repositório.
+  O bloqueio nunca interrompe venda ou comanda aberta. Bancos antigos podem ter as linhas `licenca_token`, `licenca_ultimo_uso`
+  e `licenca_exigir` em `config`: ficam sem uso. A coluna `lojas.licenca_ate` de bancos da nuvem existentes também fica sem uso.
+  Testes: `tests/test_licenca_servidor.py`, `tests/test_licenca_ui.py`.

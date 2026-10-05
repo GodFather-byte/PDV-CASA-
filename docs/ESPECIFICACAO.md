@@ -70,10 +70,9 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
   de vendas por período (o período, o informativo por dia e as vendas por hora, na ordem da noite) e o painel da nuvem
   contam das 6h às 6h do dia seguinte (`virada_dia_hora` no PDV, `PDV_NUVEM_VIRADA_HORA` na nuvem; 0 volta ao dia do
   calendário). Os filtros de horário, os relatórios financeiros e os de estoque continuam pelo calendário.
-- **Licença e relógio voltado:** a data de referência da licença é a maior entre hoje, a última data vista
-  (`licenca_ultimo_uso`) e o movimento mais recente (venda encerrada ou turno aberto). Apagar ou editar a linha da data vista
-  não reabre o prazo; seria preciso adulterar o histórico de vendas. Uma licença offline em código Python não é inviolável:
-  isso só fecha o contorno fácil.
+- **Licença e relógio voltado:** o último token validado fica em `%LOCALAPPDATA%\WILL-PDV\licenca.json` junto com a maior data
+  já vista (`visto_em`); voltar o relógio não estende o token offline. Não é inviolável (o código é Python): fecha o
+  contorno fácil. Detalhes em `pdv_licenca.py`.
 - **Cada pagamento conta no turno em que o dinheiro entrou** (`pagamentos_venda.turno_id`, esquema v9), não no turno em que a
   conta fecha: o adiantamento de uma comanda fica no turno que o recebeu (e já entra no esperado enquanto a comanda está
   aberta, porque o dinheiro está na gaveta), e o troco sai dos pagamentos do turno que fecha a conta. Turno fechado não muda
@@ -167,8 +166,9 @@ Estas regras foram escolhidas por quem implementou; confirme com o dono da loja.
 - **Quantidade por item** tem teto (configuração `qtd_maxima_item`, padrão 99.999; 0 desliga), para um código de
   barras digitado no campo Quantidade não virar uma venda de bilhões. `nan` e `inf` são recusados.
 - **Transferir parte de um item** divide total e comissão sem perder nem criar centavo.
-- **Licença mensal** (Ed25519, offline): aviso 7 dias antes, carência de 5 dias, nunca bloqueia com o turno aberto;
-  só é exigida no executável ou com `licenca_exigir = S`. Detalhes em `src/core/licenca.py` e no README.
+- **Licença por servidor** (Ed25519, token de 7 dias, usa o último token sem internet): faixa de aviso com mensalidade em atraso, tela
+  de bloqueio que nunca interrompe venda ou comanda aberta; desligada até preencher `SERVER` e `PUBLIC_KEY_PEM`. Detalhes em
+  `pdv_licenca.py`, `src/core/servico_licenca.py` e no README.
 
 ## 3. O que NÃO está implementado
 

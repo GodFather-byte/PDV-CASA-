@@ -1,4 +1,4 @@
-"""Nuvem (FastAPI): lojas, tokens, lista do administrador e o laço de licença e atualizações do PDV."""
+"""Nuvem (FastAPI): lojas, tokens, lista do administrador e o laço de atualizações do PDV."""
 from __future__ import annotations
 
 import atexit
@@ -29,6 +29,7 @@ except (ImportError, RuntimeError):      # o backend é opcional: sem fastapi/ht
     TestClient = nuvem = lojas = None
 
 ADMIN = {"Authorization": "Bearer token-de-teste"}                  # PDV_API_TOKEN: só o painel de todas as lojas
+ATUALIZACOES = "/v1/atualizacoes?versao=1.0.0"                      # qualquer rota que exige token de loja
 TOKENS = {"LOJA-1": "token-da-loja-1", "LOJA-2": "token-da-loja-2"}
 
 
@@ -68,15 +69,15 @@ class TesteApi(BaseTeste):
         self.assertEqual(self.http.get("/v1/saude").status_code, 200)
 
     def test_token_obrigatorio_e_invalido_e_recusado(self):
-        self.assertEqual(self.http.get("/v1/licenca").status_code, 401)
-        self.assertEqual(self.http.get("/v1/licenca", headers={"Authorization": "Bearer errado"}).status_code, 401)
+        self.assertEqual(self.http.get(ATUALIZACOES).status_code, 401)
+        self.assertEqual(self.http.get(ATUALIZACOES, headers={"Authorization": "Bearer errado"}).status_code, 401)
 
     def test_loja_desativada_e_recusada(self):
         db = nuvem.SessionLocal()
         db.query(nuvem.Loja).filter_by(chave_loja="LOJA-1").update({"ativa": False})
         db.commit()
         db.close()
-        r = self.http.get("/v1/licenca", headers=cabecalho())
+        r = self.http.get(ATUALIZACOES, headers=cabecalho())
         self.assertEqual(r.status_code, 403)
         self.assertIn("desativada", r.json()["detail"])
 
@@ -91,7 +92,7 @@ class TesteApi(BaseTeste):
 
 
 class TesteSincronizador(BaseTeste):
-    """O laço do PDV: só licença e versão nova (a nuvem não recebe vendas)."""
+    """O laço do PDV: só versão nova (a nuvem não recebe vendas)."""
 
     def setUp(self):
         super().setUp()
@@ -104,12 +105,10 @@ class TesteSincronizador(BaseTeste):
             self.assertTrue(Sincronizador(self.banco, http=object()).rodada())
         ver.assert_not_called()
 
-    def test_rodada_verifica_versao_e_renova_licenca(self):
-        with mock.patch("src.sync.atualizacoes.verificar", return_value=None) as ver, \
-                mock.patch("src.sync.licenca_nuvem.renovar") as ren:
+    def test_rodada_verifica_versao(self):
+        with mock.patch("src.sync.atualizacoes.verificar", return_value=None) as ver:
             self.assertTrue(Sincronizador(self.banco, http=object()).rodada())
         ver.assert_called_once()
-        ren.assert_called_once()
 
     def test_falha_na_rodada_nao_derruba_o_laco_e_aumenta_a_espera(self):
         esperas = []
@@ -140,15 +139,15 @@ class TesteCadastroDeLojas(unittest.TestCase):
         loja = self.db.query(nuvem.Loja).filter_by(chave_loja="CAD-1").one()
         self.assertNotEqual(loja.token_hash, token)
         self.assertEqual(loja.token_hash, nuvem.hash_token(token))
-        r = self.http.get("/v1/licenca", headers={"Authorization": f"Bearer {token}"})
-        self.assertEqual(r.status_code, 404)           # autenticou; só falta registrar a assinatura
+        r = self.http.get(ATUALIZACOES, headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(r.status_code, 200)           # autenticou
 
     def test_novo_token_invalida_o_antigo(self):
         antigo = lojas.criar(self.db, "CAD-2", "Boate Teste")
         novo = lojas.novo_token(self.db, "CAD-2")
         self.assertNotEqual(antigo, novo)
-        self.assertEqual(self.http.get("/v1/licenca", headers={"Authorization": f"Bearer {antigo}"}).status_code, 401)
-        self.assertEqual(self.http.get("/v1/licenca", headers={"Authorization": f"Bearer {novo}"}).status_code, 404)
+        self.assertEqual(self.http.get(ATUALIZACOES, headers={"Authorization": f"Bearer {antigo}"}).status_code, 401)
+        self.assertEqual(self.http.get(ATUALIZACOES, headers={"Authorization": f"Bearer {novo}"}).status_code, 200)
 
     def test_validacoes(self):
         lojas.criar(self.db, "CAD-3", "Boate Teste")
@@ -167,5 +166,5 @@ class TesteCadastroDeLojas(unittest.TestCase):
             self.assertEqual(lojas.main(["listar"]), 0)
             self.assertEqual(lojas.main(["comando-errado"]), 2)
         self.assertIn("Token (guarde agora", saida.getvalue())
-        self.assertRegex(saida.getvalue(), r"CAD-6\s+INATIVA\s+sem assinatura\s+Boate Linha")
+        self.assertRegex(saida.getvalue(), r"CAD-6\s+INATIVA\s+Boate Linha")
 

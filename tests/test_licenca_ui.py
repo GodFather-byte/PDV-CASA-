@@ -88,6 +88,7 @@ class TesteTelasLicenca(BaseTeste):
         self.assertFalse(self.guarda._bloqueio_aberto)
         self.assertFalse([w for w in self.root.winfo_children() if isinstance(w, JanelaBloqueio)])
         self.assertIsNotNone(self.guarda._reavaliacao)       # olha de novo mais tarde
+        self.root.after_cancel(self.guarda._reavaliacao)
 
 
 if __name__ == "__main__":
