@@ -251,6 +251,16 @@ class TesteLicenca(BaseTeste):
             licenca.ler_licenca(self.codigo())
 
     # ------------------------------------------------------ ferramenta
+    def test_validade_maxima_e_loja_sem_diferenciar_maiusculas(self):
+        with self.assertRaisesRegex(ValueError, "máxima"):
+            licenca.gerar_licenca(self.SEMENTE, "LOJA-1", licenca.MAX_DIAS + 1, self.HOJE)
+        licenca.gerar_licenca(self.SEMENTE, "LOJA-1", licenca.MAX_DIAS, self.HOJE)       # o limite em si vale
+        self.ativar(self.codigo(loja="Boate-X"))
+        self.ativar(self.codigo(loja="BOATE-X", dias=60))                                  # mesma loja, outra caixa
+        self.assertEqual(licenca.estado(self.banco, hoje=self.HOJE, chave_publica=self.publica).situacao, "ok")
+        with self.assertRaises(licenca.LicencaInvalida):                                   # outra loja continua recusada
+            self.ativar(self.codigo(loja="OUTRA"))
+
     def test_ferramenta_do_fornecedor_emite_codigo_que_o_pdv_aceita(self):
         from tools import gerar_licenca as ferramenta
         with tempfile.TemporaryDirectory() as pasta:

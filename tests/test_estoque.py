@@ -121,6 +121,18 @@ class TesteEstoque(BaseTeste):
         with self.assertRaises(ErroNegocio):
             self.est.adicionar_item(lid, pid, 1)
 
+    def test_ligar_controle_permite_lancar_quantidade_de_produto_novo(self):
+        pid = self.novo_produto("SKOL", 800)                       # cadastrado sem "Controla estoque"
+        lid = self.est.criar_lancamento("entrada")
+        self.est.adicionar_item(lid, pid, 150, ligar_controle=True)
+        p = self.prod.por_id(pid)
+        self.assertEqual((p["controla_estoque"], p["qt_atual"]), (1, 150))
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM log_eventos WHERE evento = 'estoque_controle_ligado'"), 1)
+        lid = self.est.criar_lancamento("saida")                   # saída nunca liga o controle sozinha
+        outro = self.novo_produto("SERVICO", 100)
+        with self.assertRaises(ErroNegocio):
+            self.est.adicionar_item(lid, outro, 1, ligar_controle=True)
+
     def test_remover_item_desfaz_o_efeito_e_o_custo(self):
         pid = self.novo_produto("SKOL", 800, estoque=True)
         self.lancar("compra", [(pid, 10, 1000)])                  # R$ 1,00

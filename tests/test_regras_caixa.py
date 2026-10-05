@@ -103,10 +103,11 @@ class TesteConferenciaDaGaveta(BaseRegras):
         res = self.turnos.fechar(self.turno, self.adm, 10000 + 1000 - 300)     # o que de fato está na gaveta
         self.assertEqual((res["resultado"], res["esperado"]), (0, 10700))
 
-    def test_ticket_e_cheque_ficam_na_gaveta_e_forma_nova_pode_ficar_fora(self):
+    def test_forma_nova_fica_na_gaveta_por_padrao_e_pode_ficar_fora(self):
         skol = self.novo_produto("SKOL", 1000)
         self.cad.salvar("tipos_pagamento", {"tipo": "Voucher Digital", "na_gaveta": "N"})
         self.cad.salvar("tipos_pagamento", {"tipo": "Vale Papel"})                  # padrão: fica na gaveta
+        self.cad.salvar("tipos_pagamento", {"tipo": "Ticket"})
         self.vender(skol, 1, [("Voucher Digital", 1000)])
         self.vender(skol, 1, [("Vale Papel", 1000)])
         self.vender(skol, 1, [("Ticket", 1000)])
@@ -121,8 +122,24 @@ class TesteConferenciaDaGaveta(BaseRegras):
 
     def test_sementes_marcam_cartao_e_pix_fora_da_gaveta(self):
         formas = {r["tipo"]: r["na_gaveta"] for r in self.banco.todos("SELECT tipo, na_gaveta FROM tipos_pagamento")}
-        self.assertEqual(formas, {"Dinheiro": 1, "Cheque": 1, "Ticket": 1, "Contra Vale": 1,
-                                  "Cartão Débito": 0, "Cartão Crédito": 0, "Pix": 0})
+        self.assertEqual(formas, {"Dinheiro": 1, "Cartão Débito": 0, "Cartão Crédito": 0, "Pix": 0})
+
+    def test_so_dinheiro_debito_credito_e_pix_aparecem_como_formas_de_pagamento(self):
+        self.assertEqual([f["tipo"] for f in self.caixa.formas_pagamento()],
+                         ["Dinheiro", "Cartão Débito", "Cartão Crédito", "Pix"])
+
+    def test_banco_antigo_perde_cheque_ticket_e_contra_vale_uma_vez_so(self):
+        from src.database import sementes
+        for i, nome in enumerate(sementes.FORMAS_APOSENTADAS):                       # como estava em um banco antigo
+            self.banco.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES (?, ?)", (nome, 10 + i))
+        self.banco.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Voucher', 20)")
+        self.banco.executar("DELETE FROM config WHERE chave = 'formas_pagamento_enxutas'")
+        sementes.aplicar(self.banco)
+        ativas = [r["tipo"] for r in self.banco.todos("SELECT tipo FROM tipos_pagamento WHERE ativo = 1 ORDER BY ordem")]
+        self.assertEqual(ativas, ["Dinheiro", "Cartão Débito", "Cartão Crédito", "Pix", "Voucher"])    # a do dono fica
+        self.banco.executar("UPDATE tipos_pagamento SET ativo = 1 WHERE tipo = 'Cheque'")             # o dono reativou
+        sementes.aplicar(self.banco)
+        self.assertEqual(self.banco.valor("SELECT ativo FROM tipos_pagamento WHERE tipo = 'Cheque'"), 1)
 
 
 class TesteParcelasDaCompra(BaseRegras):

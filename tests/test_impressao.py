@@ -225,6 +225,21 @@ class TesteRoteamento(BaseCaixa):
         self.caixa.fechar(vid)
         return vid
 
+    def test_documentos_do_mesmo_nome_no_mesmo_segundo_nao_se_sobrescrevem(self):
+        for i in range(3):
+            self.imp.enviar(f"documento {i}", "pedido_Lanches")
+        textos = sorted(p.read_text(encoding="utf-8") for p in Path(self.tmp.name).glob("*pedido_Lanches*.txt"))
+        self.assertEqual(textos, ["documento 0", "documento 1", "documento 2"])
+
+    def test_pedido_remoto_em_pasta_nao_perde_pedidos_simultaneos(self):
+        remota = Path(self.tmp.name) / "cozinha"
+        self.cfg.salvar_maquina({"modo_impressao": "tela", "impressora_remota_conexao": "pasta",
+                                 "impressora_remota_pasta": str(remota)})
+        for i in range(3):
+            self.imp.enviar_remoto(f"pedido {i}", "pedido_Lanches")
+        textos = sorted(p.read_text(encoding="utf-8") for p in remota.glob("*.txt"))
+        self.assertEqual(textos, ["pedido 0", "pedido 1", "pedido 2"])
+
     def test_modo_tela_nao_imprime(self):
         self.assertTrue(self.imp.deve_mostrar_na_tela())
         vid = self._venda_fechada()

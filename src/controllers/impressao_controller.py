@@ -435,11 +435,26 @@ class ImpressaoController:
         p.mkdir(exist_ok=True)
         return p
 
+    @staticmethod
+    def _gravar_unico(pasta: Path, nome: str, texto: str) -> Path:
+        """Grava `texto` em pasta/<data-hora>-<nome>.txt SEM sobrescrever: dois documentos com o mesmo nome no mesmo
+        segundo (ex.: dois itens do mesmo subgrupo lidos no leitor de código de barras) ganham -2, -3... Na pasta da
+        impressora remota o arquivo é o próprio pedido, então sobrescrever perderia um pedido da cozinha."""
+        seguro = re.sub(r"[^A-Za-z0-9_-]+", "_", nome)[:40] or "documento"
+        base = f"{fmt.agora().replace(':', '').replace(' ', '-')}-{seguro}"
+        for n in range(1, 1000):
+            caminho = pasta / (f"{base}.txt" if n == 1 else f"{base}-{n}.txt")
+            try:
+                with open(caminho, "x", encoding="utf-8") as f:
+                    f.write(texto)
+                return caminho
+            except FileExistsError:
+                continue
+        raise OSError(f"Não foi possível gravar o documento {base} em {pasta}.")
+
     def _historico(self, texto: str, nome: str) -> str:
         """Grava sempre uma cópia do documento em impressao/ (rastreabilidade)."""
-        seguro = re.sub(r"[^A-Za-z0-9_-]+", "_", nome)[:40] or "documento"
-        caminho = self.pasta_saida() / f"{fmt.agora().replace(':', '').replace(' ', '-')}-{seguro}.txt"
-        caminho.write_text(texto, encoding="utf-8")
+        caminho = self._gravar_unico(self.pasta_saida(), nome, texto)
         return str(caminho)
 
     def impressora_termica(self) -> ImpressoraTermica:
@@ -517,8 +532,7 @@ class ImpressaoController:
             if pasta:
                 destino = Path(pasta)
                 destino.mkdir(parents=True, exist_ok=True)
-                seguro = re.sub(r"[^A-Za-z0-9_-]+", "_", nome)[:40]
-                (destino / f"{fmt.agora().replace(':', '').replace(' ', '-')}-{seguro}.txt").write_text(texto, encoding="utf-8")
+                self._gravar_unico(destino, nome, texto)
         return caminho
 
     # -------------------------------------------------- gaveta / teste / 2ª via

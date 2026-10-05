@@ -57,10 +57,22 @@ class EstoqueController:
         for it in self.banco.todos(
                 "SELECT id, produto_id, quantidade FROM itens_venda WHERE venda_id = ? AND cancelado = 0", (venda_id,)):
             partes = self.banco.todos("SELECT produto_id, fracao FROM itens_venda_partes WHERE item_id = ?", (it["id"],))
-            alvos = [(p["produto_id"], it["quantidade"] * p["fracao"]) for p in partes] or [(it["produto_id"], it["quantidade"])]
+            alvos = self._dividir_em_partes(it["quantidade"], partes) or [(it["produto_id"], it["quantidade"])]
             for pid, qtd in alvos:
                 for consumo_id, q in self.produtos.consumos(pid, qtd):
                     self._mover(consumo_id, -q, "venda", "venda", venda_id)
+
+    @staticmethod
+    def _dividir_em_partes(quantidade: float, partes) -> list[tuple[int, float]]:
+        """Reparte a quantidade vendida entre as partes (meio a meio, três sabores...). Cada baixa é arredondada na precisão
+        do estoque; a ÚLTIMA parte leva o que falta, para a soma ser exatamente a quantidade vendida (1/3 três vezes
+        arredondado dava 0,9999 e uma sobra a cada venda)."""
+        alvos, usado = [], 0.0
+        for i, p in enumerate(partes):
+            q = round(quantidade - usado, fmt.CASAS_QTD) if i == len(partes) - 1 else round(quantidade * p["fracao"], fmt.CASAS_QTD)
+            usado += q
+            alvos.append((p["produto_id"], q))
+        return alvos
 
     def estornar_venda(self, venda_id: int) -> None:
         """Desfaz a baixa da venda. Idempotente: um segundo estorno não faz nada."""
@@ -117,10 +129,11 @@ class EstoqueController:
 
     # ----------------------------------------------------------- itens
     def adicionar_item(self, lanc_id: int, produto_id: int, quantidade: float, valor_cent: int = 0,
-                       desconto_cent: int = 0, estoque_minimo: float | None = None) -> int:
+                       desconto_cent: int = 0, estoque_minimo: float | None = None, ligar_controle: bool = False) -> int:
         """Lança um item e já atualiza o estoque (como o sistema original).
 
-        `valor_cent` é o total do item na nota (não o unitário)."""
+        `valor_cent` é o total do item na nota (não o unitário). Com `ligar_controle`, uma compra/entrada/contagem de produto
+        que ainda não controla estoque liga o controle (o saldo parte de 0); sem ele, o produto é recusado."""
         lanc = self.lancamento(lanc_id)
         tipo = lanc["tipo"]
         p = self.produtos.por_id(produto_id)
@@ -131,13 +144,19 @@ class EstoqueController:
             raise ErroNegocio("Informe uma quantidade maior que zero.")
         if tipo == "desc_acabados" and not self.produtos.composicao(produto_id):
             raise ErroNegocio(f"'{p['nome']}' não tem composição (ficha técnica) cadastrada.")
+        liga_controle = False
         if tipo not in ("inicial", "desc_acabados") and not p["controla_estoque"]:
-            raise ErroNegocio(f"'{p['nome']}' não controla estoque. Marque 'Controla estoque' no cadastro do produto.")
+            if not ligar_controle or tipo not in ("compra", "entrada", "contagem"):
+                raise ErroNegocio(f"'{p['nome']}' não controla estoque. Marque 'Controla estoque' no cadastro do produto.")
+            liga_controle = True
         if tipo in ("inicial", "contagem") and self.banco.um(
                 "SELECT 1 FROM itens_estoque WHERE lancamento_id = ? AND produto_id = ?", (lanc_id, produto_id)):
             raise ErroNegocio(f"'{p['nome']}' já foi lançado neste movimento. Exclua o item para lançá-lo de novo.")
 
         with self.banco.transacao():
+            if liga_controle:
+                self.banco.executar("UPDATE produtos SET controla_estoque = 1 WHERE id = ?", (produto_id,))
+                self.banco.log("estoque_controle_ligado", p["nome"], self.operador_id)
             item_id = self.banco.inserir("itens_estoque", {
                 "lancamento_id": lanc_id, "produto_id": produto_id, "quantidade": quantidade,
                 "preco_unit_cent": fmt.dividir_cent(max(valor_cent - desconto_cent, 0), quantidade),

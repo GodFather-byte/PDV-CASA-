@@ -40,7 +40,7 @@ class TesteMigracaoV3(unittest.TestCase):
                 # Sai da gaveta só o que é claramente eletrônico (cartão, Pix, transferência, TEF). O resto mantém o
                 # comportamento antigo (fica); "Crédito Loja" e "Cartela de Ticket" não podem ser confundidos com cartão.
                 self.assertEqual(formas, {
-                    "Dinheiro": 1, "Cheque": 1, "Ticket": 1, "Contra Vale": 1, "Voucher": 1, "Visa Crédito": 1,
+                    "Dinheiro": 1, "Voucher": 1, "Visa Crédito": 1,
                     "Crédito Loja": 1, "Cartela de Ticket": 1,
                     "Cartão Débito": 0, "Cartão Crédito": 0, "Pix": 0, "Maquineta": 0, "Transferência": 0,
                     "Cartão Elo": 0, "PIX Pessoal": 0})

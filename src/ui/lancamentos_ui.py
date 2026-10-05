@@ -1,6 +1,7 @@
 """Lançamentos (manual ADM seção 5): contas a pagar/receber e movimentos de estoque."""
 from __future__ import annotations
 
+import re
 import tkinter as tk
 from tkinter import ttk
 
@@ -217,6 +218,9 @@ class JanelaContas(tk.Toplevel):
             self.listar(self.id_atual)
 
 
+RAPIDO = re.compile(r"\s*(\d+(?:[.,]\d+)?)\s*(?:[xX*]\s*|\s)(.+?)\s*")      # "150 skol", "150x skol", "12,5 queijo"
+
+
 class JanelaEstoque(tk.Toplevel):
     ORDEM = ["compra", "entrada", "saida", "descarte", "contagem", "inicial", "pedido", "desc_acabados"]
 
@@ -296,6 +300,7 @@ class JanelaEstoque(tk.Toplevel):
         self.grade.tree.bind("<Delete>", lambda e: self.remover_item())
         self.e_cod.bind("<Return>", lambda e: self._achar_codigo())
         self.cb_prod.bind("<<ComboboxSelected>>", lambda e: self._achar_nome())
+        self.cb_prod.bind("<Return>", lambda e: self._achar_nome() if self.v_prod.get().strip() else None)
         for w in (self.e_qtd, self.e_desc_item, self.e_val_item, self.e_min):
             w.bind("<Return>", lambda e: self.adicionar_item())
 
@@ -405,10 +410,42 @@ class JanelaEstoque(tk.Toplevel):
         self.e_qtd.focus_set()
 
     def _achar_codigo(self) -> None:
+        if self._lancamento_rapido(self.v_cod.get()):
+            return
         self._carregar_produto(self.ctx.produtos.buscar_codigo(self.v_cod.get(), apenas_venda=False))
+
+    def _lancamento_rapido(self, texto: str) -> bool:
+        """Digitou '150 skol' (ou '150x skol'): lança 150 unidades do produto de uma vez, sem preencher campo por campo.
+        Só vale se o texto inteiro NÃO for o nome de um produto (ex.: '7 UP') e se o nome achar algum produto."""
+        m = RAPIDO.fullmatch(texto or "")
+        if m is None or m.group(2).strip().isdigit() or self.lanc_id is None:
+            return False
+        if any(r["nome"].casefold() == texto.strip().casefold()
+               for r in self.ctx.cadastros.listar("produtos", texto=texto, apenas_ativos=True)):
+            return False
+        achados = self.ctx.cadastros.listar("produtos", texto=m.group(2), apenas_ativos=True)
+        if not achados:
+            return False
+        exato = [r for r in achados if r["nome"].casefold() == m.group(2).strip().casefold()]
+        if len(exato) == 1:
+            produto = exato[0]
+        elif len(achados) == 1:
+            produto = achados[0]
+        else:
+            escolhido = tema.escolher(self, "Qual produto?", [(r["id"], r["nome"]) for r in achados[:30]],
+                                      f"Mais de um produto combina com '{m.group(2).strip()}':")
+            if escolhido is None:
+                return True
+            produto = next(r for r in achados if r["id"] == escolhido)
+        self._carregar_produto(produto)
+        self.v_qtd.set(m.group(1))
+        self.adicionar_item()
+        return True
 
     def _achar_nome(self) -> None:
         nome = self.v_prod.get()
+        if self._lancamento_rapido(nome):
+            return
         p = next((r for r in self.ctx.cadastros.listar("produtos", texto=nome) if r["nome"] == nome), None)
         self._carregar_produto(p)
 
@@ -427,7 +464,14 @@ class JanelaEstoque(tk.Toplevel):
         except ValueError:
             tema.aviso(self, "Quantidade ou valor inválido.")
             return
-        ok, _ = tema.tratar(self, self.est.adicionar_item, self.lanc_id, self.produto["id"], qtd, valor, desc, minimo)
+        ligar = False
+        if (not self.produto["controla_estoque"] and self.v_tipo.get() in ("compra", "entrada", "contagem")):
+            if not tema.confirmar(self, f"'{self.produto['nome']}' ainda não controla estoque.\n"
+                                        f"Ligar o controle de estoque deste produto e lançar {fmt.fmt_qtd(qtd)}?",
+                                  "Controlar estoque", padrao_sim=True):
+                return
+            ligar = True
+        ok, _ = tema.tratar(self, self.est.adicionar_item, self.lanc_id, self.produto["id"], qtd, valor, desc, minimo, ligar)
         if ok:
             self._limpar_item()
             self.atualizar()

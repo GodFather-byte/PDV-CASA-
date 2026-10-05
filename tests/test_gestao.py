@@ -58,11 +58,11 @@ class TesteContas(BaseCaixa):
         self.assertEqual(len(self.contas.listar(quitada=False)), 2)
 
     def test_transferencia_entre_contas_gera_debito_e_credito(self):
-        banco_a, banco_b = self.tipo("Pix"), self.tipo("Cheque")
+        banco_a, banco_b = self.tipo("Pix"), self.tipo("Cartão Débito")
         self.contas.transferir(banco_a, banco_b, 50000, "03/10/2026")
         extrato = {ln[0]: ln for ln in RelatorioController(self.banco).extrato_contas({"ate": "2026-10-03"}).linhas}
         self.assertEqual(extrato["Pix"][3], "500,00")        # saída
-        self.assertEqual(extrato["Cheque"][2], "500,00")     # entrada
+        self.assertEqual(extrato["Cartão Débito"][2], "500,00")     # entrada
         with self.assertRaises(ErroNegocio):
             self.contas.transferir(banco_a, banco_a, 100)
 

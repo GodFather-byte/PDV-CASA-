@@ -857,6 +857,40 @@ class TesteLancamentosUI(BaseUI):
         self.sem_travar()
         j.destroy()
 
+    def test_lancamento_rapido_150_skol(self):
+        from unittest import mock
+        from src.ui.lancamentos_ui import JanelaEstoque
+        j = JanelaEstoque(self.root, self.ctx); j.update()
+        j.v_tipo.set("entrada"); j._tipo_mudou()
+        j.iniciar(); j.update()
+        j.v_cod.set("150 skol"); j._achar_codigo(); j.update()
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.skol,)), 200)   # 50 + 150
+        j.v_cod.set("10x SKOL"); j._achar_codigo(); j.update()
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.skol,)), 210)
+        self.assertEqual(j.grade.total(), 2)
+        with mock.patch.object(tema, "aviso") as aviso:                  # nome que não existe: cai no comportamento normal
+            j.v_cod.set("5 xyzinexistente"); j._achar_codigo()
+        aviso.assert_called_once()
+        self.assertEqual(j.grade.total(), 2)
+        j.destroy()
+
+    def test_produto_sem_controle_pergunta_antes_de_ligar(self):
+        from unittest import mock
+        from src.ui.lancamentos_ui import JanelaEstoque
+        novo = self.agua                                              # cadastrada sem "Controla estoque"
+        j = JanelaEstoque(self.root, self.ctx); j.update()
+        j.v_tipo.set("entrada"); j._tipo_mudou()
+        j.iniciar(); j.update()
+        with mock.patch.object(tema, "confirmar", return_value=False) as conf:
+            j.v_cod.set("20 agua"); j._achar_codigo()
+        conf.assert_called_once()
+        self.assertEqual(self.banco.valor("SELECT controla_estoque FROM produtos WHERE id = ?", (novo,)), 0)
+        with mock.patch.object(tema, "confirmar", return_value=True):
+            j.v_cod.set("20 agua"); j._achar_codigo()
+        row = self.banco.um("SELECT controla_estoque, qt_atual FROM produtos WHERE id = ?", (novo,))
+        self.assertEqual((row["controla_estoque"], row["qt_atual"]), (1, 20))
+        j.destroy()
+
     def test_conta_mensal_pela_tela(self):
         from src.ui.lancamentos_ui import JanelaContas
         j = JanelaContas(self.root, self.ctx); j.update()

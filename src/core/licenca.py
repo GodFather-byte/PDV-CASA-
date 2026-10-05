@@ -33,6 +33,7 @@ PREFIXO = "PDVL1"
 CHAVE_PUBLICA_HEX = "95ee45402bfe36a7ae45f548a29ebc9a5da8ac220dbfdfe4a0959084d08782eb"
 AVISO_DIAS = 7
 CARENCIA_DIAS = 5
+MAX_DIAS = 36500       # validade máxima de um código (100 anos = licença permanente)
 SALTO_MAXIMO_DIAS = 3   # a "última data vista" avança no máximo isto por uso (ver registrar_uso)
 
 
@@ -76,6 +77,8 @@ def gerar_licenca(semente: bytes, loja: str, dias: int, hoje: date | None = None
         raise ValueError("Informe a chave da loja.")
     if dias < 1:
         raise ValueError("A validade deve ser de pelo menos 1 dia.")
+    if dias > MAX_DIAS:
+        raise ValueError(f"A validade máxima é {MAX_DIAS} dias (use --permanente).")
     hoje = hoje or date.today()
     dados = {"loja": loja, "emitida_em": hoje.isoformat(), "expira_em": (hoje + timedelta(days=dias)).isoformat()}
     corpo = f"{PREFIXO}.{_b64(json.dumps(dados, separators=(',', ':'), sort_keys=True).encode('utf-8'))}"
@@ -109,6 +112,12 @@ def exigida(banco) -> bool:
     if getattr(sys, "frozen", False):
         return True
     return banco.cfg("licenca_exigir").strip().upper() in ("S", "1", "SIM", "TRUE")
+
+
+def mesma_loja(a: str, b: str) -> bool:
+    """Nome da loja sem diferenciar maiúsculas de minúsculas nem espaços nas pontas (digitar Boate-X no lugar de BOATE-X
+    não pode fazer a renovação ser recusada na frente do operador)."""
+    return (a or "").strip().casefold() == (b or "").strip().casefold()
 
 
 def _data(texto: str) -> date | None:
@@ -154,7 +163,7 @@ def estado(banco, hoje: date | None = None, chave_publica: bytes | None = None) 
     except LicencaInvalida as e:
         return Estado("sem_licenca", mensagem=f"A licença guardada neste caixa é inválida. {e}")
     loja = banco.cfg("chave_loja").strip()
-    if loja and lic["loja"] != loja:
+    if loja and not mesma_loja(lic["loja"], loja):
         return Estado("sem_licenca", mensagem="A licença guardada neste caixa pertence a outra loja.")
     venc = lic["expira_em"]
     dias = (venc - _hoje(banco, hoje)).days
@@ -196,7 +205,7 @@ def _guardada(banco, chave_publica: bytes | None) -> dict | None:
     except LicencaInvalida:
         return None
     loja = banco.cfg("chave_loja").strip()
-    return lic if not loja or lic["loja"] == loja else None
+    return lic if not loja or mesma_loja(lic["loja"], loja) else None
 
 
 def ativar(banco, codigo: str, hoje: date | None = None, chave_publica: bytes | None = None) -> dict:
@@ -204,12 +213,12 @@ def ativar(banco, codigo: str, hoje: date | None = None, chave_publica: bytes | 
     codigo = "".join((codigo or "").split())
     lic = ler_licenca(codigo, chave_publica)
     loja = banco.cfg("chave_loja").strip()
-    if loja and lic["loja"] != loja:
+    if loja and not mesma_loja(lic["loja"], loja):
         raise LicencaInvalida(f"Esta licença é da loja '{lic['loja']}', e este caixa está configurado como '{loja}'.")
     if lic["expira_em"] < _hoje(banco, hoje):
         raise LicencaExpirada(f"Esta licença já venceu em {_br(lic['expira_em'])}.")
     anterior = _guardada(banco, chave_publica)       # só vale como comparação se ainda validar (chave ou loja trocada, não)
-    if anterior and anterior["loja"] == lic["loja"] and lic["expira_em"] < anterior["expira_em"]:
+    if anterior and mesma_loja(anterior["loja"], lic["loja"]) and lic["expira_em"] < anterior["expira_em"]:
         raise LicencaInvalida(f"Esta licença é mais antiga que a atual (válida até {_br(anterior['expira_em'])}).")
     with banco.transacao():
         banco.cfg_set("licenca_token", codigo)         # o prazo vem sempre do código assinado, nunca de outra linha do banco

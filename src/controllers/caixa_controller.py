@@ -276,7 +276,7 @@ class CaixaController:
                 "partes": max(len(componentes), 1), "operador_id": self.operador_id, "criado_em": agora})
             for c in componentes:
                 self.banco.inserir("itens_venda_partes", {
-                    "item_id": item_id, "produto_id": c["id"], "fracao": round(1 / len(componentes), 6)})
+                    "item_id": item_id, "produto_id": c["id"], "fracao": 1 / len(componentes)})
             self.banco.executar(
                 "UPDATE vendas SET ultimo_lancamento_em = ?, status = 'aberta' WHERE id = ?", (agora, venda_id))
             self.recalcular(venda_id)
