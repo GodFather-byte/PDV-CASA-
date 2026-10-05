@@ -8,6 +8,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+import pdv_licenca
+
 from src.core.servico_licenca import INTERVALO_SEGUNDOS, ServicoLicenca
 from src.ui import tema
 
@@ -27,6 +29,21 @@ def pedir_chave(master, servico: ServicoLicenca, motivo: str = "") -> bool:
     if chave is None:
         return False
     servico.salvar_chave(chave)
+    return True
+
+
+def pedir_permanente(master, servico: ServicoLicenca) -> bool:
+    """Pede o código de licença permanente emitido pelo dono e o ativa. False se desistir ou se o código não servir."""
+    codigo = tema.pedir_texto(master, "Licença permanente", "Cole o código de licença permanente fornecido pelo suporte:",
+                              largura=60)
+    if codigo is None:
+        return False
+    try:
+        servico.ativar_permanente(codigo)
+    except pdv_licenca.CodigoInvalido as e:
+        tema.erro(master, str(e), "Licença permanente")
+        return False
+    tema.mensagem(master, "Licença permanente ativada neste computador.", "Licença permanente")
     return True
 
 
@@ -51,7 +68,7 @@ class GuardaLicenca:
         """Ao abrir o PDV: chave (se faltar) e a primeira verificação. Volta na hora; o resultado chega depois."""
         if not self.servico.ativo:
             return
-        if not self.servico.chave():
+        if not self.servico.chave() and not self.servico.tem_permanente():
             pedir_chave(self.app.root, self.servico, "Primeira execução: este caixa ainda não tem chave de licença.")
         self.verificar()
         self._agendar()
@@ -166,6 +183,7 @@ class JanelaBloqueio(tk.Toplevel):
         self.btn_tentar.pack(side="left", padx=4)
         self.btn_chave = ttk.Button(barra, text="Informar outra chave", command=self.outra_chave)
         self.btn_chave.pack(side="left", padx=4)
+        ttk.Button(barra, text="Licença permanente", command=self.permanente).pack(side="left", padx=4)
         ttk.Button(barra, text="Sair do programa", command=self.sair).pack(side="left", padx=4)
         self.protocol("WM_DELETE_WINDOW", self.sair)
         self.atualizar_motivo()
@@ -199,6 +217,10 @@ class JanelaBloqueio(tk.Toplevel):
                 self.after(SONDAGEM_MS, self._sondar)
         except tk.TclError:
             pass
+
+    def permanente(self) -> None:
+        if pedir_permanente(self, self.servico):
+            self.destroy()                                # ativada: o caixa está liberado
 
     def outra_chave(self) -> None:
         if pedir_chave(self, self.servico):
@@ -261,7 +283,12 @@ def abrir_status(master, guarda: GuardaLicenca) -> None:
         if pedir_chave(dlg, s):
             atualizar()
             verificar()
+    def permanente() -> None:
+        if pedir_permanente(dlg, s):
+            atualizar()
+            guarda.concluir()
     ttk.Button(barra, text="Fechar", command=dlg.cancelar).pack(side="right")
+    ttk.Button(barra, text="Licença permanente...", command=permanente).pack(side="right", padx=(0, 8))
     ttk.Button(barra, text="Alterar chave...", command=trocar).pack(side="right", padx=(0, 8))
     ttk.Button(barra, text="Verificar agora", command=verificar).pack(side="right", padx=(0, 8))
     dlg.mostrar()

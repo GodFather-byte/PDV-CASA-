@@ -32,6 +32,8 @@ VALIDADE_TOKEN_DIAS = 7
 TOLERANCIA_RELOGIO = timedelta(minutes=10)    # relógio ligeiramente atrás do último visto não conta como adulteração
 SALTO_MAXIMO = timedelta(days=3)              # a "maior data vista" avança no máximo isto por consulta: data errada no futuro não trava a loja
 ARQUIVO_TOKEN = "licenca.json"
+ARQUIVO_PERMANENTE = "licenca_permanente.json"
+PREFIXO_PERMANENTE = "PDVP1."
 MOTIVOS_403 = ("bloqueada", "invalida", "outra_maquina")
 AVISO_ATRASO = "Mensalidade em atraso. Regularize o pagamento para evitar o bloqueio do sistema."
 
@@ -176,6 +178,69 @@ def interpretar_token(token: dict, license_key: str, mid: str, public_key_pem: s
     return Resultado(True, "ok", "", validade)
 
 
+# ------------------------------------------------------------------ licença permanente (emitida pelo dono)
+class CodigoInvalido(ValueError):
+    """Código de licença permanente ilegível, adulterado ou de outro computador (a mensagem é para o operador)."""
+
+
+def montar_codigo_permanente(payload: str, assinatura_b64: str) -> str:
+    """Código colável: PDVP1. + base64 URL-safe de {"payload", "signature"}. Usado pela ferramenta do dono."""
+    corpo = json.dumps({"payload": payload, "signature": assinatura_b64}, separators=(",", ":")).encode("utf-8")
+    return PREFIXO_PERMANENTE + base64.urlsafe_b64encode(corpo).decode("ascii").rstrip("=")
+
+
+def ler_codigo_permanente(codigo: str, public_key_pem: str, mid: str) -> dict:
+    """Confere formato, assinatura e computador de um código permanente e devolve o payload. Não olha data: não expira."""
+    limpo = "".join((codigo or "").split())
+    if not limpo.startswith(PREFIXO_PERMANENTE):
+        raise CodigoInvalido("Código inválido. Cole o código de licença permanente inteiro, sem espaços extras.")
+    try:
+        corpo = json.loads(_b64(limpo[len(PREFIXO_PERMANENTE):]))
+        payload, assinatura = corpo["payload"], corpo["signature"]
+        if not (isinstance(payload, str) and isinstance(assinatura, str)):
+            raise ValueError
+    except (ValueError, KeyError, TypeError):
+        raise CodigoInvalido("Código inválido. Cole o código de licença permanente inteiro, sem espaços extras.") from None
+    if not verificar_assinatura(public_key_pem, payload, assinatura):
+        raise CodigoInvalido("A assinatura do código não confere. Confira se ele foi copiado inteiro.")
+    try:
+        dados = json.loads(payload)
+    except ValueError:
+        dados = None
+    if not isinstance(dados, dict) or dados.get("permanente") is not True:
+        raise CodigoInvalido("Este código não é de uma licença permanente.")
+    if dados.get("machine_id") != mid:
+        raise CodigoInvalido("Este código foi emitido para outro computador.")
+    return dados
+
+
+def ativar_permanente(codigo: str, public_key_pem: str, pasta: Path | str | None = None, mid: str | None = None) -> dict:
+    """Valida o código e o guarda na pasta de dados. Levanta CodigoInvalido se não servir."""
+    dados = ler_codigo_permanente(codigo, public_key_pem, mid or machine_id())
+    destino = (Path(pasta) if pasta else pasta_dados()) / ARQUIVO_PERMANENTE
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporario = destino.with_suffix(".tmp")
+    temporario.write_text("".join(codigo.split()), encoding="ascii")
+    os.replace(temporario, destino)
+    return dados
+
+
+def permanente_valida(public_key_pem: str, pasta: Path | str | None = None, mid: str | None = None) -> dict | None:
+    """O payload da licença permanente guardada, se ainda confere (assinatura e computador); senão None."""
+    try:
+        codigo = ((Path(pasta) if pasta else pasta_dados()) / ARQUIVO_PERMANENTE).read_text(encoding="ascii")
+        return ler_codigo_permanente(codigo, public_key_pem, mid or machine_id())
+    except (OSError, ValueError):
+        return None
+
+
+def remover_permanente(pasta: Path | str | None = None) -> None:
+    try:
+        ((Path(pasta) if pasta else pasta_dados()) / ARQUIVO_PERMANENTE).unlink()
+    except OSError:
+        pass
+
+
 # ------------------------------------------------------------------ token salvo
 def carregar_token(pasta: Path | str | None = None) -> dict | None:
     try:
@@ -230,6 +295,8 @@ def checar_licenca(server: str, license_key: str, public_key_pem: str, pasta: Pa
     fora da thread da tela. `http(url, corpo, timeout) -> (status, dict)` pode ser trocado nos testes."""
     agora = agora or datetime.now(timezone.utc)
     mid = mid or machine_id()
+    if permanente_valida(public_key_pem, pasta, mid):     # licença do dono: sem rede, sem chave, sem vencimento
+        return Resultado(True, "permanente")
     license_key = (license_key or "").strip()
     server = (server or "").strip().rstrip("/")
     if not license_key:

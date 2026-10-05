@@ -90,6 +90,40 @@ class TesteTelasLicenca(BaseTeste):
         self.assertIsNotNone(self.guarda._reavaliacao)       # olha de novo mais tarde
         self.root.after_cancel(self.guarda._reavaliacao)
 
+    def test_licenca_permanente_na_tela_de_bloqueio_libera_o_caixa(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        try:
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        except ImportError:
+            self.skipTest("cryptography não instalada")
+        import pdv_licenca
+        from tools import gerar_licenca_permanente as ferramenta
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        privada = Ed25519PrivateKey.generate()
+        arquivo = Path(pasta.name) / "t.key"
+        arquivo.write_bytes(privada.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                  serialization.NoEncryption()))
+        pem = privada.public_key().public_bytes(serialization.Encoding.PEM,
+                                                serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+        self.s._chave_publica, self.s._pasta = pem, Path(pasta.name)
+        codigo = ferramenta.emitir(str(arquivo), pdv_licenca.machine_id())
+        self.s.resultado = Resultado(False, "bloqueada")
+        janela = JanelaBloqueio(self.root, self.s)
+        self.root.update()
+        with mock.patch.object(tema, "pedir_texto", return_value="PDVP1.lixo"), \
+                mock.patch.object(tema, "erro") as erro:
+            janela.permanente()
+        erro.assert_called_once()
+        self.assertTrue(janela.winfo_exists())                  # código ruim: continua bloqueado
+        with mock.patch.object(tema, "pedir_texto", return_value=codigo), mock.patch.object(tema, "mensagem"):
+            janela.permanente()
+        self.assertFalse(janela.winfo_exists())
+        self.assertFalse(self.s.bloqueado)
+
 
 if __name__ == "__main__":
     unittest.main()

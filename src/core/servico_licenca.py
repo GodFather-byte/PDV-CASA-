@@ -81,6 +81,14 @@ class ServicoLicenca:
     def chave_mascarada(self) -> str:
         return mascarar(self.chave())
 
+    def tem_permanente(self) -> bool:
+        return pdv_licenca.permanente_valida(self._chave_publica, self._pasta) is not None
+
+    def ativar_permanente(self, codigo: str) -> None:
+        """Ativa o código de licença permanente (emitido pelo dono). Levanta pdv_licenca.CodigoInvalido se não servir."""
+        pdv_licenca.ativar_permanente(codigo, self._chave_publica, self._pasta)
+        self.resultado = pdv_licenca.Resultado(True, "permanente")
+
     def contato_suporte(self) -> str:
         return self.banco.cfg(CHAVE_SUPORTE).strip() or SUPORTE_PADRAO
 
@@ -149,6 +157,8 @@ class ServicoLicenca:
             return "Verificando..." if self.verificando else "Ainda não verificada nesta sessão."
         if not r.permitido:
             return "Bloqueada — " + self.mensagem_bloqueio()
+        if r.motivo == "permanente":
+            return "Ativa — licença permanente"
         base = "Ativa (mensalidade em atraso)" if r.motivo == "atraso" else "Ativa"
         if r.offline:
             base += ", validada offline (sem internet)"

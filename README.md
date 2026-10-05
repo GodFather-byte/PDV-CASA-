@@ -478,6 +478,32 @@ Se ainda vai criar o bot no Telegram:
    a licença com só os 4 últimos caracteres e o **ID da máquina** (botão Copiar). É esse ID que o bot guarda.
 4. Pronto. Daí em diante o PDV confere ao abrir e a cada 4 horas, sempre em segundo plano, sem travar a tela.
 
+### Licença permanente (só você, dono, emite)
+
+Para um caixa que nunca deve vencer nem depender de servidor ou internet (a sua boate, um parceiro, um caso especial), você
+emite um **código permanente** no seu computador, com a **chave privada** do passo 1. O PDV só confere com a chave pública.
+
+1. Peça ao cliente (ou veja no bot) o **ID da máquina**: no caixa, **Utilitários > Licença > Copiar** (também aparece na tela de
+   bloqueio).
+2. No **seu** computador, na pasta do projeto (precisa de `pip install cryptography`):
+
+   ```powershell
+   python -m tools.gerar_licenca_permanente --chave-privada licenca_servidor.key --machine-id COLE_O_ID_AQUI --nome "Boate Estrela"
+   ```
+
+   Ele imprime uma linha começando por `PDVP1.`. Essa é a licença. Guarde uma cópia: ela não pode ser revogada.
+3. Mande o código ao cliente. No caixa: **Utilitários > Licença > Licença permanente...** (ou o botão **Licença permanente** na tela de
+   bloqueio), cole e confirme. Fica "Ativa — licença permanente".
+
+Como funciona e o que ela **não** faz:
+
+- Vale **só naquele computador** (amarrada ao `machine_id`): copiar o arquivo para outro PC não funciona; se a loja trocar de
+  computador, emita outro código com o ID novo.
+- Não expira, não consulta o servidor e não exige a chave de licença. O bot **não consegue** bloqueá-la depois.
+- A única forma de invalidar todos os códigos já emitidos é trocar o par de chaves (e gerar uma versão nova do PDV).
+- A ferramenta `tools/` fica no repositório, mas **não vai no instalador**. Nunca copie a chave privada para o PC do cliente.
+- O código fica em `%LOCALAPPDATA%\WILL-PDV\licenca_permanente.json`.
+
 ### Casos comuns
 
 | O que aconteceu | O que o operador vê | O que você faz |
