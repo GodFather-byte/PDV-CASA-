@@ -1318,6 +1318,74 @@ class TesteSeletorDeImpressoras(BaseUI):
         sel.update()
         return sel
 
+    def _assistente(self, lista):
+        from unittest import mock
+        with mock.patch.object(self.so, "listar_impressoras", return_value=lista), \
+                mock.patch.object(self.so, "servico_spooler_rodando", return_value=True):
+            a = self.config_ui.abrir_assistente(self.form, self.ctx)
+            a.update()
+        return a
+
+    def test_assistente_marca_a_elgin_configura_o_caixa_e_atualiza_a_janela_de_maquinas(self):
+        from unittest import mock
+        elgin = self.so.ImpressoraWindows("Elgin i9", "USB001", "Elgin i9 Series", termica_provavel=True)
+        pdf = self.so.ImpressoraWindows("Microsoft Print to PDF", "PORTPROMPT:", "x", padrao=True, virtual=True)
+        a = self._assistente([pdf, elgin])
+        self.assertEqual(a.impressoras[int(a.grade.selecionado())].nome, "Elgin i9")           # a Elgin já vem marcada
+        textos = " ".join(w.cget("text") for w in a.quadro_achados.winfo_children())
+        self.assertIn("modo 'tela'", textos)                                                   # de fábrica nada sai na impressora
+        with mock.patch.object(self.ctx.impressao, "imprimir_teste") as teste, \
+                mock.patch.object(tema, "confirmar", return_value=True), mock.patch.object(tema, "mensagem") as msg:
+            a.configurar_e_testar()
+        teste.assert_called_once()
+        self.assertEqual(teste.call_args.args[0].endereco, "Elgin i9")
+        m = self.ctx.config.maquina()
+        self.assertEqual((m["modo_impressao"], m["impressora_termica_conexao"], m["impressora_termica_endereco"]),
+                         ("termica", "spooler", "Elgin i9"))
+        self.assertEqual(self.form.valor("modo_impressao"), "termica")                         # a janela de Máquinas recarregou
+        self.assertEqual(self.form.valor("impressora_termica_endereco"), "Elgin i9")
+        self.assertIn("já está imprimindo", msg.call_args.args[1])
+        a.destroy()
+
+    def test_assistente_quando_nao_sai_papel_orienta_e_erro_de_envio_nao_trava(self):
+        from unittest import mock
+        from src.hardware.impressora_termica import ErroImpressao
+        elgin = self.so.ImpressoraWindows("Elgin i9", "USB001", "Elgin i9 Series", termica_provavel=True)
+        a = self._assistente([elgin])
+        with mock.patch.object(self.ctx.impressao, "imprimir_teste"), mock.patch.object(tema, "confirmar", return_value=False), \
+                mock.patch.object(tema, "mensagem") as msg:
+            a.configurar_e_testar()
+        self.assertIn("LIGADA", msg.call_args.args[1])
+        self.assertIn("Copiar diagnóstico", msg.call_args.args[1])
+        with mock.patch.object(self.ctx.impressao, "imprimir_teste", side_effect=ErroImpressao("Impressora offline")), \
+                mock.patch.object(tema, "erro") as erro:
+            a.configurar_e_testar()
+        self.assertIn("offline", erro.call_args.args[1].lower())
+        a.destroy()
+
+    def test_assistente_copia_o_diagnostico_e_destrava_a_fila(self):
+        from unittest import mock
+        elgin = self.so.ImpressoraWindows("Elgin i9", "USB001", "Elgin i9 Series", termica_provavel=True, pausada=True, trabalhos=2)
+        a = self._assistente([elgin])
+        with mock.patch.object(tema, "mensagem"):
+            a.copiar()
+        self.assertIn("DIAGNÓSTICO DE IMPRESSÃO", a.clipboard_get())
+        with mock.patch.object(self.so, "controlar_fila") as controlar, mock.patch.object(tema, "confirmar", return_value=True), \
+                mock.patch.object(tema, "mensagem"), mock.patch.object(self.so, "listar_impressoras", return_value=[elgin]):
+            a.destravar()
+        self.assertEqual([c.args for c in controlar.call_args_list],
+                         [("Elgin i9", self.so.CONTROLE_RETOMAR), ("Elgin i9", self.so.CONTROLE_LIMPAR)])
+        a.destroy()
+
+    def test_assistente_sem_nenhuma_impressora_avisa_em_vez_de_travar(self):
+        from unittest import mock
+        a = self._assistente([])
+        self.assertEqual(a.grade.total(), 0)
+        with mock.patch.object(tema, "aviso") as aviso:
+            a.configurar_e_testar()
+        self.assertIn("instale o driver", aviso.call_args.args[1])
+        a.destroy()
+
     def test_lista_as_impressoras_do_pc_com_a_termica_primeiro_e_as_portas_com(self):
         sel = self.abrir_lista()
         linhas = [sel.grade.valores(i) for i in sel.grade.tree.get_children()]

@@ -179,10 +179,28 @@ class _DocInfo1(ctypes.Structure):
     _fields_ = [("pDocName", wintypes.LPWSTR), ("pOutputFile", wintypes.LPWSTR), ("pDatatype", wintypes.LPWSTR)]
 
 
+# O que fazer, em palavras de quem toca a casa, para os erros do spooler que mais aparecem com impressora de cupom (USB).
+DICAS_WINDOWS = {
+    5: "O Windows negou o acesso: feche outros programas que usam a impressora ou rode o WillPDV como administrador.",
+    1722: "O serviço 'Spooler de Impressão' do Windows está parado: abra Serviços (services.msc), inicie 'Spooler de Impressão' e tente de novo.",
+    1801: "O nome da impressora no PDV não é o que o Windows mostra: use 'Assistente de impressora' para escolher da lista.",
+    1796: "A porta da impressora não existe mais: reinstale o driver da impressora (cabo USB conectado e impressora ligada).",
+    1804: "O driver dessa impressora não aceita impressão direta (RAW). Instale o driver do fabricante (Elgin i9) ou use o driver 'Generic / Text Only'.",
+    1805: "O Windows não consegue falar com a impressora: confira o cabo USB e se ela está ligada.",
+    1906: "A impressora está desconectada: confira o cabo USB e se ela está ligada.",
+    6: "A impressora foi desconectada durante o envio: confira o cabo USB.",
+    21: "A impressora não está pronta: ligue-a, feche a tampa e confira o cabo USB.",
+    1789: "O Windows perdeu a conexão com a impressora: reinicie o computador e a impressora.",
+}
+
+
 def _erro_windows() -> str:
     # get_last_error e FormatError só existem no Windows; fora dele (testes que simulam o spooler) não há código.
     codigo = getattr(ctypes, "get_last_error", lambda: 0)()
-    return f"{ctypes.FormatError(codigo).strip()} [erro {codigo}]" if codigo else "erro desconhecido"
+    if not codigo:
+        return "erro desconhecido"
+    dica = DICAS_WINDOWS.get(codigo)
+    return f"{ctypes.FormatError(codigo).strip()} [erro {codigo}]" + (f". {dica}" if dica else "")
 
 
 def enviar_spooler(nome: str, dados: bytes, documento: str = "PDV Cupom") -> None:

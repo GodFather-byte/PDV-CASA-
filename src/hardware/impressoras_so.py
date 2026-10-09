@@ -60,6 +60,9 @@ class ImpressoraWindows:
     virtual: bool = False            # PDF, XPS, fax: não serve para cupom
     termica_provavel: bool = False   # pelo nome/driver (palpite, serve para ordenar a lista)
     de_rede: bool = False            # compartilhada por outro computador
+    trabalhos: int = 0               # documentos esperando na fila do Windows (se não zera, algo está preso)
+    offline: bool = False            # marcada como "usar impressora offline" ou desconectada
+    pausada: bool = False
 
     @property
     def rotulo(self) -> str:
@@ -135,7 +138,7 @@ def _enumerar_windows() -> list[dict]:
     for p in locais:
         nome = p.pPrinterName or ""
         encontradas[nome.lower()] = {"nome": nome, "porta": p.pPortName or "", "driver": p.pDriverName or "",
-                                     "status": int(p.Status), "atributos": int(p.Attributes)}
+                                     "status": int(p.Status), "atributos": int(p.Attributes), "trabalhos": int(p.cJobs)}
     del locais, buf
     try:        # compartilhadas por outro PC: o nível 4 não abre a impressora, então não trava com servidor fora do ar
         buf, conexoes = _enum(dll, PRINTER_ENUM_CONNECTIONS, 4, _PrinterInfo4)
@@ -197,12 +200,15 @@ def _montar(bruta: dict, padrao: str | None) -> ImpressoraWindows | None:
     if not nome:
         return None
     porta, driver = (bruta.get("porta") or "").strip(), (bruta.get("driver") or "").strip()
-    texto, pronta = situacao(int(bruta.get("status") or 0), int(bruta.get("atributos") or 0))
+    status, atributos = int(bruta.get("status") or 0), int(bruta.get("atributos") or 0)
+    texto, pronta = situacao(status, atributos)
     virtual = _virtual(nome, driver, porta)
     return ImpressoraWindows(
         nome=nome, porta=porta, driver=driver, padrao=bool(padrao) and nome.lower() == padrao.strip().lower(),
         situacao=texto, pronta=pronta, virtual=virtual, termica_provavel=not virtual and _termica(nome, driver),
-        de_rede=bool(int(bruta.get("atributos") or 0) & ATTR_NETWORK) or nome.startswith("\\\\"))
+        de_rede=bool(atributos & ATTR_NETWORK) or nome.startswith("\\\\"),
+        trabalhos=int(bruta.get("trabalhos") or 0), offline=bool(atributos & ATTR_WORK_OFFLINE or status & (ST_OFFLINE | ST_NOT_AVAILABLE)),
+        pausada=bool(status & ST_PAUSED))
 
 
 def listar_impressoras() -> list[ImpressoraWindows]:
@@ -215,6 +221,50 @@ def listar_impressoras() -> list[ImpressoraWindows]:
         return []
     lista = [i for i in (_montar(b, padrao) for b in brutas) if i is not None]
     return sorted(lista, key=lambda i: (i.virtual, not i.termica_provavel, i.nome.lower()))
+
+
+# SetPrinter: o que dá para mandar à fila do Windows
+CONTROLE_PAUSAR, CONTROLE_RETOMAR, CONTROLE_LIMPAR = 1, 2, 3
+_ACESSO_ADMINISTRAR = 0x00000004
+
+
+class _PrinterDefaults(ctypes.Structure):
+    _fields_ = [("pDatatype", wintypes.LPWSTR), ("pDevMode", ctypes.c_void_p), ("DesiredAccess", wintypes.DWORD)]
+
+
+def controlar_fila(nome: str, acao: int) -> None:
+    """Retoma (`CONTROLE_RETOMAR`) ou esvazia (`CONTROLE_LIMPAR`) a fila de uma impressora do Windows: é o 'Cancelar todos os
+    documentos' e o 'Retomar impressão' do Windows. Levanta OSError com a causa se o Windows recusar (ex.: sem permissão)."""
+    dll = winspool()
+    dll.SetPrinterW.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+    dll.SetPrinterW.restype = wintypes.BOOL
+    dll.OpenPrinterW.argtypes = [wintypes.LPWSTR, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+    handle = ctypes.c_void_p()
+    padrao = _PrinterDefaults(None, None, _ACESSO_ADMINISTRAR)
+    if not dll.OpenPrinterW(nome, ctypes.byref(handle), ctypes.byref(padrao)):
+        codigo = ctypes.get_last_error()
+        raise OSError(f"O Windows não deixou abrir '{nome}' para administrar a fila ({ctypes.FormatError(codigo).strip()} [erro {codigo}]).")
+    try:
+        if not dll.SetPrinterW(handle, 0, None, acao):
+            codigo = ctypes.get_last_error()
+            raise OSError(f"O Windows recusou a ação na fila de '{nome}' ({ctypes.FormatError(codigo).strip()} [erro {codigo}]).")
+    finally:
+        dll.ClosePrinter(handle)
+
+
+def servico_spooler_rodando() -> bool | None:
+    """True/False: o serviço 'Spooler de Impressão' do Windows está rodando? None se não deu para saber (fora do Windows)."""
+    if not _WINDOWS:
+        return None
+    import subprocess
+    try:
+        saida = subprocess.run(["sc", "query", "spooler"], capture_output=True, text=True, timeout=8,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if "RUNNING" in saida.upper():
+        return True
+    return False if "STOPPED" in saida.upper() or "PAUSED" in saida.upper() else None
 
 
 def impressora_padrao() -> str | None:
