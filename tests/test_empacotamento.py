@@ -48,7 +48,17 @@ class TesteWorkflowDeBuild(unittest.TestCase):
 
     def test_so_a_publicacao_na_release_escreve_no_repositorio(self):
         self.assertIn("permissions:\n  contents: read", self.texto)
-        self.assertEqual(self.texto.count("contents: write"), 1)
+        self.assertEqual(self.texto.count("contents: write"), 2)             # os dois jobs de publicação (tag v* e "última versão")
+        antes_da_publicacao = self.texto[:self.texto.index("  publicar:")]      # build e licenciador só leem o repositório
+        self.assertNotIn("contents: write", antes_da_publicacao)
+
+    def test_ultima_versao_vai_para_a_aba_releases_so_a_partir_da_main(self):
+        trecho = self.texto[self.texto.index("  ultima_versao:"):]
+        self.assertIn("if: github.ref == 'refs/heads/main'", trecho)
+        for esperado in ("ultima-versao", "WillPDV-Instalador.exe", "WillPDV-Portatil.zip", "--prerelease", "--cleanup-tag"):
+            self.assertIn(esperado, trecho)
+        self.assertNotIn("WillLicencas", trecho)                     # a Release é pública: o programa do fornecedor fica de fora
+        self.assertIn("needs: build", trecho)                        # só publica o que passou nos autotestes
 
 
     def test_programa_de_licencas_tem_job_proprio_e_nao_vai_para_a_aba_releases(self):

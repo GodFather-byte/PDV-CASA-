@@ -19,6 +19,20 @@ programa instalado e desinstala. Se qualquer etapa falhar, a execução fica ver
 
 ## 2. Baixar
 
+### O jeito mais fácil: aba Releases
+
+A cada atualização da `main`, o instalador e a versão portátil são publicados na Release **"WillPDV - última versão"** (marcada
+como *Pre-release*). Na página principal do repositório, olhe a coluna da direita, em **Releases**; ou use o link fixo:
+
+* página: <https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao>
+* instalador direto: <https://github.com/GodFather-byte/PDV-CASA-/releases/download/ultima-versao/WillPDV-Instalador.exe>
+* versão portátil direta: <https://github.com/GodFather-byte/PDV-CASA-/releases/download/ultima-versao/WillPDV-Portatil.zip>
+
+É o `.exe` direto, sem .zip em volta, e o nome não muda a cada versão. A Release é sobrescrita a cada atualização da `main`
+(o título mostra a versão e o commit). O programa de licenças do fornecedor **não** vai para lá (a Release é pública).
+
+### Pelos Artifacts (qualquer branch, inclusive o programa de licenças)
+
 Abra a execução (clique no nome dela em Actions) e role até **Artifacts**:
 
 | Artifact | O que é |
