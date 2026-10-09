@@ -84,6 +84,7 @@ CONFIG_PADRAO = {
     # Telegram do dono: desligado até o dono criar o bot e parear (Configurações > Telegram).
     "telegram_ativo": "N", "telegram_token": "", "telegram_avisa_turno": "S", "telegram_avisa_cancelamento": "S",
     "telegram_avisa_item": "S", "telegram_avisa_sangria": "S", "telegram_avisa_backup": "S",
+    "telegram_avisa_estoque": "S", "telegram_avisa_venda": "N",
     "telegram_resumo_hora": "07:00", "telegram_ultimo_resumo": "", "telegram_offset": "0",
     "telegram_codigo": "", "telegram_codigo_ate": "", "telegram_codigo_erros": "0",
 }

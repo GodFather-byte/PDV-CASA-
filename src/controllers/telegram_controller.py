@@ -32,11 +32,19 @@ ESPERAS = (5, 10, 20, 40, 60)     # segundos entre tentativas quando o Telegram 
 
 # Os botões do teclado do bot: (texto do botão, comando interno). Quem digitar "/resumo" ou "resumo" também funciona.
 BOTOES = [("📊 Resumo", "resumo"), ("📅 Ontem", "ontem"), ("💵 Caixa", "caixa"), ("🍺 Mais vendidos", "top"),
-          ("📦 Estoque", "estoque"), ("🪑 Abertas", "abertas"), ("❌ Cancelamentos", "cancelamentos")]
-TECLADO = [[BOTOES[0][0], BOTOES[1][0]], [BOTOES[2][0], BOTOES[3][0]], [BOTOES[4][0], BOTOES[5][0]], [BOTOES[6][0]]]
+          ("📦 Estoque", "estoque"), ("🛒 Comprar", "comprar"), ("🪑 Abertas", "abertas"), ("❌ Cancelamentos", "cancelamentos"),
+          ("📈 Semana", "semana"), ("🗓️ Mês", "mes"), ("🕐 Por hora", "horas"), ("👥 Equipe", "equipe"),
+          ("💳 Contas", "contas"), ("📒 Caderneta", "caderneta"), ("🔎 Produto", "produto")]
+TECLADO = [[BOTOES[i][0], BOTOES[i + 1][0]] for i in range(0, len(BOTOES) - 1, 2)] + [[BOTOES[-1][0]]]
 _COMANDOS = {texto: cmd for texto, cmd in BOTOES}
 _COMANDOS.update({cmd: cmd for _, cmd in BOTOES})
-_COMANDOS.update({"mais vendidos": "top", "cancelamentos": "cancelamentos", "ajuda": "ajuda", "help": "ajuda", "menu": "ajuda"})
+_COMANDOS.update({"mais vendidos": "top", "cancelamentos": "cancelamentos", "ajuda": "ajuda", "help": "ajuda", "menu": "ajuda",
+                  "mês": "mes", "por hora": "horas", "hora": "horas", "compras": "comprar", "lista de compras": "comprar",
+                  "vendas da semana": "semana", "semanal": "semana", "mensal": "mes", "garçons": "equipe", "garcons": "equipe",
+                  "devedores": "caderneta", "mesas": "abertas", "produtos": "produto", "mesa": "mesa", "comanda": "mesa"})
+# Comandos que levam um argumento depois do nome: "produto skol", "mesa 12", "comanda 5".
+_COM_ARGUMENTO = {"produto": "produto", "produtos": "produto", "preço": "produto", "preco": "produto", "buscar": "produto",
+                  "mesa": "mesa", "comanda": "comanda"}
 
 
 def normalizar_comando(texto: str) -> str | None:
@@ -46,6 +54,22 @@ def normalizar_comando(texto: str) -> str | None:
         return _COMANDOS[t]
     t = re.sub(r"@\w+$", "", t.split()[0] if t.startswith("/") else t).lstrip("/").lower().strip()
     return _COMANDOS.get(t)
+
+
+def interpretar(texto: str) -> tuple[str, str] | None:
+    """Entende o que o dono mandou: (comando, argumento) ou None. 'produto skol' -> ('produto', 'skol'); 'mesa 12' ->
+    ('mesa', 'M12'); 'comanda 5' -> ('mesa', 'C5'); 'resumo' -> ('resumo', '')."""
+    t = (texto or "").strip()
+    partes = t.lstrip("/").split(None, 1)
+    if len(partes) == 2:
+        primeira = re.sub(r"@\w+$", "", partes[0]).lower()
+        arg = partes[1].strip()
+        if _COM_ARGUMENTO.get(primeira) == "produto":
+            return "produto", arg
+        if _COM_ARGUMENTO.get(primeira) in ("mesa", "comanda") and re.fullmatch(r"\d{1,4}", arg):
+            return "mesa", ("M" if _COM_ARGUMENTO[primeira] == "mesa" else "C") + arg
+    simples = normalizar_comando(t)
+    return (simples, "") if simples else None
 
 
 class TelegramController:
@@ -221,7 +245,7 @@ class TelegramController:
         return True
 
     # ----------------------------------------------------- receber e responder
-    def responder_comando(self, comando: str) -> str:
+    def responder_comando(self, comando: str, argumento: str = "") -> str:
         b = self.banco
         if comando == "resumo":
             return textos.resumo(b)
@@ -237,6 +261,24 @@ class TelegramController:
             return textos.abertas(b)
         if comando == "cancelamentos":
             return textos.cancelamentos(b)
+        if comando == "semana":
+            return textos.semana(b)
+        if comando == "mes":
+            return textos.mes(b)
+        if comando == "horas":
+            return textos.por_hora(b)
+        if comando == "equipe":
+            return textos.equipe(b)
+        if comando == "contas":
+            return textos.contas(b)
+        if comando == "caderneta":
+            return textos.caderneta(b)
+        if comando == "comprar":
+            return textos.comprar(b)
+        if comando == "produto":
+            return textos.produto(b, argumento)
+        if comando == "mesa":
+            return textos.mesa(b, argumento)
         return textos.ajuda()
 
     def tratar_mensagem(self, msg: dict) -> None:
@@ -270,16 +312,32 @@ class TelegramController:
         if not self.banco.cfg_bool("telegram_ativo", False):
             cliente.enviar(chat_id, "O Telegram está desligado no PDV (Configurações > Telegram).")
             return
-        comando = normalizar_comando(texto)
-        if comando is None:
-            cliente.enviar(chat_id, "Não entendi. Toque em um dos botões:", TECLADO)
+        entendido = interpretar(texto)
+        if entendido is None:
+            achado = self._produto_digitado(texto)         # "skol" sozinho: o dono quer ver o produto
+            if achado:
+                cliente.enviar(chat_id, achado, TECLADO)
+            else:
+                cliente.enviar(chat_id, "Não entendi. Toque em um dos botões:", TECLADO)
             return
+        comando, argumento = entendido
         try:
-            resposta = self.responder_comando(comando)
+            resposta = self.responder_comando(comando, argumento)
         except Exception:  # noqa: BLE001 - uma consulta com problema não derruba o bot
             log.exception("Falha ao montar a resposta '%s' do Telegram.", comando)
             resposta = "Não consegui montar essa informação agora. Tente de novo em instantes."
         cliente.enviar(chat_id, resposta, TECLADO)
+
+    def _produto_digitado(self, texto: str) -> str | None:
+        """Texto que não é comando: se bater com produto(s) cadastrado(s), devolve o resultado da busca; senão None."""
+        t = texto.strip()
+        if len(t) < 2 or len(t) > 40 or t.startswith("/"):
+            return None
+        try:
+            resposta = textos.produto(self.banco, t)
+        except Exception:  # noqa: BLE001
+            return None
+        return None if resposta.startswith("🔎 Não achei") else resposta
 
     def processar_atualizacoes(self, espera: int = 25) -> int:
         """Pergunta ao Telegram se há mensagens novas e trata cada uma. Devolve quantas chegaram."""

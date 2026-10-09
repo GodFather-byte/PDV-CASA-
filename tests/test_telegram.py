@@ -650,3 +650,183 @@ class TesteServicoEmSegundoPlano(BaseTelegram):
     def test_servico_exige_banco_em_arquivo(self):
         with self.assertRaises(ErroNegocio):
             ServicoTelegram(":memory:")
+
+
+class TesteConsultasCompletas(BaseTelegram):
+    """O dono consulta 'tudo' pelo celular: semana, mês, hora, equipe, contas, caderneta, compras, produto e mesa."""
+
+    def setUp(self):
+        super().setUp()
+        self.parear()
+
+    def test_novos_botoes_existem_no_teclado(self):
+        from src.controllers.telegram_controller import TECLADO
+        botoes = [b for linha in TECLADO for b in linha]
+        for esperado in ("📈 Semana", "🗓️ Mês", "🕐 Por hora", "👥 Equipe", "💳 Contas", "📒 Caderneta", "🛒 Comprar", "🔎 Produto"):
+            self.assertIn(esperado, botoes)
+        self.assertEqual(len(botoes), len(set(botoes)))
+
+    def test_interpretar_comandos_com_argumento(self):
+        from src.controllers.telegram_controller import interpretar
+        self.assertEqual(interpretar("produto skol lata"), ("produto", "skol lata"))
+        self.assertEqual(interpretar("/produto@casa_bot skol"), ("produto", "skol"))
+        self.assertEqual(interpretar("mesa 12"), ("mesa", "M12"))
+        self.assertEqual(interpretar("Comanda 5"), ("mesa", "C5"))
+        self.assertEqual(interpretar("📈 Semana"), ("semana", ""))
+        self.assertEqual(interpretar("mesa"), ("mesa", ""))
+        self.assertIsNone(interpretar("bom dia"))
+        self.assertIsNone(interpretar("mesa abc"))
+
+    def test_semana_soma_os_dias_e_destaca_o_melhor(self):
+        self.venda_fechada()                                       # hoje: R$ 16,00
+        self.avancar(days=1)
+        self.turnos.fechar(self.turno, self.adm, 11600)
+        self.turnos.abrir(self.adm, 1, 0)
+        vid = self.vender((self.skol, 5))
+        self.pagar(vid, "Dinheiro", 4000)
+        self.caixa.fechar(vid)                                     # amanhã: R$ 40,00
+        r = self.pergunta("📈 Semana")
+        self.assertIn("Total: R$ 56,00 em 2 vendas", r)
+        self.assertIn("R$ 40,00 · 1 vendas (até agora) 🏆", r)
+        self.assertIn("R$ 0,00 · 0 vendas", r)
+
+    def test_semana_e_mes_sem_vendas(self):
+        self.assertIn("Nenhuma venda", self.pergunta("📈 Semana"))
+        self.assertIn("Nenhuma venda neste mês", self.pergunta("🗓️ Mês"))
+
+    def test_mes_compara_com_o_mes_anterior(self):
+        self.venda_fechada()                                       # 03/10: R$ 16,00
+        r = self.pergunta("🗓️ Mês")
+        self.assertIn("Outubro até hoje", r)
+        self.assertIn("Faturamento: R$ 16,00", r)
+        self.assertIn("Melhor dia", r)
+        self.assertNotIn("Mês anterior", r)                        # sem vendas em setembro, não há o que comparar
+
+    def test_por_hora_mostra_o_pico(self):
+        self.venda_fechada()
+        r = self.pergunta("🕐 Por hora")
+        self.assertIn("21h", r)
+        self.assertIn("Pico: 21h com R$ 16,00", r)
+
+    def test_equipe_agrupa_por_quem_vendeu(self):
+        self.venda_fechada()
+        r = self.pergunta("👥 Equipe")
+        self.assertIn("1. ADM: R$ 16,00 · 1 vendas", r)
+
+    def test_contas_vencidas_e_proximas(self):
+        self.assertIn("desligado", self.pergunta("💳 Contas"))
+        self.banco.cfg_set("usar_contas", "S")
+        self.assertIn("Nada vencido", self.pergunta("💳 Contas"))
+        sub = self.banco.valor("SELECT sp.id FROM subplanos sp JOIN planos_contas pl ON pl.id = sp.plano_id WHERE pl.debito = 1 LIMIT 1")
+        from src.controllers.contas_controller import ContasController
+        c = ContasController(self.banco)
+        c.incluir(sub, "Aluguel", self.tipo("Dinheiro"), 250000, "01/10/2026")
+        c.incluir(sub, "Luz", self.tipo("Dinheiro"), 40000, "05/10/2026")
+        r = self.pergunta("💳 Contas")
+        self.assertIn("Vencidas (1, R$ 2.500,00)", r)
+        self.assertIn("próximos 7 dias (1, R$ 400,00)", r)
+
+    def test_caderneta_lista_devedores_sem_dados_pessoais(self):
+        self.assertIn("Ninguém está devendo", self.pergunta("📒 Caderneta"))
+        joao = self.cliente("JOAO", 50000)
+        self.banco.executar("UPDATE clientes SET saldo_cent = -12000, cpf = '12345678900', telefone = '1199999' WHERE id = ?", (joao,))
+        r = self.pergunta("📒 Caderneta")
+        self.assertIn("1 clientes devendo, total R$ 120,00", r)
+        self.assertIn("1. JOAO: R$ 120,00", r)
+        self.assertNotIn("12345678900", r)
+        self.assertNotIn("1199999", r)
+
+    def test_comprar_usa_o_estoque_minimo(self):
+        self.assertIn("Nada para repor", self.pergunta("🛒 Comprar"))
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 60, qt_atual = 10 WHERE id = ?", (self.skol,))
+        r = self.pergunta("🛒 Comprar")
+        self.assertIn("SKOL: tem 10, comprar 110 UN", r)
+
+    def test_produto_por_comando_e_por_nome_solto(self):
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 20 WHERE id = ?", (self.skol,))
+        self.venda_fechada()
+        for texto in ("produto skol", "skol", "preço SKOL"):
+            r = self.pergunta(texto)
+            self.assertIn("🔎 SKOL", r, texto)
+            self.assertIn("Preço de venda: R$ 8,00", r)
+            self.assertIn("Estoque: 98 (✅ normal)", r)
+            self.assertIn("Venda -2 → 98", r)
+        self.assertIn("Não achei", self.pergunta("produto zzzz"))
+        self.assertIn("Não entendi", self.pergunta("zzzz"))
+        self.assertIn("Digite o nome", self.pergunta("🔎 Produto"))
+        self.assertIn("Não controla estoque", self.pergunta("produto agua"))
+
+    def test_produto_com_varios_resultados_lista_os_nomes(self):
+        self.novo_produto("SKOL LATA", 900)
+        r = self.pergunta("produto sko")
+        self.assertIn("2 produtos combinam", r)
+        self.assertIn("SKOL LATA — R$ 9,00", r)
+        self.assertIn("🔎 SKOL\n", self.pergunta("produto skol"))             # nome exato vence os parecidos
+
+    def test_mesa_mostra_itens_e_total(self):
+        vid, _ = self.caixa.abrir_mesa(12)
+        self.caixa.adicionar_item(vid, self.skol, 3)
+        r = self.pergunta("mesa 12")
+        self.assertIn("Mesa 12", r)
+        self.assertIn("3x SKOL: R$ 24,00", r)
+        self.assertIn("Total até agora", r)
+        self.assertIn("não está aberta", self.pergunta("mesa 99"))
+        self.assertIn("Digite o número", self.pergunta("mesa"))
+
+    def test_resumo_da_manha_avisa_contas_do_dia(self):
+        self.banco.cfg_set("usar_contas", "S")
+        sub = self.banco.valor("SELECT sp.id FROM subplanos sp JOIN planos_contas pl ON pl.id = sp.plano_id WHERE pl.debito = 1 LIMIT 1")
+        from src.controllers.contas_controller import ContasController
+        ContasController(self.banco).incluir(sub, "Gelo", self.tipo("Dinheiro"), 30000, "03/10/2026")
+        self.venda_fechada()
+        from src.controllers import telegram_textos as textos
+        r = textos.resumo(self.banco, fechado=True)
+        self.assertIn("Contas a pagar hoje: 1 (R$ 300,00)", r)
+
+
+class TesteAvisosEmTempoReal(BaseTelegram):
+    def test_aviso_de_cada_venda_nasce_desligado_e_liga_pela_configuracao(self):
+        self.parear()
+        self.venda_fechada()
+        self.assertEqual(self.fila(), [])
+        self.banco.cfg_set("telegram_avisa_venda", "S")
+        self.venda_fechada()
+        (aviso,) = self.fila()
+        self.assertIn("Venda — balcão: R$ 16,00", aviso)
+        self.assertIn("Dinheiro R$ 16,00", aviso)
+        self.assertIn("Por: ADM", aviso)
+
+    def test_instalacao_antiga_sem_a_chave_tambem_nao_avisa_cada_venda(self):
+        self.parear()
+        self.banco.executar("DELETE FROM config WHERE chave = 'telegram_avisa_venda'")
+        self.venda_fechada()
+        self.assertEqual(self.fila(), [])
+
+    def test_avisa_quando_produto_acaba_e_so_na_hora_que_cruza(self):
+        self.parear()
+        self.banco.executar("UPDATE produtos SET qt_atual = 3, estoque_minimo = 2 WHERE id = ?", (self.skol,))
+        vid = self.vender((self.skol, 1))                           # 3 -> 2: entra no ponto de pedido
+        self.pagar(vid, "Dinheiro", 800); self.caixa.fechar(vid)
+        vid = self.vender((self.skol, 1))                           # 2 -> 1: continua no ponto, sem aviso novo
+        self.pagar(vid, "Dinheiro", 800); self.caixa.fechar(vid)
+        vid = self.vender((self.skol, 1))                           # 1 -> 0: acabou
+        self.pagar(vid, "Dinheiro", 800); self.caixa.fechar(vid)
+        vid = self.vender((self.skol, 1))                           # já zerado: sem aviso repetido
+        self.pagar(vid, "Dinheiro", 800); self.caixa.fechar(vid)
+        avisos = self.fila()
+        self.assertEqual(len(avisos), 2)
+        self.assertIn("SKOL está acabando: restam 2 (mínimo 2)", avisos[0])
+        self.assertIn("SKOL ACABOU", avisos[1])
+
+    def test_aviso_de_estoque_pode_ser_desligado(self):
+        self.parear()
+        self.banco.cfg_set("telegram_avisa_estoque", "N")
+        self.banco.executar("UPDATE produtos SET qt_atual = 1 WHERE id = ?", (self.skol,))
+        vid = self.vender((self.skol, 1))
+        self.pagar(vid, "Dinheiro", 800); self.caixa.fechar(vid)
+        self.assertEqual(self.fila(), [])
+
+    def test_novas_opcoes_aparecem_na_configuracao(self):
+        chaves = [c[0] for c in CAMPOS_CONFIG]
+        self.assertIn("telegram_avisa_venda", chaves)
+        self.assertIn("telegram_avisa_estoque", chaves)

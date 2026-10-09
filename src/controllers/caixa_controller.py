@@ -512,6 +512,7 @@ class CaixaController:
                 self.banco.inserir("caderneta", {
                     "cliente_id": v["cliente_id"], "venda_id": venda_id, "tipo": "debito", "valor_cent": total,
                     "descricao": "Venda em caderneta", "criado_em": agora})
+        notificacoes.avisar(self.banco, "venda", "venda_fechada", venda_id)      # fora da transação: só avisa o que ficou gravado
         return self.obter(venda_id)
 
     def _debitar_caderneta(self, cliente_id: int, total: int) -> None:

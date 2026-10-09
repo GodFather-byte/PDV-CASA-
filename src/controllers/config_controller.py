@@ -106,6 +106,8 @@ CAMPOS_CONFIG = [
     ("telegram_avisa_item", "Avisar cada item cancelado (com o motivo e quem cancelou)", "sn", "Telegram"),
     ("telegram_avisa_sangria", "Avisar sangria e suprimento do caixa", "sn", "Telegram"),
     ("telegram_avisa_backup", "Avisar se o backup automático falhar", "sn", "Telegram"),
+    ("telegram_avisa_estoque", "Avisar na hora quando um produto acabar ou chegar no ponto de pedido", "sn", "Telegram"),
+    ("telegram_avisa_venda", "Avisar CADA venda fechada, em tempo real (em noite cheia são muitas mensagens)", "sn", "Telegram"),
     ("telegram_resumo_hora", "Resumo da noite que acabou, enviado todo dia neste horário (ex.: 07:00; vazio = não enviar)",
      "texto", "Telegram"),
 ]

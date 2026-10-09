@@ -7,6 +7,7 @@ movimentos_estoque. É esse histórico que permite estornar com exatidão.
 """
 from __future__ import annotations
 
+from src.controllers import notificacoes
 from src.controllers.produto_controller import ProdutoController
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
@@ -54,13 +55,29 @@ class EstoqueController:
         if self.banco.um("SELECT 1 FROM movimentos_estoque WHERE ref_tipo = 'venda' AND ref_id = ? "
                          "AND tipo = 'venda' LIMIT 1", (venda_id,)):
             return
+        antes: dict[int, float] = {}
         for it in self.banco.todos(
                 "SELECT id, produto_id, quantidade FROM itens_venda WHERE venda_id = ? AND cancelado = 0", (venda_id,)):
             partes = self.banco.todos("SELECT produto_id, fracao FROM itens_venda_partes WHERE item_id = ?", (it["id"],))
             alvos = self._dividir_em_partes(it["quantidade"], partes) or [(it["produto_id"], it["quantidade"])]
             for pid, qtd in alvos:
                 for consumo_id, q in self.produtos.consumos(pid, qtd):
+                    antes.setdefault(consumo_id, self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (consumo_id,), 0))
                     self._mover(consumo_id, -q, "venda", "venda", venda_id)
+        self._avisar_cruzamentos(antes)
+
+    def _avisar_cruzamentos(self, antes: dict[int, float]) -> None:
+        """Avisa o dono (Telegram) dos produtos que, por causa desta baixa, ACABARAM ou entraram no ponto de pedido.
+        Só quando o produto cruza o limite (não a cada venda de um produto que já estava zerado)."""
+        alertas = []
+        for pid, qt_antes in antes.items():
+            p = self.produtos.por_id(pid)
+            depois = self.produtos.situacao_estoque(p)
+            antes_sit = self.produtos.situacao_estoque({**p, "qt_atual": qt_antes})
+            if depois != "normal" and depois != antes_sit:
+                alertas.append((p["nome"], depois, p["qt_atual"], p["estoque_minimo"]))
+        if alertas:
+            notificacoes.avisar(self.banco, "estoque", "estoque_alerta", alertas)
 
     @staticmethod
     def _dividir_em_partes(quantidade: float, partes) -> list[tuple[int, float]]:

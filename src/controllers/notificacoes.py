@@ -18,7 +18,10 @@ ACORDAR = threading.Event()
 
 # tipo do aviso -> chave de configuração que liga/desliga (None = sempre que o Telegram estiver ligado)
 CHAVES = {"turno": "telegram_avisa_turno", "cancelamento": "telegram_avisa_cancelamento", "item": "telegram_avisa_item",
-          "sangria": "telegram_avisa_sangria", "backup": "telegram_avisa_backup", "resumo": None}
+          "sangria": "telegram_avisa_sangria", "backup": "telegram_avisa_backup", "venda": "telegram_avisa_venda",
+          "estoque": "telegram_avisa_estoque", "resumo": None}
+# Quando a chave ainda não existe no banco (instalação antiga): o que vale. Só o aviso de cada venda nasce desligado.
+PADRAO = {"venda": False}
 
 
 def ligado(banco, tipo: str | None = None) -> bool:
@@ -26,7 +29,7 @@ def ligado(banco, tipo: str | None = None) -> bool:
     if not banco.cfg_bool("telegram_ativo", False) or not banco.cfg("telegram_token").strip():
         return False
     chave = CHAVES.get(tipo)
-    if chave and not banco.cfg_bool(chave, True):
+    if chave and not banco.cfg_bool(chave, PADRAO.get(tipo, True)):
         return False
     return bool(banco.valor("SELECT 1 FROM telegram_chats LIMIT 1"))
 
