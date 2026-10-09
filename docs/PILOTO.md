@@ -13,8 +13,9 @@ O que o projeto já provou e o que ainda falta provar em loja estão separados a
 1. **Licença.** No `.exe` a licença é sempre exigida. Confirme que você consegue emitir um código com a sua chave
    (`python -m tools.gerar_licenca emitir --loja NOME-DA-BOATE --dias 30` ou `--permanente`). Se der erro de chave que não
    corresponde, resolva **antes**: sem o código o caixa não entra. Teste a colagem do código num PC de teste.
-2. **Instalador.** Gere no Windows (`python build_pdv.py`) e instale num PC de teste. O `.exe` ainda **nunca foi gerado nem
-   aberto** num Windows de verdade (só os testes rodaram lá). Confira também antivírus/SmartScreen no PC da boate.
+2. **Instalador.** Baixe o instalador gerado pelo GitHub Actions (`docs/INSTALAR_E_TESTAR.md`) e instale num PC de teste. O
+   Actions já abre o programa empacotado e o instalado num Windows (autoteste), mas **ninguém ainda operou o caixa** nele:
+   faça o roteiro de teste do guia. Confira também antivírus/SmartScreen no PC da boate.
 3. **Impressora térmica e gaveta.** Só foram testadas com impressora simulada. Teste no equipamento real: acentos, corte do
    papel, abrir a gaveta (Configurações > Máquinas). Se algo falhar, use o modo "tela" ou Windows e imprima pelo spooler.
 4. **Cadastros.** Produtos com preço, "Controla estoque" nos que têm saldo, operadores e senhas (a de fábrica ADM/ADM é

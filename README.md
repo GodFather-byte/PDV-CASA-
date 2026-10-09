@@ -379,6 +379,9 @@ Na máquina do fornecedor que gera as versões (Windows, uma vez só): instale o
 `pip install pyinstaller pyserial requests` e instale o [Inno Setup 6](https://jrsoftware.org/isdl.php) (6.3 ou mais
 novo). A cada versão:
 
+> **Sem Python no seu PC?** O GitHub Actions gera o instalador, testa o programa empacotado e deixa para baixar: veja
+> [`docs/INSTALAR_E_TESTAR.md`](docs/INSTALAR_E_TESTAR.md) (aba *Actions* > *Gerar instalador (Windows)*).
+
 1. Suba o número em `src/versao.py`.
 2. Na raiz do repositório: `python build_pdv.py`. Ele gera o executável e, achando o Inno Setup, o instalador
    `instalador\saida\WillPDV-Setup-<versão>.exe` (o script é `instalador\WillPDV.iss`; dá para abri-lo no Inno Setup e
