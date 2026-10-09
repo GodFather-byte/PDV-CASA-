@@ -8,6 +8,7 @@ from tkinter import ttk
 from src.controllers.acesso_controller import GRUPOS_MENU
 from src.controllers.config_controller import modulos_desligados
 from src.controllers.fila_impressao_controller import ServicoFilaImpressao
+from src.controllers.telegram_controller import ServicoTelegram
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
@@ -49,7 +50,8 @@ UTILITARIOS = [("limpeza", "Limpeza do movimento", "util_limpeza"), ("comunicaca
                ("suporte", "Pacote de suporte (log de erros)", "util_backup"),
                ("fila_impressao", "Fila de impressão", "util_fila_impressao")]
 CONFIGURACOES = [("acessos", "Acessos", "cfg_acessos"), ("loja", "Loja", "cfg_loja"),
-                 ("configuracoes", "Configurações", "cfg_configuracoes"), ("maquinas", "Máquinas", "cfg_maquinas")]
+                 ("configuracoes", "Configurações", "cfg_configuracoes"), ("maquinas", "Máquinas", "cfg_maquinas"),
+                 ("telegram", "Telegram (celular do dono)", "cfg_telegram")]
 
 BOTOES = [("Manutenção de Cadastros", "Cadastros", "m"), ("Caixa", "Caixa", "c"), ("Lançamentos", "Lançamentos", "l"),
           ("Relatórios", "Relatórios", "r"), ("Utilitários", "Utilitários", "u"), ("Configurações", "Configurações", "o"),
@@ -69,6 +71,7 @@ class App:
         self.ctx = Contexto(self.banco)
         self.janelas: dict[str, tk.Toplevel] = {}
         self.servico_impressao: ServicoFilaImpressao | None = None
+        self.servico_telegram: ServicoTelegram | None = None
         self.menu: tk.Frame | None = None
         self.root.protocol("WM_DELETE_WINDOW", self.sair)
         self.root.report_callback_exception = self._erro_na_tela      # erro dentro de uma tela: registra e avisa, não derruba
@@ -99,6 +102,7 @@ class App:
 
     def run(self) -> None:
         self._iniciar_fila_impressao()
+        self._iniciar_telegram()
         idade = self.ctx.utilitarios.idade_backup_horas()
         if idade is None or idade >= 12:                 # abriu o caixa e a última cópia é antiga: faz uma agora
             self.ctx.utilitarios.backup_automatico("início")
@@ -107,6 +111,8 @@ class App:
         self.ctx.utilitarios.backup_automatico("saída", minimo_min=60)
         if self.servico_impressao is not None:
             self.servico_impressao.parar()
+        if self.servico_telegram is not None:
+            self.servico_telegram.parar()
         self.banco.fechar()
 
     def _iniciar_fila_impressao(self) -> None:
@@ -116,6 +122,14 @@ class App:
             self.servico_impressao.iniciar()
         except ErroNegocio:
             self.servico_impressao = None
+
+    def _iniciar_telegram(self) -> None:
+        """Threads do Telegram do dono (avisos e botões). Ficam paradas, sem rede, enquanto não houver token configurado."""
+        try:
+            self.servico_telegram = ServicoTelegram(self.banco.caminho)
+            self.servico_telegram.iniciar()
+        except ErroNegocio:
+            self.servico_telegram = None
 
     def entrar(self) -> None:
         self._destruir_menu()

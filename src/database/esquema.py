@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 10
+VERSAO_ESQUEMA = 11
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -402,6 +402,26 @@ TABELAS = [
         venda_id INTEGER
     )""",
     "CREATE INDEX IF NOT EXISTS ix_fila_status ON fila_impressao(status, destino, id)",
+    # Telegram do dono (v11): `telegram_chats` são as conversas autorizadas (quem digitou o código de pareamento no bot);
+    # `telegram_fila` são os avisos esperando envio (gravados na hora, enviados por uma thread: a internet fora do ar não
+    # trava o caixa e o aviso sai quando voltar). `entregue_a` guarda os chats que já receberam (para não repetir).
+    """CREATE TABLE IF NOT EXISTS telegram_chats (
+        chat_id INTEGER PRIMARY KEY,
+        nome TEXT,
+        criado_em TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS telegram_fila (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        criado_em TEXT NOT NULL,
+        tipo TEXT,
+        texto TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','enviado','erro')),
+        tentativas INTEGER NOT NULL DEFAULT 0,
+        entregue_a TEXT NOT NULL DEFAULT '',
+        ultimo_erro TEXT,
+        enviado_em TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_telegram_fila ON telegram_fila(status, id)",
     # Comissão das garotas (v7): o código 50 do caixa marca a comissão no número da garota (o mesmo da comanda dela).
     # Não é venda: não entra em faturamento nem estoque. Fica 'pendente' até ser paga (sai dinheiro do caixa) ou cancelada.
     """CREATE TABLE IF NOT EXISTS garotas (
@@ -518,4 +538,7 @@ MIGRACOES = {
     10: [
         "DROP TABLE IF EXISTS mesas",
     ],
+    # v11: Telegram do dono. As tabelas telegram_chats e telegram_fila nascem em TABELAS (IF NOT EXISTS); as chaves novas de
+    # configuração (telegram_*) nascem em CONFIG_PADRAO e o módulo cfg_telegram em ACESSOS, na abertura seguinte. Nada a migrar.
+    11: [],
 }

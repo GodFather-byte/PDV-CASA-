@@ -13,6 +13,7 @@ from src.controllers.estoque_controller import EstoqueController
 from src.controllers.impressao_controller import ImpressaoController
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.relatorio_controller import RelatorioController
+from src.controllers.telegram_controller import TelegramController
 from src.controllers.turno_controller import TurnoController
 from src.controllers.utilitario_controller import UtilitarioController
 from src.hardware.dispositivos import Balanca, Gaveta
@@ -32,6 +33,7 @@ class Contexto:
         self.impressao = ImpressaoController(banco)
         self.caderneta = CadernetaController(banco)
         self.comissoes = ComissaoController(banco)
+        self.telegram = TelegramController(banco)
 
     @property
     def operador_id(self) -> int | None:

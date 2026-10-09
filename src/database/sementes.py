@@ -55,6 +55,7 @@ ACESSOS = [
     ("cfg_loja", "Dados da Loja", "Configurações", 3),
     ("cfg_configuracoes", "Configurações operacionais", "Configurações", 4),
     ("cfg_maquinas", "Máquinas", "Configurações", 4),
+    ("cfg_telegram", "Telegram do dono (acompanhar a casa pelo celular)", "Configurações", 4),
 ]
 
 CONFIG_PADRAO = {
@@ -80,6 +81,11 @@ CONFIG_PADRAO = {
     "api_url": "", "api_token": "", "sync_intervalo_seg": "60",
     "programa_comunicacao": "", "pasta_backup": "", "pasta_backup_extra": "", "backup_erro": "", "backup_extra_erro": "",
     "email_loja": "", "email_destino": "", "smtp_servidor": "",
+    # Telegram do dono: desligado até o dono criar o bot e parear (Configurações > Telegram).
+    "telegram_ativo": "N", "telegram_token": "", "telegram_avisa_turno": "S", "telegram_avisa_cancelamento": "S",
+    "telegram_avisa_item": "S", "telegram_avisa_sangria": "S", "telegram_avisa_backup": "S",
+    "telegram_resumo_hora": "07:00", "telegram_ultimo_resumo": "", "telegram_offset": "0",
+    "telegram_codigo": "", "telegram_codigo_ate": "", "telegram_codigo_erros": "0",
 }
 
 CARGOS = ["Administrador", "Gerente", "Caixa", "Garçom", "Entregador", "Vendedor"]

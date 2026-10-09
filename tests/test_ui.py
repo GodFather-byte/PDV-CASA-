@@ -2353,3 +2353,75 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         self.assertEqual([l[3] for l in self.linhas()], ["40,00"])
         j.destroy()
         self.sem_travar()
+
+
+class TesteTelegramNaTela(BaseUI):
+    def setUp(self):
+        super().setUp()
+        from tests.test_telegram import TelegramFalso
+        self.falso = TelegramFalso()
+        self.ctx.telegram._http = self.falso
+
+    def test_conectar_o_bot_gerar_codigo_e_ver_o_celular_aparecer(self):
+        from src.ui import config_ui
+        from tests.test_telegram import DONO, TOKEN
+        j = config_ui.abrir(self.root, self.ctx, "telegram"); j.update()
+        self.assertTrue(j.btn_codigo.instate(["disabled"]))           # sem token ainda não gera código
+        self.assertIn("Ainda não há celular", j.lbl_status.cget("text"))
+        j.var_token.set(TOKEN); j.conectar(); j.update()
+        self.assertIn("@casa_bot", j.lbl_bot.cget("text"))
+        self.assertFalse(j.btn_codigo.instate(["disabled"]))
+        j.gerar_codigo(); j.update()
+        codigo = self.ctx.telegram.codigo_pendente()
+        self.assertEqual(j.lbl_codigo.cget("text"), f"/start {codigo}")
+        self.falso.digitar(DONO, f"/start {codigo}", nome="Carlos")      # o dono manda o código pelo celular
+        self.ctx.telegram.processar_atualizacoes(0)
+        j._atualizar(); j.update()
+        self.assertEqual([j.grade.valores(i)[0] for i in j.grade.tree.get_children()], ["Carlos"])
+        self.assertEqual(j.lbl_codigo.cget("text"), "")                  # o código some depois de usado
+        self.assertIn("Funcionando", j.lbl_status.cget("text"))
+        self.robo.quando("Dialogo", lambda w: clicar(w, "OK"))
+        j.testar(); j.update()
+        self.assertIn("Teste do PDV", self.falso.textos(DONO)[-1])
+        self.sem_travar()
+        j.destroy()
+
+    def test_token_errado_mostra_o_erro_e_nao_conecta(self):
+        from src.ui import config_ui
+        j = config_ui.abrir(self.root, self.ctx, "telegram"); j.update()
+        vistos = []
+        self.robo.quando("Dialogo", lambda w: (vistos.append(w.title()), w.destroy()))
+        j.var_token.set("isso nao e um token"); j.conectar(); j.update()
+        self.assertEqual(self.banco.cfg("telegram_token"), "")
+        self.assertEqual(len(vistos), 1)
+        self.sem_travar()
+        j.destroy()
+
+    def test_ligar_sem_parear_avisa_e_desliga_a_caixa(self):
+        from src.ui import config_ui
+        j = config_ui.abrir(self.root, self.ctx, "telegram"); j.update()
+        self.robo.quando("Dialogo", lambda w: clicar(w, "OK"))
+        j.var_ativo.set(True); j._alternar(); j.update()
+        self.assertFalse(j.var_ativo.get())
+        self.assertFalse(self.banco.cfg_bool("telegram_ativo"))
+        self.sem_travar()
+        j.destroy()
+
+    def test_remover_celular_pela_tela(self):
+        from src.ui import config_ui
+        from tests.test_telegram import DONO, TOKEN
+        self.ctx.telegram.salvar_token(TOKEN)
+        self.banco.executar("INSERT INTO telegram_chats(chat_id, nome, criado_em) VALUES (?,?,?)", (DONO, "Carlos", "2026-10-03 21:00:00"))
+        j = config_ui.abrir(self.root, self.ctx, "telegram"); j.update()
+        j.grade.selecionar(DONO)
+        self.robo.quando("Dialogo", lambda w: clicar(w, "Sim"))
+        j.remover(); j.update()
+        self.assertEqual(self.ctx.telegram.chats(), [])
+        self.sem_travar()
+        j.destroy()
+
+    def test_menu_configuracoes_oferece_o_telegram_ao_dono(self):
+        from src.ui.app import CONFIGURACOES
+        self.assertIn("telegram", [c[0] for c in CONFIGURACOES])
+        modulos = {m["modulo"] for m in self.ctx.acesso.modulos_permitidos(self.ctx.operador, "Configurações")}
+        self.assertIn("cfg_telegram", modulos)
