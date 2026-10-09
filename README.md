@@ -1,6 +1,6 @@
 # WillPDV
 
-**Autor:** Willyan
+**Autor:** Willyan  ·  **Licença:** proprietária, código visível (veja [`LICENSE`](LICENSE))
 
 Sistema de ponto de venda offline-first para bares, casas noturnas e operações de
 alimentação. O objetivo é evoluir para um PDV confiável de ponta a ponta: vendas,
@@ -298,6 +298,13 @@ Convenções obrigatórias entre as camadas:
 - quantidades usam até quatro casas decimais;
 - timestamps locais são armazenados em ISO (`YYYY-MM-DD HH:MM:SS`);
 - UUID identifica a venda e permite reenvio idempotente.
+
+## Licença
+
+O código é público para leitura e avaliação, mas o WillPDV **não é software livre**: todos os direitos reservados a
+WillCommerce. Dá para ler, estudar e rodar para testar sem fins comerciais; usar numa loja de verdade exige a licença comercial
+(o código de licença assinado, veja "Como emitir as licenças"); copiar, modificar e distribuir, revender, gerar instaladores para
+terceiros ou contornar a verificação de licença é proibido. Os termos completos estão em [`LICENSE`](LICENSE).
 
 ## Telegram do dono (acompanhar a casa pelo celular)
 

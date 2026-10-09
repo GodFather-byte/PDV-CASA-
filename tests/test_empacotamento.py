@@ -51,6 +51,17 @@ class TesteWorkflowDeBuild(unittest.TestCase):
         self.assertEqual(self.texto.count("contents: write"), 1)
 
 
+class TesteLicencaDoRepositorio(unittest.TestCase):
+    raiz = Path(__file__).resolve().parents[1]
+
+    def test_licenca_proprietaria_existe_e_o_readme_aponta_para_ela(self):
+        texto = (self.raiz / "LICENSE").read_text(encoding="utf-8")
+        self.assertIn("Todos os direitos reservados", texto)
+        self.assertIn("ENGLISH SUMMARY", texto)
+        self.assertNotIn("MIT License", texto)               # produto vendido por licença: não é código aberto
+        self.assertIn("(LICENSE)", (self.raiz / "README.md").read_text(encoding="utf-8"))
+
+
 class TesteChavesForaDoRepositorio(unittest.TestCase):
     raiz = Path(__file__).resolve().parents[1]
 
