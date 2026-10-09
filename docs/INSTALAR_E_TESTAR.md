@@ -69,6 +69,12 @@ ainda não tem o par de chaves, veja "Como emitir as licenças" no `README.md` (
 
 ## 6. Se algo der errado
 
+- **O instalador mostra "Os aplicativos a seguir estão usando arquivos que precisam ser atualizados: WillPDV":** é um
+  `WillPDV.exe` que ficou rodando, às vezes escondido (sem janela). Deixe marcado *Fechar os aplicativos automaticamente* e clique
+  em *Avançar*. A versão atual do instalador também avisa e encerra sozinho o que sobrou. Se ainda assim travar: `Ctrl + Shift +
+  Esc` > aba **Detalhes** > clique com o direito em `WillPDV.exe` > **Finalizar tarefa** (faça nos que aparecerem) e rode o
+  instalador de novo. As vendas não se perdem: o banco fica em `%LOCALAPPDATA%\WILL-PDV`, fora da pasta do programa.
+
 - Rode o autoteste no PC (cria um relatório com o que está faltando):
 
   ```powershell

@@ -1,4 +1,4 @@
-; Instalador do WillPDV (Inno Setup 6.3 ou mais novo).
+﻿; Instalador do WillPDV (Inno Setup 6.3 ou mais novo).
 ;
 ; Antes, gere o executável:  python build_pdv.py --sem-instalador   (cria dist\WillPDV\)
 ; Depois abra este arquivo no Inno Setup e clique em Build > Compile, ou rode só  python build_pdv.py,  que faz os dois.
@@ -66,3 +66,36 @@ Name: "{autostartup}\{#Nome} - envio para a nuvem"; Filename: "{app}\{#Exe}"; Pa
 [Run]
 ; Abre como o usuário que instalou (não como administrador): os dados ficam no %LOCALAPPDATA% dele.
 Filename: "{app}\{#Exe}"; Description: "Abrir o {#Nome} agora"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+[Code]
+// WillPDV.exe esquecido rodando (a tela de entrada aberta atrás de outras janelas, ou o processo de segundo plano --sync, que nem
+// janela tem) trava a instalação em "os aplicativos a seguir estão usando arquivos que precisam ser atualizados": o Restart Manager
+// só consegue fechar quem tem janela. Por isso, antes de copiar os arquivos, o instalador avisa e encerra o que sobrou.
+// Os dados não correm risco: o banco grava cada venda na hora (SQLite), e ele fica fora da pasta do programa.
+function WillPDVRodando(): Boolean;
+var
+  Codigo: Integer;
+begin
+  Result := Exec(ExpandConstant('{cmd}'),
+    '/C tasklist /NH /FI "IMAGENAME eq {#Exe}" | find /I "{#Exe}" >nul', '', SW_HIDE, ewWaitUntilTerminated, Codigo)
+    and (Codigo = 0);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Codigo: Integer;
+begin
+  Result := '';
+  if not WillPDVRodando() then
+    Exit;
+  if not WizardSilent then
+    if MsgBox('O WillPDV está aberto neste computador (talvez escondido, sem janela).' + #13#10 + #13#10 +
+              'Para instalar, o instalador precisa fechá-lo agora. As vendas já gravadas ficam salvas.' + #13#10 + #13#10 +
+              'Fechar o WillPDV e continuar?', mbConfirmation, MB_YESNO) = IDNO then
+    begin
+      Result := 'Feche o WillPDV (ou finalize o WillPDV.exe no Gerenciador de Tarefas) e rode o instalador de novo.';
+      Exit;
+    end;
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM {#Exe}', '', SW_HIDE, ewWaitUntilTerminated, Codigo);
+  Sleep(1500);
+end;
