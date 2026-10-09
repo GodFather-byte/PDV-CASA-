@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 
+from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio, ErroValidacao
 
 # (chave, rótulo, tipo[texto|int|decimal|sn|escolha], seção, opções)
@@ -97,6 +98,16 @@ CAMPOS_CONFIG = [
     ("smtp_servidor", "Servidor de e-mail (provedor)", "texto", "E-mail"),
     ("chave_loja", "Chave da loja (licença)", "texto", "Nuvem"), ("api_url", "Endereço da nuvem (licença e atualizações)", "texto", "Nuvem"),
     ("api_token", "Token da API", "texto", "Nuvem"), ("sync_intervalo_seg", "Intervalo da verificação na nuvem (segundos)", "int", "Nuvem"),
+    # O token do bot e o pareamento ficam na janela Configurações > Telegram (não aqui, para o token não aparecer em tela cheia).
+    ("telegram_ativo", "Telegram ligado: avisar o celular do dono e responder aos botões (precisa parear em Configurações > Telegram)",
+     "sn", "Telegram"),
+    ("telegram_avisa_turno", "Avisar quando o caixa abrir e fechar (com a diferença do caixa)", "sn", "Telegram"),
+    ("telegram_avisa_cancelamento", "Avisar cada venda/cupom cancelado (com o motivo e quem cancelou)", "sn", "Telegram"),
+    ("telegram_avisa_item", "Avisar cada item cancelado (com o motivo e quem cancelou)", "sn", "Telegram"),
+    ("telegram_avisa_sangria", "Avisar sangria e suprimento do caixa", "sn", "Telegram"),
+    ("telegram_avisa_backup", "Avisar se o backup automático falhar", "sn", "Telegram"),
+    ("telegram_resumo_hora", "Resumo da noite que acabou, enviado todo dia neste horário (ex.: 07:00; vazio = não enviar)",
+     "texto", "Telegram"),
 ]
 _TIPO_CONFIG = {c[0]: c[2] for c in CAMPOS_CONFIG}
 _OPCOES_CONFIG = {c[0]: [o[0] for o in c[4]] for c in CAMPOS_CONFIG if len(c) > 4}
@@ -240,6 +251,11 @@ class ConfigController:
                     v = self._validar_codigo_comissao(v)
                 if chave == "codigo_saida":
                     v = self._validar_codigo_comissao(v, "codigo_saida", "a saída")
+                if chave == "telegram_resumo_hora":
+                    try:
+                        v = fmt.para_hora(v) or ""
+                    except ValueError:
+                        raise ErroValidacao("Horário do resumo inválido (use hh:mm, por exemplo 07:00).", {chave: "inválido"}) from None
                 if chave == "num_mesas" and not 1 <= int(v) <= 999:
                     raise ErroValidacao("O número de mesas deve ficar entre 1 e 999.", {chave: "inválido"})
                 if chave == "num_comandas" and not 0 <= int(v) <= 10000:

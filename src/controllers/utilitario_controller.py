@@ -8,6 +8,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from src.controllers import notificacoes
 from src.core import formatacao as fmt
 from src.core import registro
 from src.core.erros import ErroNegocio
@@ -85,6 +86,7 @@ class UtilitarioController:
         except Exception as e:  # noqa: BLE001 - o backup nunca pode impedir o caixa de trabalhar
             log.error("Backup automático (%s) falhou: %s", motivo, e)
             self.banco.cfg_set("backup_erro", f"{fmt.agora()} {e}"[:300])
+            notificacoes.avisar(self.banco, "backup", "backup_falhou", str(e))
             return None
         self.banco.cfg_set("backup_erro", "")
         log.info("Backup automático (%s): %s", motivo, caminho)

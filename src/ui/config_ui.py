@@ -17,6 +17,9 @@ def abrir(master, ctx, chave: str):
     if chave == "loja":
         return JanelaFormulario(master, ctx, "Dados da Loja", [(c[0], c[1], c[2], "Dados", None) for c in CAMPOS_LOJA],
                                 ctx.config.loja, ctx.config.salvar_loja, imprimivel=True)
+    if chave == "telegram":
+        from src.ui import telegram_ui
+        return telegram_ui.abrir(master, ctx)
     if chave == "maquinas":
         campos = [(c[0], c[1], c[2], "Máquina", c[3] if len(c) > 3 else None) for c in CAMPOS_MAQUINA]
 

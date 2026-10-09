@@ -299,6 +299,16 @@ Convenções obrigatórias entre as camadas:
 - timestamps locais são armazenados em ISO (`YYYY-MM-DD HH:MM:SS`);
 - UUID identifica a venda e permite reenvio idempotente.
 
+## Telegram do dono (acompanhar a casa pelo celular)
+
+> Passo a passo para o dono, botões do bot e perguntas frequentes: [`docs/TELEGRAM.md`](docs/TELEGRAM.md).
+
+Opcional e desligado por padrão. Em **Configurações > Telegram** o dono liga o PDV a um bot do Telegram (token do @BotFather +
+código de pareamento) e passa a receber no celular: caixa aberto/fechado com a diferença, cupons e itens cancelados, sangrias,
+falha de backup e o resumo da noite; e a consultar vendas, caixa, estoque, mesas abertas e cancelamentos pelos botões do bot.
+O PDV só faz conexões de saída (nada de servidor nem porta aberta) e, sem internet, o caixa segue normal e os avisos esperam na
+fila. Só vão totais, nomes de operadores e números de comanda, nunca dados de clientes; as vendas continuam guardadas só no PDV.
+
 ## Nuvem (só licença e atualizações)
 
 > Passo a passo para colocar a nuvem no ar, cadastrar boates e acompanhar as licenças: [`docs/NUVEM.md`](docs/NUVEM.md).

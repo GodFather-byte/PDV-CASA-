@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 
-from src.controllers import conferencia_turno
+from src.controllers import conferencia_turno, notificacoes
 from src.core import formatacao as fmt
 from src.core import licenca
 from src.core.erros import ErroNegocio
@@ -85,6 +85,7 @@ class TurnoController:
             self.banco.log("turno_aberto", f"turno {numero}, fundo {fmt.fmt_brl(valor_inicial_cent)}", operador_id)
             if licenca.exigida(self.banco):
                 licenca.registrar_uso(self.banco)
+        notificacoes.avisar(self.banco, "turno", "turno_aberto", tid)
         return tid
 
     # ---------------------------------------------- sangria e repique
@@ -100,6 +101,7 @@ class TurnoController:
             "descricao": (descricao or "").strip(), "operador_id": operador_id, "criado_em": fmt.agora()})
         self.banco.log("sangria" if tipo == "saida" else "suprimento",
                        f"{fmt.fmt_brl(valor_cent)} {descricao}".strip(), operador_id)
+        notificacoes.avisar(self.banco, "sangria", "movimento_caixa", tipo, valor_cent, (descricao or "").strip(), operador_id)
         return mid
 
     def movimentos(self, turno_id: int) -> list[dict]:
@@ -257,4 +259,5 @@ class TurnoController:
         res = self.resumo(turno_id)
         res["valor_final"] = valor_final_cent
         res["resultado"] = resultado
+        notificacoes.avisar(self.banco, "turno", "turno_fechado", turno_id)
         return res

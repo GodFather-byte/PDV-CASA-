@@ -13,6 +13,7 @@ import json
 import math
 from uuid import uuid4
 
+from src.controllers import notificacoes
 from src.controllers.estoque_controller import EstoqueController
 from src.controllers.produto_controller import ProdutoController
 from src.controllers.turno_controller import TurnoController, proximo_cupom
@@ -296,6 +297,7 @@ class CaixaController:
             self.recalcular(item["venda_id"])
             self.banco.log("item_cancelado", f"venda {item['venda_id']} item {item_id}" + (f" motivo: {motivo}"[:200] if motivo else ""),
                            self.operador_id)
+        notificacoes.avisar(self.banco, "item", "item_cancelado", item_id, motivo, self.operador_id)
 
     def definir_observacao(self, item_id: int, texto: str | None) -> None:
         item = self.banco.um("SELECT venda_id FROM itens_venda WHERE id = ?", (item_id,))
@@ -569,6 +571,7 @@ class CaixaController:
             else:
                 raise ErroNegocio("Este cupom já está cancelado.")
             self.banco.log("venda_cancelada", f"venda {venda_id} cupom {v['cupom']} {motivo}".strip(), self.operador_id)
+        notificacoes.avisar(self.banco, "cancelamento", "venda_cancelada", venda_id)
 
     def _devolver_adiantamentos(self, venda_id: int, turno: dict) -> int:
         """Cancelamento de conta que recebeu dinheiro em um turno já fechado: aquele turno continua com o valor (ele
