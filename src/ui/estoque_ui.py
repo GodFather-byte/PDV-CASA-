@@ -14,8 +14,9 @@ from src.ui.menu_widgets import PAL, Cartao, misturar
 from src.ui.visualizador import Visualizador
 
 FONTE = "Segoe UI"
-SITUACAO = {"sem": ("Sem estoque", PAL["vermelho"]), "ponto": ("Repor", PAL["ambar"]), "normal": ("Normal", PAL["verde"])}
-FILTROS = [("todos", "Todos"), ("sem", "Sem estoque"), ("ponto", "Repor"), ("normal", "Normal")]
+SITUACAO = {"sem": ("Sem estoque", PAL["vermelho"]), "ponto": ("Repor", PAL["ambar"]), "normal": ("Normal", PAL["verde"]),
+             "livre": ("Sem controle", PAL["suave"])}
+FILTROS = [("todos", "Todos"), ("sem", "Sem estoque"), ("ponto", "Repor"), ("normal", "Normal"), ("livre", "Sem controle")]
 # Cada ação rápida: rótulo do botão, tipo de movimento, cor, título/pergunta do diálogo.
 ACOES = [
     ("entrada", "＋  Entrada", PAL["verde"], "Chegou mercadoria", "Quantas unidades entraram?"),
@@ -33,6 +34,8 @@ def curta(q: float) -> str:
 
 def nivel(p: dict, largura: int = 10) -> str:
     """Barrinha de texto: cheia quando o estoque chega ao dobro do mínimo (folga confortável)."""
+    if p["situacao"] == "livre":
+        return "—"
     if p["estoque_minimo"] <= 0:
         return "sem mínimo" if p["qt_atual"] > 0 else "▱" * largura
     cheio = round(min(max(p["qt_atual"], 0) / (p["estoque_minimo"] * 2), 1) * largura)
@@ -79,7 +82,7 @@ class Botao(tk.Label):
     """Botão grande do painel de detalhes (cor própria, realça ao passar o mouse)."""
 
     def __init__(self, pai, texto: str, cor: str, comando):
-        super().__init__(pai, text=texto, font=(FONTE, 10, "bold"), fg=cor, bg=PAL["cartao"], pady=8, cursor="hand2",
+        super().__init__(pai, text=texto, font=(FONTE, 10, "bold"), fg=cor, bg=PAL["cartao"], pady=6, cursor="hand2",
                          highlightthickness=1, highlightbackground=misturar(PAL["borda"], cor, 0.5))
         self.cor, self.comando, self.ativo = cor, comando, True
         self.bind("<Enter>", lambda e: self.ativo and self.configure(bg=misturar(PAL["cartao"], cor, 0.22)))
@@ -97,8 +100,8 @@ class PainelEstoque(tk.Toplevel):
         self.ctx, self.est = ctx, ctx.estoque
         self.title("Estoque")
         self.configure(bg=PAL["fundo"])
-        self.geometry("1280x780")
-        self.minsize(1000, 640)
+        self.geometry("1280x840")
+        self.minsize(1000, 700)
         _estilos(self)
         self.filtro = filtro if filtro in dict(FILTROS) else "todos"
         self.produto: dict | None = None
@@ -170,7 +173,7 @@ class PainelEstoque(tk.Toplevel):
         self._montar_detalhe(corpo)          # empacotado primeiro: a lista toma só o que sobrar, o painel nunca é espremido
         lista = tk.Frame(corpo, bg=PAL["fundo"])
         lista.pack(side="left", fill="both", expand=True)
-        colunas = [("situ", "Situação", 105, "w"), ("cod", "Código", 60, "w"), ("nome", "Produto", 200, "w"),
+        colunas = [("situ", "Situação", 118, "w"), ("cod", "Código", 60, "w"), ("nome", "Produto", 175, "w"),
                    ("grupo", "Grupo", 100, "w"), ("qtd", "Qtd.", 85, "e"), ("min", "Mínimo", 65, "e"),
                    ("nivel", "Nível", 95, "w"), ("repor", "Repor", 60, "e"), ("valor", "Valor parado", 100, "e")]
         self.tree = ttk.Treeview(lista, columns=[c[0] for c in colunas], show="headings", style="Estoque.Treeview", selectmode="browse")
@@ -200,7 +203,7 @@ class PainelEstoque(tk.Toplevel):
         self.d_nome.pack(fill="x", padx=16, pady=(16, 0))
         self.d_situ = tk.Label(d, text="", font=(FONTE, 9, "bold"), fg=PAL["suave"], bg=PAL["cartao"], anchor="w")
         self.d_situ.pack(fill="x", padx=16)
-        self.d_qtd = tk.Label(d, text="", font=(FONTE, 26, "bold"), fg=PAL["texto"], bg=PAL["cartao"], anchor="w")
+        self.d_qtd = tk.Label(d, text="", font=(FONTE, 22, "bold"), fg=PAL["texto"], bg=PAL["cartao"], anchor="w")
         self.d_qtd.pack(fill="x", padx=16, pady=(6, 0))
         self.d_barra = tk.Canvas(d, height=10, bg=PAL["cartao"], highlightthickness=0)
         self.d_barra.pack(fill="x", padx=16, pady=(2, 6))
@@ -217,9 +220,11 @@ class PainelEstoque(tk.Toplevel):
             self.botoes[tipo] = b
         self.b_minimo = Botao(d, "Definir estoque mínimo", PAL["violeta"], self.definir_minimo)
         self.b_minimo.pack(fill="x", padx=16)
+        self.b_cadastro = Botao(d, "Editar cadastro do produto", PAL["turquesa"], self.editar_cadastro)
+        self.b_cadastro.pack(fill="x", padx=16, pady=(6, 0))
         tk.Label(d, text="ÚLTIMOS MOVIMENTOS", font=(FONTE, 8, "bold"), fg=PAL["mudo"], bg=PAL["cartao"], anchor="w").pack(
             fill="x", padx=16, pady=(14, 4))
-        self.hist = ttk.Treeview(d, columns=("quando", "tipo", "qtd", "apos"), show="headings", style="Estoque.Treeview", height=7,
+        self.hist = ttk.Treeview(d, columns=("quando", "tipo", "qtd", "apos"), show="headings", style="Estoque.Treeview", height=5,
                                  selectmode="none")
         for cid, titulo, largura, anc in (("quando", "Quando", 92, "w"), ("tipo", "O quê", 96, "w"), ("qtd", "Qtd.", 52, "e"),
                                           ("apos", "Ficou", 52, "e")):
@@ -247,7 +252,7 @@ class PainelEstoque(tk.Toplevel):
         self.linhas = self.est.painel(None if self.filtro == "todos" else self.filtro, self.v_busca.get(),
                                       None if grupo.startswith("Todos") else grupo)
         coluna, invertido = self._ordenar
-        chaves = {"situ": lambda p: ("sem", "ponto", "normal").index(p["situacao"]), "cod": lambda p: p["codigo"],
+        chaves = {"situ": lambda p: ("sem", "ponto", "normal", "livre").index(p["situacao"]), "cod": lambda p: p["codigo"],
                   "nome": lambda p: p["nome"].casefold(), "grupo": lambda p: p["grupo"].casefold(), "qtd": lambda p: p["qt_atual"],
                   "min": lambda p: p["estoque_minimo"], "nivel": lambda p: p["qt_atual"] / p["estoque_minimo"] if p["estoque_minimo"] else 0,
                   "repor": lambda p: p["repor"], "valor": lambda p: p["valor_cent"]}
@@ -257,18 +262,24 @@ class PainelEstoque(tk.Toplevel):
         for p in self.linhas:
             rotulo, _ = SITUACAO[p["situacao"]]
             self.tree.insert("", "end", iid=str(p["id"]), tags=(p["situacao"],), values=[
-                f"● {rotulo}", p["codigo"].lstrip("0") or "0", p["nome"], p["grupo"], f"{curta(p['qt_atual'])} {p['unidade']}",
+                f"● {rotulo}", p["codigo"].lstrip("0") or "0", p["nome"], p["grupo"],
+                "—" if p["situacao"] == "livre" else f"{curta(p['qt_atual'])} {p['unidade']}",
                 curta(p["estoque_minimo"]) if p["estoque_minimo"] else "-", nivel(p),
-                curta(p["repor"]) if p["repor"] else "", fmt.fmt_brl(p["valor_cent"])])
+                curta(p["repor"]) if p["repor"] else "",
+                "—" if p["situacao"] == "livre" else fmt.fmt_brl(p["valor_cent"])])
         for chave, chip in self.chips.items():
             chip.marcar(chave == self.filtro)
         falta = r["sem"] + r["ponto"]
-        self.lbl_sub.configure(text=(f"{falta} produto(s) precisam de atenção." if falta else "Tudo certo: nenhum produto precisa de reposição.")
-                               if r["total"] else "Nenhum produto controla estoque ainda. Use 'Novo lançamento' > Inicial.")
+        sub = (f"{falta} produto(s) precisam de atenção." if falta else "Tudo certo: nenhum produto precisa de reposição.") \
+            if r["total"] else "Nenhum produto controla estoque ainda."
+        if r["livre"]:
+            sub += f"  {r['livre']} produto(s) ainda não controlam estoque (filtro 'Sem controle')."
+        self.lbl_sub.configure(text=sub)
         self.lbl_cont.configure(text=f"{len(self.linhas)} de {r['total']} produtos")
         if not self.linhas:
-            self.lbl_vazio.configure(text="Nenhum produto encontrado com esse filtro." if r["total"] else
-                                          "Nenhum produto controla estoque.\nMarque 'Controla estoque' no cadastro do produto.")
+            self.lbl_vazio.configure(text="Nenhum produto encontrado com esse filtro." if r["total"] or self.filtro == "livre" or
+                                          self.v_busca.get() else
+                                          "Nenhum produto controla estoque ainda.\nEscolha 'Sem controle', clique no produto e use\n'Contei e ajustar' para começar.")
             self.lbl_vazio.place(relx=0.5, rely=0.4, anchor="center")
         else:
             self.lbl_vazio.place_forget()
@@ -295,7 +306,7 @@ class PainelEstoque(tk.Toplevel):
 
     # ----------------------------------------------------------- detalhe
     def _habilitar(self, sim: bool) -> None:
-        for b in (*self.botoes.values(), self.b_minimo):
+        for b in (*self.botoes.values(), self.b_minimo, self.b_cadastro):
             b.habilitar(sim)
 
     def _mostrar_detalhe(self) -> None:
@@ -310,9 +321,19 @@ class PainelEstoque(tk.Toplevel):
             self._desenhar_barra()
             return
         rotulo, cor = SITUACAO[p["situacao"]]
+        livre = p["situacao"] == "livre"
+        for tipo in ("saida", "descarte"):                 # sem controle não há o que tirar: primeiro dê entrada ou conte
+            self.botoes[tipo].habilitar(not livre)
         self.d_nome.configure(text=p["nome"])
         self.d_situ.configure(text=f"● {rotulo.upper()}", fg=cor)
-        self.d_qtd.configure(text=f"{curta(p['qt_atual'])} {p['unidade']}", fg=cor if p["situacao"] != "normal" else PAL["texto"])
+        self.d_qtd.configure(text="—" if livre else f"{curta(p['qt_atual'])} {p['unidade']}",
+                             fg=cor if p["situacao"] != "normal" else PAL["texto"])
+        if livre:
+            self.d_info.configure(text="Este produto ainda não controla estoque. Toque em 'Contei e ajustar' (ou em Entrada) e "
+                                       "informe quanto tem agora: o controle liga sozinho e ele passa a aparecer na lista.")
+            self._desenhar_barra()
+            self.hist.insert("", "end", values=["", "Nenhum", "", ""])
+            return
         linhas = [f"Mínimo: {curta(p['estoque_minimo'])}" if p["estoque_minimo"] else "Mínimo: não definido",
                   f"Último preço de compra: {fmt.fmt_brl(p['ult_preco_cent'])}", f"Valor parado: {fmt.fmt_brl(p['valor_cent'])}"]
         if p["repor"]:
@@ -323,7 +344,7 @@ class PainelEstoque(tk.Toplevel):
         self._desenhar_barra()
         historico = self.est.historico(p["id"], 12)
         if not historico:
-            self.hist.insert("", "end", values=["", "Sem movimentos", "", ""])
+            self.hist.insert("", "end", values=["", "Nenhum", "", ""])
         for m in historico:
             self.hist.insert("", "end", tags=("mais" if m["quantidade"] > 0 else "menos",), values=[
                 fmt.fmt_datahora(m["criado_em"])[:16], m["rotulo"], ("+" if m["quantidade"] > 0 else "") + curta(m["quantidade"]), curta(m["qt_apos"])])
@@ -363,7 +384,8 @@ class PainelEstoque(tk.Toplevel):
         p = self.produto
         dlg = tema.Dialogo(self, titulo)
         ttk.Label(dlg.corpo, text=p["nome"], font=tema.FONTE_G, foreground=tema.COR["marinho"]).pack(anchor="w")
-        ttk.Label(dlg.corpo, text=f"Hoje há {curta(p['qt_atual'])} {p['unidade']}", foreground=tema.COR["suave"]).pack(anchor="w", pady=(0, 10))
+        hoje = "Ainda não controla estoque (vai passar a controlar)" if p["situacao"] == "livre" else f"Hoje há {curta(p['qt_atual'])} {p['unidade']}"
+        ttk.Label(dlg.corpo, text=hoje, foreground=tema.COR["suave"]).pack(anchor="w", pady=(0, 10))
         ttk.Label(dlg.corpo, text=pergunta, style="Rotulo.TLabel").pack(anchor="w")
         v = tk.StringVar()
         ent = ttk.Entry(dlg.corpo, textvariable=v, width=18, font=("Segoe UI", 14))
@@ -418,6 +440,15 @@ class PainelEstoque(tk.Toplevel):
         if q < 0:
             raise ValueError("O mínimo não pode ser negativo.")
         return q
+
+    def editar_cadastro(self) -> None:
+        """Abre o cadastro de produtos já no produto selecionado (preço, nome, 'controla estoque', composição...)."""
+        if self.produto is None:
+            return
+        from src.ui.cadastros_tk import JanelaCadastro
+        j = JanelaCadastro(self, self.ctx, "produtos")
+        j.carregar(self.produto["id"])
+        j.bind("<Destroy>", lambda e, j=j: self.atualizar() if e.widget is j else None, add="+")
 
     # ---------------------------------------------- lançamentos e pedidos
     def novo_lancamento(self, lanc_id: int | None = None):

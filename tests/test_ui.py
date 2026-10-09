@@ -2525,6 +2525,56 @@ class TestePainelEstoqueUI(BaseUI):
         self.assertIn("SKOL", vis.call_args.args[3])
         j.destroy()
 
+    def test_produto_sem_controle_e_achado_e_comeca_a_controlar_pelo_painel(self):
+        j = self._painel()
+        self.banco.executar("UPDATE produtos SET controla_estoque = 0, qt_atual = 0 WHERE id = ?", (self.agua,))
+        j.v_busca.set("agu"); j.update()
+        self.assertEqual(j.tree.get_children(), (str(self.agua),))              # a busca acha mesmo sem controle
+        j.tree.selection_set(str(self.agua)); j.update()
+        self.assertEqual(j.produto["situacao"], "livre")
+        self.assertIn("ainda não controla", j.d_info.cget("text"))
+        self.assertFalse(j.botoes["saida"].ativo)
+        self.assertFalse(j.botoes["descarte"].ativo)
+        self.assertTrue(j.botoes["contagem"].ativo)
+        self.assertTrue(j.registrar("contagem", 36)); j.update()
+        row = self.banco.um("SELECT controla_estoque, qt_atual FROM produtos WHERE id = ?", (self.agua,))
+        self.assertEqual((row["controla_estoque"], row["qt_atual"]), (1, 36))
+        self.assertTrue(j.botoes["saida"].ativo)
+        j.v_busca.set(""); j.filtrar("livre"); j.update()
+        self.assertEqual(j.tree.get_children(), ())
+        j.destroy()
+
+    def test_editar_cadastro_abre_o_produto_selecionado(self):
+        from src.ui.cadastros_tk import JanelaCadastro
+        j = self._painel()
+        j.tree.selection_set(str(self.agua)); j.update()
+        j.editar_cadastro(); j.update()
+        cadastro = next(w for w in j.winfo_children() if isinstance(w, JanelaCadastro))
+        self.assertEqual(cadastro.id_atual, self.agua)
+        cadastro.destroy(); j.destroy()
+
+    def test_cadastro_do_produto_ajusta_o_estoque_e_liga_o_controle(self):
+        from unittest import mock
+        from src.ui.cadastros_tk import JanelaCadastro
+        j = JanelaCadastro(self.root, self.ctx, "produtos"); j.update()
+        j.grade.selecionar(self.agua); j.update()
+        self.assertEqual(j.id_atual, self.agua)
+        j.campos["nome"].set("AGUA MINERAL")                                      # edição ainda não gravada
+        with mock.patch.object(tema, "pedir_texto", return_value=24.0):
+            j._ajustar_estoque()
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.agua,)), 24)
+        self.assertEqual(self.banco.valor("SELECT controla_estoque FROM produtos WHERE id = ?", (self.agua,)), 1)
+        self.assertEqual(j.campos["nome"].get(), "AGUA MINERAL")                  # o que estava sendo digitado não se perde
+        self.assertEqual(j.campos["controla_estoque"].get(), "S")
+        with mock.patch.object(tema, "pedir_texto", return_value=0.0):
+            j._ajustar_estoque()                                                 # zero é uma contagem válida
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.agua,)), 0)
+        j.incluir()
+        with mock.patch.object(tema, "aviso") as aviso:
+            j._ajustar_estoque()
+        aviso.assert_called_once()
+        j.destroy()
+
     def test_painel_vazio_orienta_o_operador(self):
         from src.ui.estoque_ui import PainelEstoque
         self.banco.executar("UPDATE produtos SET controla_estoque = 0")

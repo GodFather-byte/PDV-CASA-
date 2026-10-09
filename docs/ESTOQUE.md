@@ -20,6 +20,12 @@ principal (o cartão "Sem estoque" já abre a lista só com os produtos zerados)
 
   O diálogo mostra "Vai ficar com X" antes de gravar. Cada ação cria o lançamento do dia e entra no histórico, igual a um
   lançamento feito à mão, e pode ser desfeita em *Novo lançamento > Abrir anterior > Excluir*.
+* **Produto cadastrado sem controle de estoque** (ex.: o RedBull cadastrado sem a marca "Controla estoque"): ele não entra
+  nos cartões, mas **aparece na busca** e no filtro **Sem controle**. Clique nele e use **Contei e ajustar** (ou Entrada)
+  informando quanto tem agora: o controle liga sozinho e ele passa a ser contado e baixado nas vendas.
+* **Editar cadastro do produto:** o botão abre o cadastro já no produto escolhido (nome, preço, estoque mínimo...). No próprio
+  cadastro de produtos (Cadastros > Produtos) há também o botão **Ajustar estoque**, que faz a mesma contagem. O campo
+  "Qt. atual" do formulário é só leitura de propósito: toda mudança de quantidade vira um movimento no histórico.
 * **Gerar pedido do que falta:** cria um *pedido* ao fornecedor escolhido com todos os produtos sem estoque ou no ponto de
   pedido, na quantidade sugerida (repor até o **dobro do mínimo**). O pedido não mexe no estoque até você confirmar a entrega,
   quando vira compra. Produtos sem estoque mínimo definido não entram na sugestão.
