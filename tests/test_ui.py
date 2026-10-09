@@ -1367,9 +1367,10 @@ class TesteSeletorDeImpressoras(BaseUI):
         from unittest import mock
         elgin = self.so.ImpressoraWindows("Elgin i9", "USB001", "Elgin i9 Series", termica_provavel=True, pausada=True, trabalhos=2)
         a = self._assistente([elgin])
-        with mock.patch.object(tema, "mensagem"):
+        with mock.patch.object(tema, "mensagem"), mock.patch.object(a, "clipboard_clear"), \
+                mock.patch.object(a, "clipboard_append") as copiado:       # a área de transferência real do X virtual não é confiável no CI
             a.copiar()
-        self.assertIn("DIAGNÓSTICO DE IMPRESSÃO", a.clipboard_get())
+        self.assertIn("DIAGNÓSTICO DE IMPRESSÃO", copiado.call_args.args[0])
         with mock.patch.object(self.so, "controlar_fila") as controlar, mock.patch.object(tema, "confirmar", return_value=True), \
                 mock.patch.object(tema, "mensagem"), mock.patch.object(self.so, "listar_impressoras", return_value=[elgin]):
             a.destravar()

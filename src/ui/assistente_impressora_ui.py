@@ -54,13 +54,16 @@ class JanelaAssistenteImpressora(tk.Toplevel):
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
 
-    def destroy(self) -> None:
+    def _cancelar_agendamento(self) -> None:
         if self._id_after:
             try:
                 self.after_cancel(self._id_after)
             except (tk.TclError, ValueError):
                 pass
             self._id_after = None
+
+    def destroy(self) -> None:
+        self._cancelar_agendamento()
         super().destroy()
 
     # ------------------------------------------------------------------ dados
@@ -112,6 +115,7 @@ class JanelaAssistenteImpressora(tk.Toplevel):
         if self.ao_configurar:
             self.ao_configurar()
         enviado, _ = tema.tratar(self, self.ctx.impressao.imprimir_teste, self.ctx.impressao.impressora_de("spooler", imp.nome))
+        self._cancelar_agendamento()
         self._id_after = self.after(2500, self._depois_do_teste)          # dá tempo de o Windows mostrar fila presa/offline
         if not enviado:
             self._mostrar_achados()
