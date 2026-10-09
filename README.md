@@ -304,7 +304,7 @@ Convenções obrigatórias entre as camadas:
 ## Licença
 
 O código é público para leitura e avaliação, mas o WillPDV **não é software livre**: todos os direitos reservados a
-WillCommerce. Dá para ler, estudar e rodar para testar sem fins comerciais; usar numa loja de verdade exige a licença comercial
+WillyanPHP. Dá para ler, estudar e rodar para testar sem fins comerciais; usar numa loja de verdade exige a licença comercial
 (o código de licença assinado, veja "Como emitir as licenças"); copiar, modificar e distribuir, revender, gerar instaladores para
 terceiros ou contornar a verificação de licença é proibido. Os termos completos estão em [`LICENSE`](LICENSE).
 

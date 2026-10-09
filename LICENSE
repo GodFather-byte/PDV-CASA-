@@ -1,5 +1,5 @@
 WillPDV — Licença de Código Visível (Proprietária)
-Copyright (c) 2026 WillCommerce. Todos os direitos reservados.
+Copyright (c) 2026 WillyanPHP. Todos os direitos reservados.
 
 Este repositório é público para transparência e avaliação, mas o WillPDV NÃO é software livre nem de código aberto. Ao
 copiar, baixar, executar, modificar ou distribuir qualquer parte dele, você concorda com os termos abaixo.
@@ -22,7 +22,7 @@ copiar, baixar, executar, modificar ou distribuir qualquer parte dele, você con
    c) Vender, alugar, sublicenciar, emprestar ou oferecer o WillPDV como serviço a terceiros.
    d) Remover, desativar ou contornar a verificação do código de licença, ou emitir/forjar códigos de licença.
    e) Remover ou alterar os avisos de direitos autorais, esta licença ou a identificação do titular.
-   f) Usar o nome WillPDV ou WillCommerce de forma que sugira origem, apoio ou parceria que não existe.
+   f) Usar o nome WillPDV ou WillyanPHP de forma que sugira origem, apoio ou parceria que não existe.
 
 4. CONTRIBUIÇÕES
    Quem enviar código, correções ou documentação a este repositório concede ao titular uma licença perpétua, mundial,
@@ -42,13 +42,13 @@ copiar, baixar, executar, modificar ou distribuir qualquer parte dele, você con
    Descumprir estes termos encerra automaticamente os direitos da cláusula 1. Os demais direitos pertencem ao titular.
 
 8. CONTATO
-   Para licença comercial, parcerias ou autorização para qualquer uso proibido acima, fale com o titular: WillCommerce
+   Para licença comercial, parcerias ou autorização para qualquer uso proibido acima, fale com o titular: WillyanPHP
    (https://github.com/GodFather-byte/PDV-CASA-).
 
 ----------------------------------------------------------------------------------------------------------------------------
 ENGLISH SUMMARY (the Portuguese text above prevails)
 
-WillPDV is proprietary, source-visible software. Copyright (c) 2026 WillCommerce. All rights reserved. You may read and study
+WillPDV is proprietary, source-visible software. Copyright (c) 2026 WillyanPHP. All rights reserved. You may read and study
 the source and run it locally for non-commercial evaluation. Running it for a real business requires a commercial license (a
 signed license code issued by the owner). You may NOT copy it into other projects, modify and redistribute it, sell, rent or
 sublicense it, offer it as a service, build and distribute installers from it, remove or bypass the license check, or strip the
