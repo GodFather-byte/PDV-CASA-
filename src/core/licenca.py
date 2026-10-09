@@ -30,7 +30,7 @@ from src.core.erros import ErroNegocio
 PREFIXO = "PDVL1"
 # Trocar esta chave invalida todos os códigos já emitidos: gere o par uma única vez
 # (`python -m tools.gerar_licenca novo-par`) e guarde a chave privada fora do repositório.
-CHAVE_PUBLICA_HEX = "95ee45402bfe36a7ae45f548a29ebc9a5da8ac220dbfdfe4a0959084d08782eb"
+CHAVE_PUBLICA_HEX = "e02c6389919a7f2dd1876a4acba0651d0779ef58ac59a3cd73efdc88d278b6aa"
 AVISO_DIAS = 7
 CARENCIA_DIAS = 5
 MAX_DIAS = 36500       # validade máxima de um código (100 anos = licença permanente)
