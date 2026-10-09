@@ -15,6 +15,35 @@ licença mensal e atualizações pela nuvem.
 > impressora simulada (ver
 > [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md)), e a nuvem (licença e atualizações) ainda não foi testada em loja.
 
+## Os dois programas deste repositório
+
+O repositório gera **dois programas Windows diferentes**. Não confunda:
+
+| Programa | Para quem | O que faz | Onde baixar | Guia |
+| --- | --- | --- | --- | --- |
+| **WillPDV** (o PDV) | o **cliente** (a boate, o bar) | caixa, mesas e comandas, estoque, relatórios, impressão | [aba Releases](https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao) · [instalador direto](https://github.com/GodFather-byte/PDV-CASA-/releases/download/ultima-versao/WillPDV-Instalador.exe) | [`docs/INSTALAR_E_TESTAR.md`](docs/INSTALAR_E_TESTAR.md) |
+| **WillPDV Licenças** (o gerador de licenças) | **só você**, o fornecedor | emite os códigos de licença (mensal, permanente, teste) | [aba Actions](https://github.com/GodFather-byte/PDV-CASA-/actions/workflows/build-windows.yml) > *Artifacts* (não fica na Releases, que é pública) | [seção abaixo](#willpdv-licenças-o-gerador-de-licenças) · [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md) |
+
+> **Procurando o programa que cria as licenças?** Vá direto para
+> [WillPDV Licenças: o gerador de licenças](#willpdv-licenças-o-gerador-de-licenças): lá estão onde ele fica no GitHub,
+> como baixar, instalar e usar, passo a passo.
+
+## Índice
+
+1. [Os dois programas deste repositório](#os-dois-programas-deste-repositório)
+2. [Começar (rodar e testar)](#começar)
+3. [O que já existe](#o-que-já-existe)
+4. [Mesas e comandas](#mesas-e-comandas) · [Comissão das garotas](#comissão-das-garotas) · [Fechamento do turno](#fechamento-do-turno) · [Controles de caixa de boate](#controles-de-caixa-de-boate)
+5. [Impressão térmica](#impressão-térmica) · [Proteção dos dados](#proteção-dos-dados)
+6. [Estrutura do repositório](#estrutura-do-repositório) · [Banco local e dados](#banco-local-e-dados)
+7. [Licença do software (copyright)](#licença-do-software-copyright)
+8. [**WillPDV Licenças: o gerador de licenças**](#willpdv-licenças-o-gerador-de-licenças)
+9. [Como a licença funciona no caixa do cliente](#como-a-licença-funciona-no-caixa-do-cliente)
+10. [Emitir licenças pela linha de comando](#emitir-licenças-pela-linha-de-comando)
+11. [Gerar o executável e o instalador](#gerar-o-executável-e-o-instalador)
+12. [Telegram do dono](#telegram-do-dono-acompanhar-a-casa-pelo-celular) · [Nuvem (licença e atualizações)](#nuvem-só-licença-e-atualizações)
+13. [Documentação (pasta `docs/`)](#documentação-pasta-docs)
+
 ## Começar
 
 Requer Python 3.10 ou superior. Na raiz do repositório:
@@ -266,18 +295,22 @@ como impresso; reimprima pela 2ª via).
 - **Comanda aberta na troca de turno:** continua aberta no turno seguinte; o dinheiro conta no turno em que for **pago**, então
   o caixa que passou o turno não dá falta e o que recebeu a comanda não dá sobra (teste em `tests/test_protecao.py`).
 
-## Arquitetura
+## Estrutura do repositório
 
-- `src/controllers/`: regras de negócio do PDV local.
-- `src/database/`: esquema e acesso ao SQLite local.
-- `src/hardware/`: impressora térmica ESC/POS (rede, serial, spooler, arquivo), logotipo BMP e interfaces de
-  balança, gaveta e leitor.
-- `src/core/`: formatação monetária, segurança, erros e utilitários.
-- `src/ui/`: interface Tkinter (`app.py` é a janela principal, `caixa_ui.py` o caixa); telas Flet antigas congeladas.
-- `tests/`: regras de negócio, telas (com um robô que opera as janelas modais) e o teste de fumaça.
-- `src/sync/`: transporte PDV ↔ nuvem.
-- `backend/`: API de nuvem (FastAPI) de licença e atualizações; não é usada pelo PDV local.
-- `tools/`: ferramentas do fornecedor (licença); não vão no instalador.
+Tudo está em <https://github.com/GodFather-byte/PDV-CASA->. As pastas principais:
+
+| Pasta / arquivo | O que é |
+| --- | --- |
+| [`src/`](src) | o **PDV** (WillPDV): `controllers/` (regras de negócio), `database/` (esquema e acesso ao SQLite), `hardware/` (impressora térmica ESC/POS, balança, gaveta), `core/` (dinheiro, segurança, licença, erros), `sync/` (transporte PDV ↔ nuvem), `ui/` (telas Tkinter; `app.py` é a janela principal e `caixa_ui.py` o caixa) |
+| [`licenciador/`](licenciador) | o programa **WillPDV Licenças** (gerador de licenças, do fornecedor): `nucleo.py` (regras), `tela.py` (janela), `autoteste.py`, `app.py` (entrada) |
+| [`tools/`](tools) | ferramentas do fornecedor: `gerar_licenca.py` (licenças pela linha de comando) e `gerar_logos.py`; não vão no instalador do PDV |
+| [`backend/`](backend) | API de nuvem (FastAPI) de licença e atualizações; não é usada pelo PDV local |
+| [`instalador/`](instalador) | scripts do Inno Setup (`WillPDV.iss`, `WillLicencas.iss`), ícones e imagens dos dois instaladores |
+| [`build_pdv.py`](build_pdv.py) · [`build_licenciador.py`](build_licenciador.py) | geram o executável (PyInstaller) e o instalador de cada programa |
+| [`tests/`](tests) | regras de negócio, telas (com um robô que opera as janelas modais), nuvem, licenças e o teste de fumaça |
+| [`docs/`](docs) | guias passo a passo (ver [Documentação](#documentação-pasta-docs)) |
+| [`.github/workflows/`](.github/workflows) | `testes.yml` (suíte em Windows e Linux) e `build-windows.yml` (gera e testa os dois instaladores) |
+| [`LICENSE`](LICENSE) | licença do software: proprietária, código visível |
 
 ## Banco local e dados
 
@@ -301,12 +334,227 @@ Convenções obrigatórias entre as camadas:
 - timestamps locais são armazenados em ISO (`YYYY-MM-DD HH:MM:SS`);
 - UUID identifica a venda e permite reenvio idempotente.
 
-## Licença
+## Licença do software (copyright)
 
 O código é público para leitura e avaliação, mas o WillPDV **não é software livre**: todos os direitos reservados a
 WillyanPHP. Dá para ler, estudar e rodar para testar sem fins comerciais; usar numa loja de verdade exige a licença comercial
-(o código de licença assinado, veja "Como emitir as licenças"); copiar, modificar e distribuir, revender, gerar instaladores para
+(o código de licença assinado, veja [WillPDV Licenças](#willpdv-licenças-o-gerador-de-licenças)); copiar, modificar e distribuir, revender, gerar instaladores para
 terceiros ou contornar a verificação de licença é proibido. Os termos completos estão em [`LICENSE`](LICENSE).
+
+## WillPDV Licenças: o gerador de licenças
+
+O **WillPDV Licenças** é o programa, **separado do PDV**, que cria as licenças. Você escolhe a loja e o tipo, toca em **Gerar
+licença** e copia o código (ou uma mensagem pronta) para mandar ao cliente. Tem tela, instalador próprio e confere a chave de
+segurança; **não precisa de Python, de servidor, de bot nem de internet**.
+
+> **Não entregue este programa a clientes.** O cliente recebe só o *código* da licença. Quem tem o programa **e a chave de
+> segurança** emite licenças. Guia completo, também em [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md).
+
+### Onde ele está no GitHub
+
+| O quê | Link |
+| --- | --- |
+| **Código-fonte do programa** | [`licenciador/`](https://github.com/GodFather-byte/PDV-CASA-/tree/main/licenciador): [`nucleo.py`](licenciador/nucleo.py) (regras: chave, emissão, histórico), [`tela.py`](licenciador/tela.py) (a janela), [`autoteste.py`](licenciador/autoteste.py), [`app.py`](licenciador/app.py) (entrada) |
+| **Onde baixar o instalador pronto** | [GitHub Actions > Gerar instalador (Windows)](https://github.com/GodFather-byte/PDV-CASA-/actions/workflows/build-windows.yml) > abrir a execução mais recente > **Artifacts** > `WillLicencas-Instalador-<versão>-<commit>` (passo a passo [abaixo](#baixar-e-instalar)) |
+| Guia de uso (documentação) | [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md) |
+| Gerar o `.exe` e o instalador | [`build_licenciador.py`](build_licenciador.py) e o script do Inno Setup [`instalador/WillLicencas.iss`](instalador/WillLicencas.iss) |
+| Automação que gera e testa o instalador | job `licenciador` de [`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml) |
+| Testes | [`tests/test_licenciador.py`](tests/test_licenciador.py) |
+| Alternativa pela linha de comando | [`tools/gerar_licenca.py`](tools/gerar_licenca.py) (ver [Emitir licenças pela linha de comando](#emitir-licenças-pela-linha-de-comando)) |
+
+O programa **não está na aba Releases** de propósito: a Release é pública e o gerador é só seu. Por isso ele só existe nos
+*Artifacts* do GitHub Actions (entra com a sua conta do GitHub; ficam guardados por 30 dias, e dá para gerar de novo quando quiser).
+
+### Baixar e instalar
+
+1. Abra a página do workflow: <https://github.com/GodFather-byte/PDV-CASA-/actions/workflows/build-windows.yml>. (Se preferir:
+   aba **Actions** do repositório > **Gerar instalador (Windows)**, na lista da esquerda.)
+2. Clique na execução **mais recente com o ✔ verde** (a primeira da lista).
+3. Role até o fim da página, em **Artifacts**, e baixe `WillLicencas-Instalador-<versão>-<commit>`. Vem um `.zip`: extraia.
+4. Dê dois cliques em `WillLicencas-Setup-<versão>.exe` > Avançar > Instalar. **Não pede senha de administrador** e pode ficar
+   instalado no mesmo computador do PDV.
+5. Se o Windows avisar *"O Windows protegeu o seu computador"*, clique em **Mais informações > Executar assim mesmo** (o
+   instalador ainda não tem assinatura digital paga). Se o antivírus reclamar, libere o arquivo.
+
+**Não há execução recente, ou o artifact venceu (30 dias)?** Abra a mesma página do workflow, clique em **Run workflow**, escolha
+a branch (`main`) e confirme. Em uns 6 a 12 minutos a execução termina e o artifact reaparece. O mesmo vale se a execução mais
+recente estiver vermelha: use a última verde.
+
+**Atualizar ou desinstalar:** rode o instalador novo por cima (se o programa estiver aberto, o instalador avisa e fecha). A
+**chave de segurança e o histórico não são apagados** nem ao atualizar nem ao desinstalar.
+
+### Primeira vez: a chave de segurança
+
+A chave de segurança é o que prova que a licença é sua. É um arquivo, `licenca_privada.key`, que fica **só neste computador**, em
+`C:\Users\SEU_USUARIO\.pdv-casa\`. Abra a aba **Chave de segurança**:
+
+| Situação | O que fazer |
+| --- | --- |
+| Já emitia licenças pelo PC (linha de comando) e tem a chave neste computador | Nada: aparece *"Chave de segurança conferida: combina com a do PDV"* |
+| Tem a chave, mas em outro computador | **Importar chave...** e escolher o arquivo `licenca_privada.key` |
+| Aparece *"Esta chave NÃO é a do PDV"* | É uma chave diferente da que está dentro do PDV: os caixas recusariam as licenças. Importe a chave certa (a que gerou o PDV) |
+| Nunca criou uma chave | **Criar chave nova**, depois cole a *chave pública* mostrada na tela em `CHAVE_PUBLICA_HEX` ([`src/core/licenca.py`](src/core/licenca.py)) e gere o PDV de novo. **Só faça isso uma vez** |
+
+- O programa **nunca sobrescreve** uma chave existente (trocar a chave invalida todas as licenças já emitidas); ao importar por
+  cima de outra, a antiga vira `licenca_privada.key.bak`.
+- Faça logo a **cópia de segurança** (botão da mesma aba, num pendrive). **Sem a chave não se emite mais licença**, e ela não
+  está no GitHub nem em lugar nenhum além do seu computador e das suas cópias. **Nunca** a coloque no GitHub nem no PC do cliente.
+- O programa só emite quando a chave está *conferida* (combina com a chave pública que vai dentro do PDV).
+
+### Emitir uma licença
+
+1. Aba **Emitir licença**. Digite a **loja**: a mesma chave de loja do PDV (as já usadas aparecem na lista). Maiúsculas e
+   minúsculas não importam, mas o nome tem de ser o mesmo da loja.
+2. Escolha o **tipo** (a tela mostra até quando vale):
+
+   | Tipo | Quando usar | Validade |
+   | --- | --- | --- |
+   | **Mensal** | a loja que paga todo mês (ou a cada 3, 6, 12 meses) | de 1 a 60 **meses de calendário**: 1 mês a partir de 09/10 vai até 09/11 |
+   | **Permanente** | a loja que comprou o sistema | sem vencimento na prática (100 anos) |
+   | **Teste** | demonstração para quem ainda não contratou | de 1 a 90 dias |
+3. **Gerar licença**. Aparece o código, que começa por `PDVL1.`.
+4. Use **Copiar mensagem pronta para o cliente** (traz o código e o passo a passo, boa para WhatsApp ou e-mail), **Copiar código**
+   ou **Salvar em arquivo...**.
+5. No caixa do cliente: tela de entrada > **Código de licença...** > colar o código inteiro > confirmar.
+
+### Acompanhar e renovar
+
+- Aba **Lojas e vencimentos:** cada loja aparece uma vez, com a licença mais nova; quem vence primeiro fica no alto.
+  **Vermelho** = vencida, **amarelo** = vence em até 7 dias. Selecione a loja e use **Renovar a selecionada** (o formulário já
+  vem com o mesmo tipo e prazo), **Copiar o código dela** ou **Remover do histórico**.
+- Renovar é emitir um código novo e mandar de novo: a loja cola no mesmo lugar. Um código mais antigo que o atual é recusado.
+- O histórico (com o código de cada licença emitida) fica em
+  `C:\Users\SEU_USUARIO\AppData\Local\WillPDV-Licencas\historico.json`.
+
+### Conferir um código
+
+Aba **Conferir um código:** cole um código `PDVL1....` e veja de que loja é, quando foi emitido e até quando vale. Útil quando o
+cliente liga dizendo que "não entra".
+
+### Resumo das abas
+
+| Aba | Para quê |
+| --- | --- |
+| Emitir licença | criar o código (mensal, permanente ou teste) e copiar a mensagem pronta |
+| Lojas e vencimentos | ver quem vence, renovar com um clique |
+| Conferir um código | ver loja e validade de um código já emitido |
+| Chave de segurança | importar, criar, conferir e fazer cópia da chave; abrir a pasta dela |
+
+### Problemas comuns
+
+| Mensagem ou sintoma | Causa e solução |
+| --- | --- |
+| *Ainda não há chave de segurança neste computador* | Importe a sua chave (se já tem) ou crie uma na aba Chave de segurança |
+| *Esta chave NÃO é a do PDV* | A chave é de outro par. Importe a que gerou o PDV; senão, os caixas recusam as licenças |
+| *Já existe uma chave... Não vou sobrescrever* | Proteção de propósito: trocar a chave invalida todas as licenças emitidas |
+| O caixa diz que o código é de outra loja | Depois da 1ª ativação o caixa só aceita códigos **da mesma loja**: confira o nome (maiúsculas não importam) |
+| O caixa recusa o código | Confira o código na aba **Conferir um código**; se for mais antigo que o atual do caixa, emita um novo |
+| O artifact não aparece / venceu | Rode o workflow de novo (**Run workflow**), como explicado em [Baixar e instalar](#baixar-e-instalar) |
+| SmartScreen ou antivírus bloqueia | Instalador sem assinatura digital paga: **Mais informações > Executar assim mesmo** e libere no antivírus |
+
+### Para quem mantém o programa
+
+- Gerar localmente (Windows): `pip install pyinstaller` e, na raiz do repositório, `python build_licenciador.py` (gera
+  `dist\WillLicencas\WillLicencas.exe` e, com o [Inno Setup 6](https://jrsoftware.org/isdl.php), o instalador em
+  `instalador\saida\WillLicencas-Setup-<versão>.exe`). Para só o `.exe`: `python build_licenciador.py --sem-instalador`.
+- Rodar do código-fonte: `python -m licenciador.app` (precisa do Tkinter, que vem com o Python do Windows). Autoteste:
+  `python -m licenciador.app --autoteste`.
+- Testes: `python -m unittest tests.test_licenciador`.
+- A versão do programa fica em `VERSAO` em [`licenciador/nucleo.py`](licenciador/nucleo.py) (hoje 1.0.0); o número do
+  instalador vem dela. Ele usa o mesmo formato de chave e de código do `tools/gerar_licenca.py`, então os dois conversam.
+- O job `licenciador` do workflow gera o instalador, abre o `.exe` (autoteste), instala de verdade (silencioso), roda o autoteste
+  do instalado e atualiza por cima com o programa aberto. Se qualquer etapa falhar, a execução fica vermelha e não há artifact.
+- Logotipo: troque `instalador/willlicencas.ico`, `willlicencas-assistente.bmp` (164x314) e `willlicencas-assistente-pequena.bmp`
+  (55x55) mantendo os nomes (os do PDV são os `willpdv-*`). Para regenerar os desenhos padrão: `pip install pillow` e
+  `python -m tools.gerar_logos`.
+
+## Como a licença funciona no caixa do cliente
+
+A licença é um código assinado (Ed25519) que leva a **chave da loja** e o **último dia de validade**. O PDV só guarda a chave
+**pública** (`CHAVE_PUBLICA_HEX`, em [`src/core/licenca.py`](src/core/licenca.py)) e **confere a assinatura sem internet**. A
+privada fica só com você, fora do repositório (`~/.pdv-casa/licenca_privada.key`).
+
+- O operador cola o código em **Código de licença...**, na tela de entrada. A primeira ativação grava o nome da loja; depois o
+  caixa só aceita códigos **da mesma loja**.
+- Avisa **7 dias antes** de vencer, dá **5 dias de carência** depois do vencimento e só então bloqueia a entrada. **Nunca**
+  bloqueia com um turno recente aberto, e não deixa abrir turno novo com a licença bloqueada.
+- Voltar o relógio do Windows não reabre o prazo. A validade máxima é 36500 dias (a licença permanente).
+- No `.exe` a licença é **sempre** exigida; rodando do código-fonte (desenvolvimento) só vale com `licenca_exigir = S` nas
+  configurações.
+- A renovação automática pela nuvem ([abaixo](#licença-renovada-pela-nuvem)) é **opcional**: sem endereço da nuvem configurado
+  ela não faz nada.
+
+**Limites:** o código vale para a **loja** (nome), não para um computador específico, então funciona em qualquer PC dessa loja, e
+uma cópia do código funciona onde for colada. Não dá para revogar um código já emitido (só deixar vencer ou trocar o par de
+chaves, o que invalida todos).
+
+## Emitir licenças pela linha de comando
+
+> **Mais fácil:** use o programa [WillPDV Licenças](#willpdv-licenças-o-gerador-de-licenças). Os comandos abaixo fazem o mesmo,
+> com a mesma chave e o mesmo formato de código (precisa de Python 3.10+; na raiz do repositório).
+
+**Uma vez só (se ainda não tiver a chave):**
+
+```powershell
+python -m tools.gerar_licenca novo-par
+```
+
+Grava a chave **privada** em `C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key` e mostra a **pública**. Cole a pública em
+`CHAVE_PUBLICA_HEX` ([`src/core/licenca.py`](src/core/licenca.py)) e gere o instalador de novo. **Faça backup da privada e nunca a
+coloque no GitHub nem no PC do cliente**; trocar o par invalida todos os códigos já emitidos.
+
+**Para cada loja:**
+
+```powershell
+python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --dias 30        # mensal: vence em 30 dias
+python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --permanente     # sem vencimento na prática (100 anos)
+python -m tools.gerar_licenca ver CODIGO                                   # confere um código já emitido
+```
+
+Mande a linha impressa (começa por `PDVL1.`) ao cliente, que cola em **Código de licença...** na tela de entrada.
+
+## Gerar o executável e o instalador
+
+### O PDV (WillPDV)
+
+`python build_pdv.py` gera o executável (PyInstaller) em `dist/WillPDV/`. No executável os dados (banco, Backup, impressao,
+logs) ficam em `%LOCALAPPDATA%\WILL-PDV`.
+
+**Sem Python no seu PC?** O GitHub Actions gera o instalador, testa o programa empacotado e o publica na aba **Releases**
+("WillPDV - última versão"): [baixar o instalador](https://github.com/GodFather-byte/PDV-CASA-/releases/download/ultima-versao/WillPDV-Instalador.exe)
+ou [abrir a página da Release](https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao). Passo a passo em
+[`docs/INSTALAR_E_TESTAR.md`](docs/INSTALAR_E_TESTAR.md).
+
+**Gerar na sua máquina** (Windows, uma vez só): instale o Python 3.10+ (64 bits), rode `pip install pyinstaller pyserial requests`
+e instale o [Inno Setup 6](https://jrsoftware.org/isdl.php) (6.3 ou mais novo). A cada versão:
+
+1. Suba o número em `src/versao.py`.
+2. Na raiz do repositório: `python build_pdv.py`. Ele gera o executável e, achando o Inno Setup, o instalador
+   `instalador\saida\WillPDV-Setup-<versão>.exe` (o script é `instalador\WillPDV.iss`; dá para abri-lo no Inno Setup e clicar em
+   *Compile*). Ícone opcional: `instalador\willpdv.ico`.
+3. Leve o `WillPDV-Setup-<versão>.exe` ao PC do caixa (pendrive ou link) e execute: Avançar, Avançar, Instalar. Ele instala em
+   `Arquivos de Programas\WillPDV`, cria o atalho e, se marcado, abre o caixa ao ligar o computador.
+
+Para atualizar, rode o instalador novo no mesmo PC (com o turno fechado): ele substitui o programa e mantém as vendas, que ficam
+em `%LOCALAPPDATA%\WILL-PDV`. Desinstalar também não apaga esses dados; faça o backup antes de trocar de PC.
+
+### O gerador de licenças (WillPDV Licenças)
+
+`python build_licenciador.py` (ver [Para quem mantém o programa](#para-quem-mantém-o-programa)). Ele é do fornecedor e **não** vai
+para a aba Releases.
+
+### Como o GitHub Actions gera tudo
+
+O workflow [`build-windows.yml`](.github/workflows/build-windows.yml) roda a cada push na `main` ou numa branch `claude/**`, numa
+tag `v*` e sob demanda (**Run workflow**). Tem dois jobs de geração, ambos com autoteste e instalação de verdade:
+
+| Job | Gera | Onde fica |
+| --- | --- | --- |
+| Programa e instalador | WillPDV (instalador e versão portátil) | Artifacts; na `main`, também na [Release "última versão"](https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao); numa tag `v*`, numa Release de versão |
+| Programa de licenças | WillPDV Licenças (instalador) | **só** nos Artifacts (30 dias) |
+
+A suíte de testes ([`testes.yml`](.github/workflows/testes.yml)) roda a cada push e pull request, em Windows e Linux, com Python
+3.10 e 3.12.
 
 ## Telegram do dono (acompanhar a casa pelo celular)
 
@@ -376,84 +624,15 @@ uma instalação que falhasse no meio do expediente pararia o caixa.
 Antes de operar comercialmente ainda é necessário: HTTPS (proxy reverso ou túnel), teste em loja com a
 rotina real do caixa, backup e restauração testados, hardware fiscal/periféricos e homologação no ambiente da loja.
 
-## Licença mensal e executável
+## Documentação (pasta `docs/`)
 
-`python build_pdv.py` gera o executável (PyInstaller) em `dist/WillPDV/`. No executável os dados (banco, Backup,
-impressao, logs) ficam em `%LOCALAPPDATA%\WILL-PDV` e a licença é sempre exigida; rodando do código-fonte ela só vale com
-`licenca_exigir = S` nas configurações.
-
-### Instalador (Inno Setup)
-
-Na máquina do fornecedor que gera as versões (Windows, uma vez só): instale o Python 3.10+ (64 bits), rode
-`pip install pyinstaller pyserial requests` e instale o [Inno Setup 6](https://jrsoftware.org/isdl.php) (6.3 ou mais
-novo). A cada versão:
-
-> **Sem Python no seu PC?** O GitHub Actions gera o instalador, testa o programa empacotado e o publica na aba **Releases**
-> ("WillPDV - última versão"): [baixar o instalador](https://github.com/GodFather-byte/PDV-CASA-/releases/download/ultima-versao/WillPDV-Instalador.exe)
-> ou [abrir a página da Release](https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao). Passo a passo em
-> [`docs/INSTALAR_E_TESTAR.md`](docs/INSTALAR_E_TESTAR.md).
-
-1. Suba o número em `src/versao.py`.
-2. Na raiz do repositório: `python build_pdv.py`. Ele gera o executável e, achando o Inno Setup, o instalador
-   `instalador\saida\WillPDV-Setup-<versão>.exe` (o script é `instalador\WillPDV.iss`; dá para abri-lo no Inno Setup e
-   clicar em *Compile*). Ícone opcional: `instalador\willpdv.ico`.
-3. Leve o `WillPDV-Setup-<versão>.exe` ao PC do caixa (pendrive ou link) e execute: Avançar, Avançar, Instalar. Ele
-   instala em `Arquivos de Programas\WillPDV`, cria o atalho e, se marcado, abre o caixa ao ligar o computador.
-
-Para atualizar, rode o instalador novo no mesmo PC (com o turno fechado): ele substitui o programa e mantém as vendas,
-que ficam em `%LOCALAPPDATA%\WILL-PDV`. Desinstalar também não apaga esses dados; faça o backup antes de trocar de PC.
-
-A licença é um código assinado (Ed25519) com a chave da loja e o último dia de validade. O PDV só guarda a chave
-pública; a privada fica com o fornecedor, fora do repositório (`~/.pdv-casa/licenca_privada.key`):
-
-```powershell
-python -m tools.gerar_licenca emitir --loja CASAVERDE-01 --dias 30
-```
-
-O operador cola o código em "Código de licença..." na tela de entrada. O sistema avisa 7 dias antes de vencer, dá 5
-dias de carência depois e nunca bloqueia com o turno aberto. Para criar o par de chaves (uma única vez) rode
-`python -m tools.gerar_licenca novo-par` e cole a chave pública em `CHAVE_PUBLICA_HEX` (`src/core/licenca.py`); trocar a
-chave invalida os códigos já emitidos.
-
-## Como emitir as licenças no seu computador (sem servidor, sem bot, sem nuvem)
-
-> **Mais fácil:** o programa **WillPDV Licenças** (com tela, instalador próprio e chave conferida) emite licenças mensais,
-> permanentes e de teste sem linha de comando: [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md). Os comandos abaixo fazem o mesmo.
-
-Você, o fornecedor, cria o código de cada loja no **seu** PC. O caixa só **confere** a assinatura com a chave pública que
-já vai dentro do programa e funciona **sem internet**. Não há servidor de licença nem bot.
-
-**Uma vez só (se ainda não tiver a chave):**
-
-```powershell
-python -m tools.gerar_licenca novo-par
-```
-
-Ele grava a chave **privada** em `C:\Users\SEU_USUARIO\.pdv-casa\licenca_privada.key` e mostra a **pública**. Cole a pública em
-`CHAVE_PUBLICA_HEX` (`src/core/licenca.py`) e gere o instalador de novo. **Faça backup da privada e nunca a coloque no
-GitHub nem no PC do cliente**; trocar o par invalida todos os códigos já emitidos.
-
-**Para cada loja:**
-
-```powershell
-python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --dias 30        # mensal: vence em 30 dias
-python -m tools.gerar_licenca emitir --loja BOATE-ESTRELA --permanente     # sem vencimento na prática (100 anos)
-python -m tools.gerar_licenca ver CODIGO                                   # confere um código já emitido
-```
-
-Mande a linha impressa (começa por `PDVL1.`) ao cliente. No caixa dele, na tela de entrada, **Código de licença...**: cole e
-confirme. A primeira ativação grava o nome da loja; depois o caixa só aceita códigos **da mesma loja** (maiúsculas e minúsculas não importam). A validade máxima é 36500 dias.
-
-Como o caixa se comporta:
-
-- Avisa **7 dias antes** de vencer, dá **5 dias de carência** e só então bloqueia a entrada. **Nunca** bloqueia com um turno
-  recente aberto, e não deixa abrir turno novo com a licença bloqueada.
-- Voltar o relógio do Windows não reabre o prazo.
-- Para renovar uma loja, emita outro código (mais novo) e mande de novo; ela cola no mesmo lugar. Um código mais antigo que o
-  atual é recusado.
-- Rodando do código-fonte (desenvolvimento) a licença não é exigida; no `.exe` ela é sempre.
-
-Limites: o código vale para a **loja** (nome), não para um computador específico, então ele funciona em qualquer PC dessa
-loja, e uma cópia do código funciona onde for colada. Não dá para revogar um código já emitido (só deixar vencer ou trocar o
-par de chaves). A renovação automática pela nuvem (`docs/NUVEM.md`) é **opcional**: sem endereço da nuvem configurado ela não
-faz nada.
+| Documento | Para quê |
+| --- | --- |
+| [`INSTALAR_E_TESTAR.md`](docs/INSTALAR_E_TESTAR.md) | gerar, baixar, instalar e testar o WillPDV no Windows (GitHub Actions) |
+| [`LICENCIADOR.md`](docs/LICENCIADOR.md) | o programa WillPDV Licenças (gerador de licenças) |
+| [`NUVEM.md`](docs/NUVEM.md) | colocar a nuvem no ar (Render + Neon), cadastrar boates, acompanhar licenças e avisar versões |
+| [`TELEGRAM.md`](docs/TELEGRAM.md) | o bot do Telegram do dono: passo a passo, botões e perguntas frequentes |
+| [`ESTOQUE.md`](docs/ESTOQUE.md) | o painel de estoque, pedido e lista de compras |
+| [`PILOTO.md`](docs/PILOTO.md) | checklist do piloto na boate (o que já foi verificado e o que falta provar em loja) |
+| [`ESPECIFICACAO.md`](docs/ESPECIFICACAO.md) | liga cada seção dos manuais Willyan ao código |
+| [`COORDENACAO.md`](docs/COORDENACAO.md) | notas de coordenação entre os agentes que escrevem o projeto |
