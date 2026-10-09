@@ -182,6 +182,45 @@ class TesteMenu(BaseUI):
         self.assertEqual(app.valores["estoque_total"].cget("text"), "1")    # painel do dia
         self.assertIn("nenhum backup", app.lbl_backup.cget("text"))        # painel avisa que ainda não há cópia
 
+    def _menu_do(self, nome, senha):
+        from src.ui.app import App
+        app = App(self.banco)
+        self.addCleanup(app.root.destroy)
+        app.ctx.operador = app.ctx.acesso.autenticar(nome, senha)
+        return app
+
+    def test_menu_setas_percorrem_os_botoes_e_dao_a_volta(self):
+        app = self._menu_do("adm", "adm")
+        app.mostrar_menu(); app.root.update()
+        app._mover_nav(1)
+        self.assertEqual(app._ordem_nav[app._nav_sel], "Cadastros")
+        app._mover_nav(-1)                                  # volta ao começo: dá a volta e cai na Saída (a última)
+        self.assertEqual(app._ordem_nav[app._nav_sel], "Saída")
+        self.assertEqual(app._ordem_nav[-1], "Saída")
+
+    def test_atualizar_painel_a_mao_nao_empilha_temporizadores(self):
+        app = self._menu_do("adm", "adm")
+        app.mostrar_menu(); app.root.update()
+        antigo = app._relogio_id
+        app.atualizar_painel()                              # F5
+        self.assertNotEqual(app._relogio_id, antigo)
+        self.assertNotIn(antigo, app.root.tk.call("after", "info"))
+
+    def test_cartoes_e_atalhos_so_abrem_o_que_o_nivel_permite(self):
+        from src.ui.app import App
+        with mock.patch.object(App, "abrir_relatorio") as abrir:
+            app = self._menu_do("adm", "adm")
+            app.mostrar_menu(); app.root.update()
+            app.cartoes["vendas_dia"].clique()
+            abrir.assert_called_once_with("vendas_periodo")
+            self.assertEqual([t for t, _, _ in app._atalhos()],
+                             ["Abrir caixa", "Lançar estoque", "Produtos", "Vendas do período", "Backup agora"])
+        self.ctx.cadastros.salvar("operadores", {"nome": "Ana", "senha": "1", "nivel": "1"})
+        app = self._menu_do("ana", "1")
+        app.mostrar_menu(); app.root.update()
+        self.assertIsNone(app.cartoes["estoque_total"].clique)      # só informativo: o relatório pede nível maior
+        self.assertEqual([t for t, _, _ in app._atalhos()], ["Abrir caixa"])
+
     def test_login_valida_senha_e_ignora_caixa_alta(self):
         from src.ui.login import JanelaLogin
         self.ctx.acesso.trocar_senha(self.ctx.operador, "Segredo1")

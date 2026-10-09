@@ -32,6 +32,6 @@ class RelatorioController(RelatoriosVendas, RelatoriosGestao, RelatoriosComissoe
             "atualizado_em": fmt.agora(),
             "estoque_total": r["total"], "estoque_sem": r["sem"], "estoque_ponto": r["ponto"], "estoque_normal": r["normal"],
             "contas_anteriores": contas["anteriores"], "contas_hoje": contas["hoje"],
-            "vendas_dia": v["n"], "venda_media": fmt.dividir_cent(v["total"], v["n"]),
+            "vendas_dia": v["n"], "vendas_total": v["total"], "venda_media": fmt.dividir_cent(v["total"], v["n"]),
             "ultimo_backup": b.cfg("ultimo_backup") or None,
         }
