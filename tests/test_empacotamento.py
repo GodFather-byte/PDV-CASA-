@@ -51,6 +51,55 @@ class TesteWorkflowDeBuild(unittest.TestCase):
         self.assertEqual(self.texto.count("contents: write"), 1)
 
 
+    def test_programa_de_licencas_tem_job_proprio_e_nao_vai_para_a_aba_releases(self):
+        for trecho in ("python build_licenciador.py", "WillLicencas-Instalador-", "WillLicencas-Setup-*.exe", "docs/LICENCIADOR.md"):
+            self.assertIn(trecho, self.texto)
+        release = self.texto[self.texto.index("  publicar:"):]
+        self.assertNotIn("WillLicencas", release)                    # é ferramenta do fornecedor: nada de link público no Releases
+        self.assertGreaterEqual(self.texto.count("--autoteste"), 4)   # PDV: no .exe e no instalado; licenças: no .exe e no instalado
+
+
+class TesteInstaladores(unittest.TestCase):
+    pasta = Path(__file__).resolve().parents[1] / "instalador"
+
+    def test_scripts_do_inno_em_utf8_com_bom_e_appids_diferentes(self):
+        ids = []
+        for nome in ("WillPDV.iss", "WillLicencas.iss"):
+            bruto = (self.pasta / nome).read_bytes()
+            self.assertTrue(bruto.startswith(b"\xef\xbb\xbf"), f"{nome} precisa de BOM: sem ele o Inno lê os acentos como ANSI")
+            ids.append([l for l in bruto.decode("utf-8-sig").splitlines() if l.startswith("AppId=")][0])
+        self.assertNotEqual(*ids)                                     # os dois instalam lado a lado
+
+    def test_logotipos_existem_e_os_scripts_apontam_para_eles(self):
+        import re
+        for nome, prefixo in (("WillPDV.iss", "willpdv"), ("WillLicencas.iss", "willlicencas")):
+            texto = (self.pasta / nome).read_text(encoding="utf-8-sig")
+            for arquivo in (f"{prefixo}-assistente.bmp", f"{prefixo}-assistente-pequena.bmp"):
+                self.assertIn(arquivo, texto)
+                self.assertTrue((self.pasta / arquivo).is_file(), arquivo)
+            self.assertTrue((self.pasta / f"{prefixo}.ico").is_file())
+            self.assertTrue(re.search(r"^\[Code\]", texto, re.M))      # o instalador encerra o programa que ficou aberto
+            self.assertIn("PrepareToInstall", texto)
+
+    def test_imagens_do_assistente_tem_o_tamanho_do_inno(self):
+        import struct
+        for prefixo in ("willpdv", "willlicencas"):
+            for nome, esperado in ((f"{prefixo}-assistente.bmp", (164, 314)), (f"{prefixo}-assistente-pequena.bmp", (55, 55))):
+                cab = (self.pasta / nome).read_bytes()[:30]
+                self.assertEqual(cab[:2], b"BM")
+                self.assertEqual(struct.unpack("<ii", cab[18:26]), esperado, nome)
+
+    def test_icone_da_janela_so_no_windows_e_nunca_derruba(self):
+        from unittest import mock
+        from src.ui import icone
+        self.assertTrue(icone.caminho("willpdv.ico").is_file())
+        self.assertIsNone(icone.caminho("nao_existe.ico"))
+        with mock.patch.object(sys, "platform", "linux"):
+            self.assertFalse(icone.aplicar(object()))                 # Linux/Mac não leem .ico
+        with mock.patch.object(sys, "platform", "win32"):
+            self.assertFalse(icone.aplicar(object()))                 # janela sem iconbitmap: ignora o erro em vez de levantar
+
+
 class TesteLicencaDoRepositorio(unittest.TestCase):
     raiz = Path(__file__).resolve().parents[1]
 

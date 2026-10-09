@@ -26,6 +26,7 @@ Abra a execução (clique no nome dela em Actions) e role até **Artifacts**:
 | `WillPDV-Instalador-<versão>-<commit>` | o instalador (`WillPDV-Setup-<versão>.exe`) dentro de um .zip que o GitHub cria |
 | `WillPDV-Portatil-<versão>-<commit>` | a pasta do programa em .zip: extraia e rode `WillPDV.exe`, sem instalar |
 | `autoteste-<commit>` | os relatórios do autoteste (útil se algo falhar) |
+| `WillLicencas-Instalador-<versão>-<commit>` | o programa **do fornecedor** que emite as licenças (veja `docs/LICENCIADOR.md`); não é para o cliente |
 
 Baixe o primeiro, extraia o .zip e use o `.exe` de dentro. A página da execução também mostra o tamanho e o SHA-256 do
 instalador, para você conferir o arquivo. Os artifacts ficam 30 dias. Para um link fixo (que dá para mandar a um cliente), crie

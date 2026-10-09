@@ -413,6 +413,9 @@ chave invalida os códigos já emitidos.
 
 ## Como emitir as licenças no seu computador (sem servidor, sem bot, sem nuvem)
 
+> **Mais fácil:** o programa **WillPDV Licenças** (com tela, instalador próprio e chave conferida) emite licenças mensais,
+> permanentes e de teste sem linha de comando: [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md). Os comandos abaixo fazem o mesmo.
+
 Você, o fornecedor, cria o código de cada loja no **seu** PC. O caixa só **confere** a assinatura com a chave pública que
 já vai dentro do programa e funciona **sem internet**. Não há servidor de licença nem bot.
 
