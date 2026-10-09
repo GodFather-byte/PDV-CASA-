@@ -262,3 +262,99 @@ class EstoqueController:
             """SELECT p.id, p.codigo, p.nome, p.qt_atual, u.abreviatura AS unidade FROM produtos p
                JOIN unidades u ON u.id = p.unidade_id
                WHERE p.controla_estoque = 1 AND p.ativo = 1 ORDER BY p.nome""")]
+
+    # ------------------------------------------------- visão geral (painel)
+    ROTULO_MOVIMENTO = {
+        "inicial": "Estoque inicial", "compra": "Compra", "entrada": "Entrada", "saida": "Saída", "descarte": "Descarte",
+        "contagem": "Contagem", "desc_acabados": "Descarte de acabado", "venda": "Venda", "estorno_venda": "Venda cancelada",
+        "estorno": "Lançamento desfeito",
+    }
+
+    def painel(self, situacao: str | None = None, texto: str = "", grupo: str | None = None) -> list[dict]:
+        """Produtos que controlam estoque, já com a situação (sem/ponto/normal), o valor parado e o quanto repor.
+
+        `situacao` filtra por 'sem', 'ponto' ou 'normal'; `texto` procura no nome/código; `grupo` no grupo do produto."""
+        busca = (texto or "").strip().casefold()
+        linhas = []
+        for r in self.banco.todos(
+                """SELECT p.id, p.codigo, p.nome, p.qt_atual, p.estoque_minimo, p.ult_preco_cent, p.ult_atualizacao,
+                          u.abreviatura AS unidade, g.nome AS grupo
+                   FROM produtos p JOIN unidades u ON u.id = p.unidade_id
+                   JOIN subgrupos s ON s.id = p.subgrupo_id JOIN grupos g ON g.id = s.grupo_id
+                   WHERE p.controla_estoque = 1 AND p.ativo = 1 ORDER BY p.nome"""):
+            p = dict(r)
+            p["situacao"] = self.produtos.situacao_estoque(p)
+            if situacao and p["situacao"] != situacao:
+                continue
+            if grupo and p["grupo"] != grupo:
+                continue
+            if busca and busca not in p["nome"].casefold() and busca not in p["codigo"].casefold().lstrip("0"):
+                continue
+            p["valor_cent"] = round(max(p["qt_atual"], 0) * p["ult_preco_cent"])
+            p["repor"] = self.sugestao_reposicao(p)
+            linhas.append(p)
+        return linhas
+
+    @staticmethod
+    def sugestao_reposicao(p: dict) -> float:
+        """Quanto comprar para o produto voltar a uma folga confortável (o dobro do mínimo). Sem mínimo cadastrado, não sugere."""
+        if p["situacao"] == "normal" or p["estoque_minimo"] <= 0:
+            return 0.0
+        return fmt.arred_qtd(max(p["estoque_minimo"] * 2 - max(p["qt_atual"], 0), 0))
+
+    def resumo(self) -> dict:
+        """Contagem por situação e valor total parado em estoque (quantidade × último preço de compra)."""
+        todos = self.painel()
+        r = {"total": len(todos), "sem": 0, "ponto": 0, "normal": 0, "valor_cent": sum(p["valor_cent"] for p in todos)}
+        for p in todos:
+            r[p["situacao"]] += 1
+        return r
+
+    def grupos(self) -> list[str]:
+        return [r["nome"] for r in self.banco.todos("SELECT nome FROM grupos ORDER BY nome")]
+
+    def historico(self, produto_id: int, limite: int = 30) -> list[dict]:
+        """Últimos movimentos do produto (mais recente primeiro), com o nome do tipo em português."""
+        saida = []
+        for r in self.banco.todos(
+                "SELECT * FROM movimentos_estoque WHERE produto_id = ? ORDER BY id DESC LIMIT ?", (produto_id, limite)):
+            m = dict(r)
+            m["rotulo"] = self.ROTULO_MOVIMENTO.get(m["tipo"], m["tipo"])
+            saida.append(m)
+        return saida
+
+    def registrar_rapido(self, produto_id: int, tipo: str, quantidade: float, descricao: str | None = None) -> int:
+        """Um movimento de um item só (entrada, saída, descarte ou contagem), sem montar lançamento na mão.
+
+        Cria o lançamento do dia com o item e devolve o id. Em 'contagem' a quantidade é o que existe de verdade na prateleira."""
+        if tipo not in ("entrada", "saida", "descarte", "contagem"):
+            raise ErroNegocio("Movimento rápido só vale para entrada, saída, descarte ou contagem.")
+        p = self.produtos.por_id(produto_id)
+        if p is None:
+            raise ErroNegocio("Produto não encontrado.")
+        if tipo in ("saida", "descarte") and fmt.arred_qtd(quantidade) > max(p["qt_atual"], 0) and p["controla_estoque"]:
+            raise ErroNegocio(f"Só há {fmt.fmt_qtd(p['qt_atual'])} de '{p['nome']}' em estoque; não dá para tirar {fmt.fmt_qtd(quantidade)}.")
+        with self.banco.transacao():
+            lanc = self.criar_lancamento(tipo, descricao=descricao or f"{TIPOS[tipo]} rápida - {p['nome']}")
+            self.adicionar_item(lanc, produto_id, quantidade, ligar_controle=not p["controla_estoque"] and tipo in ("entrada", "contagem"))
+        return lanc
+
+    def pedido_sugerido(self, fornecedor_id: int, produtos: list[tuple[int, float]] | None = None) -> int:
+        """Cria um PEDIDO com o que está faltando (sem estoque ou no ponto de pedido), na quantidade sugerida.
+
+        `produtos` = [(produto_id, quantidade)] para escolher à mão; sem ele, usa a sugestão de todos os que precisam repor."""
+        itens = produtos if produtos is not None else [(p["id"], p["repor"]) for p in self.painel() if p["repor"] > 0]
+        itens = [(pid, q) for pid, q in itens if q > 0]
+        if not itens:
+            raise ErroNegocio("Nenhum produto precisa de reposição agora (ou falta definir o estoque mínimo).")
+        with self.banco.transacao():
+            lanc = self.criar_lancamento("pedido", descricao="Pedido sugerido pelo painel", fornecedor_id=fornecedor_id)
+            for pid, q in itens:
+                self.adicionar_item(lanc, pid, q)
+        return lanc
+
+    def lista_de_compras(self) -> list[dict]:
+        """Produtos a repor (sem estoque primeiro), para imprimir ou levar ao fornecedor."""
+        falta = [p for p in self.painel() if p["repor"] > 0]
+        return sorted(falta, key=lambda p: (p["situacao"] != "sem", p["nome"]))
+

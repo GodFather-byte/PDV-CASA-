@@ -42,8 +42,10 @@ impressão RAW do Windows precisa de `pip install -r requirements.txt`.
 
 - **Caixa e vendas:** balcão, mesas e comandas, itens, preços promocionais, descontos,
   serviço, pagamentos, troco/vale e cancelamento.
-- **Estoque:** compras e outros lançamentos, pedidos, contagem, composição de
-  produtos e histórico de movimentos; a venda fechada baixa o estoque e o
+- **Estoque:** painel com a situação de cada produto (sem estoque / repor / normal), valor parado, busca e filtros
+  enquanto digita, entrada/saída/perda/contagem em dois cliques, histórico por produto, pedido e lista de compras
+  sugeridos pelo estoque mínimo ([docs/ESTOQUE.md](docs/ESTOQUE.md)); compras e outros lançamentos completos, pedidos,
+  contagem, composição de produtos e histórico de movimentos; a venda fechada baixa o estoque e o
   cancelamento estorna os movimentos.
 - **Cadastros e operação:** produtos, clientes, operadores, formas de pagamento,
   configurações, turnos, contas, caderneta e entregas.

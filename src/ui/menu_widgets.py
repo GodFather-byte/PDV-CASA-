@@ -149,6 +149,9 @@ class Cartao(_Transicao, tk.Frame):
         if detalhe is not None:
             self.detalhe.configure(text=detalhe)
         if mudou:
+            if self._id_flash:                  # mudou de novo no meio do pisca: recomeça, sem deixar duas animações rodando
+                self.after_cancel(self._id_flash)
+                self._id_flash = None
             self._flash = 1.0
             self._piscar()
 

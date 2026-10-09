@@ -338,11 +338,10 @@ class App:
             self._cartao(g, 1, "contas_hoje", "Contas de hoje não quitadas", PAL["ambar"], "abertas hoje", abrir)
         self._secao(cont, "ESTOQUE")
         g = self._grade(cont, 4)
-        abrir = self._acesso("rel_estoque", "estoque_atual", self.abrir_relatorio)
-        self._cartao(g, 0, "estoque_total", "Produtos em estoque", PAL["azul"], "controlados e ativos", abrir)
-        self._cartao(g, 1, "estoque_sem", "Sem estoque", PAL["vermelho"], "", abrir)
-        self._cartao(g, 2, "estoque_ponto", "Em ponto de pedido", PAL["ambar"], "", abrir)
-        self._cartao(g, 3, "estoque_normal", "Estoque normal", PAL["verde"], "", abrir)
+        self._cartao(g, 0, "estoque_total", "Produtos em estoque", PAL["azul"], "controlados e ativos", self._acesso_estoque("todos"))
+        self._cartao(g, 1, "estoque_sem", "Sem estoque", PAL["vermelho"], "", self._acesso_estoque("sem"))
+        self._cartao(g, 2, "estoque_ponto", "Em ponto de pedido", PAL["ambar"], "", self._acesso_estoque("ponto"))
+        self._cartao(g, 3, "estoque_normal", "Estoque normal", PAL["verde"], "", self._acesso_estoque("normal"))
         self.barra_estoque = BarraProporcao(cont, [PAL["vermelho"], PAL["ambar"], PAL["verde"]])
         self.barra_estoque.pack(fill="x", pady=(12, 0))
         self.lbl_barra = tk.Label(cont, text="", font=(FONTE, 9), fg=PAL["suave"], bg=PAL["fundo"], anchor="w")
@@ -371,6 +370,12 @@ class App:
     def _acesso(self, modulo: str, chave: str, abrir):
         """Ação de clique de um cartão: só existe quando o operador pode abrir a tela (e a casa não desligou o módulo)."""
         return (lambda: abrir(chave)) if modulo in self._permitidos else None
+
+    def _acesso_estoque(self, filtro: str):
+        """Cartões de estoque: abrem o painel já filtrado; quem só tem o relatório vai para ele; sem nenhum dos dois, só informa."""
+        if "lanc_estoque" in self._permitidos:
+            return lambda: self.abrir_estoque(filtro)
+        return self._acesso("rel_estoque", "estoque_atual", self.abrir_relatorio)
 
     def _atalhos(self) -> list[tuple]:
         """Ações rápidas do dia a dia; só aparecem as que o nível do operador permite."""
@@ -570,9 +575,23 @@ class App:
         self._unica("cad_" + chave, lambda: JanelaCadastro(self.root, self.ctx, chave))
 
     def abrir_lancamento(self, chave: str) -> None:
-        from src.ui.lancamentos_ui import JanelaContas, JanelaEstoque
-        classe = JanelaContas if chave == "contas" else JanelaEstoque
-        self._unica("lanc_" + chave, lambda: classe(self.root, self.ctx))
+        if chave == "estoque":
+            self.abrir_estoque()
+            return
+        from src.ui.lancamentos_ui import JanelaContas
+        self._unica("lanc_contas", lambda: JanelaContas(self.root, self.ctx))
+
+    def abrir_estoque(self, filtro: str = "todos") -> None:
+        """Painel de Estoque (visão geral). Já aberta, a janela só troca o filtro e vem para a frente."""
+        from src.ui.estoque_ui import PainelEstoque
+
+        def criar():
+            j = PainelEstoque(self.root, self.ctx, filtro)
+            j.bind("<Destroy>", lambda e: self.atualizar_painel() if e.widget is j and self.menu is not None else None, add="+")
+            return j
+        j = self._unica("lanc_estoque", criar)
+        if j.filtro != filtro:
+            j.filtrar(filtro)
 
     def abrir_relatorio(self, chave: str) -> None:
         from src.ui.relatorios_ui import abrir_relatorio
