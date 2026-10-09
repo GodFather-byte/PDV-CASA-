@@ -174,6 +174,107 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # O programa SEPARADO do fornecedor que emite as licenças (mensais, permanentes e de teste). É para quem vende o WillPDV, não para o
+  # cliente: por isso fica só nos artifacts e NÃO vai para a aba Releases. Mesma disciplina do job acima: autoteste no .exe, instalação
+  # silenciosa de verdade e atualização por cima com o programa aberto. Guia: docs/LICENCIADOR.md
+  licenciador:
+    name: Programa de licenças (WillPDV Licenças)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: PyInstaller (o programa de licenças só usa a biblioteca padrão)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pyinstaller>=6,<7"
+
+      - name: Versão e commit
+        id: info
+        run: |
+          $versao = python -c "from licenciador.nucleo import VERSAO; print(VERSAO)"
+          "versao=$versao" >> $env:GITHUB_OUTPUT
+          "curto=$($env:GITHUB_SHA.Substring(0,7))" >> $env:GITHUB_OUTPUT
+
+      - name: Inno Setup (compilador do instalador)
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup não foi encontrado depois da instalação." }
+          Write-Host "Inno Setup: $iscc"
+
+      - name: Gerar o programa e o instalador (python build_licenciador.py)
+        run: python build_licenciador.py
+
+      - name: Autoteste do programa empacotado
+        run: |
+          $saida = Join-Path $env:RUNNER_TEMP "autoteste-licencas-exe.txt"
+          $exe = (Resolve-Path "dist\WillLicencas\WillLicencas.exe").Path
+          $p = Start-Process -FilePath $exe -ArgumentList "--autoteste", "`"$saida`"" -PassThru
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); throw "O autoteste travou (mais de 4 minutos)." }
+          if (Test-Path $saida) { Get-Content $saida } else { Write-Host "O programa não escreveu o relatório do autoteste." }
+          if ($p.ExitCode -ne 0) { throw "Autoteste do programa falhou (código $($p.ExitCode))." }
+
+      - name: Instalar de verdade, rodar o autoteste do instalado e atualizar por cima com o programa aberto
+        run: |
+          $inst = (Get-ChildItem instalador\saida\WillLicencas-Setup-*.exe | Select-Object -First 1).FullName
+          $destino = Join-Path $env:RUNNER_TEMP "WillLicencas-instalado"
+          $log = Join-Path $env:RUNNER_TEMP "instalador-licencas.log"
+          $args1 = "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$destino`"", "/LOG=`"$log`""
+          $p = Start-Process -FilePath $inst -ArgumentList $args1 -PassThru
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); throw "O instalador travou (mais de 5 minutos)." }
+          if ($p.ExitCode -ne 0) { if (Test-Path $log) { Get-Content $log -Tail 40 }; throw "O instalador terminou com erro (código $($p.ExitCode))." }
+          if (-not (Test-Path "$destino\WillLicencas.exe")) { throw "O instalador não colocou o WillLicencas.exe em $destino." }
+          $saida = Join-Path $env:RUNNER_TEMP "autoteste-licencas-instalado.txt"
+          $t = Start-Process -FilePath "$destino\WillLicencas.exe" -ArgumentList "--autoteste", "`"$saida`"" -PassThru
+          if (-not $t.WaitForExit(240000)) { $t.Kill(); throw "O autoteste do programa instalado travou." }
+          if (Test-Path $saida) { Get-Content $saida }
+          if ($t.ExitCode -ne 0) { throw "Autoteste do programa instalado falhou (código $($t.ExitCode))." }
+          # atualização por cima com o programa aberto (a janela fica esperando; o instalador precisa encerrá-la e seguir)
+          $aberto = Start-Process -FilePath "$destino\WillLicencas.exe" -PassThru
+          Start-Sleep -Seconds 6
+          if ($aberto.HasExited) { throw "O programa instalado fechou sozinho; não dá para testar a atualização por cima." }
+          $p2 = Start-Process -FilePath $inst -ArgumentList $args1 -PassThru
+          if (-not $p2.WaitForExit(300000)) { $p2.Kill(); throw "O instalador travou com o programa aberto (mais de 5 minutos)." }
+          if ($p2.ExitCode -ne 0) { throw "O instalador falhou com o programa aberto (código $($p2.ExitCode))." }
+          Start-Sleep -Seconds 2
+          if (Get-Process -Name WillLicencas -ErrorAction SilentlyContinue) { throw "Ainda há WillLicencas.exe rodando depois da atualização." }
+          $u = Start-Process -FilePath "$destino\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru
+          $u.WaitForExit(120000) | Out-Null
+
+      - name: Resumo (versão, tamanho e SHA-256)
+        run: |
+          $inst = Get-ChildItem instalador\saida\WillLicencas-Setup-*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $inst.FullName -Algorithm SHA256).Hash
+          $mb = [math]::Round($inst.Length / 1MB, 1)
+          @"
+          ## WillPDV Licenças ${{ steps.info.outputs.versao }} — commit ${{ steps.info.outputs.curto }}
+
+          | Arquivo | Tamanho | SHA-256 |
+          | --- | --- | --- |
+          | ``$($inst.Name)`` | $mb MB | ``$hash`` |
+
+          Programa do FORNECEDOR (emite licenças mensais, permanentes e de teste). Não entregue a clientes. Guia: ``docs/LICENCIADOR.md``.
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Guardar o instalador do programa de licenças
+        uses: actions/upload-artifact@v4
+        with:
+          name: WillLicencas-Instalador-${{ steps.info.outputs.versao }}-${{ steps.info.outputs.curto }}
+          path: instalador/saida/WillLicencas-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
   # Só em tag v*: publica o instalador na aba Releases (link fixo, sem .zip, que dá para mandar ao cliente).
   publicar:
     name: Publicar na aba Releases

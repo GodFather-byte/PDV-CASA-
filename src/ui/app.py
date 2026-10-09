@@ -12,6 +12,7 @@ from src.controllers.telegram_controller import ServicoTelegram
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
+from src.ui import icone as icone_janela
 from src.ui import tema
 from src.ui.contexto import Contexto
 from src.ui.login import JanelaLogin
@@ -68,6 +69,7 @@ class App:
         self.root = tk.Tk()
         self.root.withdraw()
         tema.aplicar_tema(self.root)
+        icone_janela.aplicar(self.root)
         self.ctx = Contexto(self.banco)
         self.janelas: dict[str, tk.Toplevel] = {}
         self.servico_impressao: ServicoFilaImpressao | None = None

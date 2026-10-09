@@ -44,6 +44,11 @@ RestartApplications=no
 #ifdef Icone
 SetupIconFile={#Icone}
 #endif
+; Logotipo no assistente (painel da esquerda 164x314 e imagem pequena 55x55). Para usar a sua marca, troque esses .bmp pelos seus.
+#if FileExists(SourcePath + "willpdv-assistente.bmp")
+WizardImageFile=willpdv-assistente.bmp
+WizardSmallImageFile=willpdv-assistente-pequena.bmp
+#endif
 
 [Languages]
 Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
