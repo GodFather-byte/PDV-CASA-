@@ -320,13 +320,40 @@ class JanelaCadastro(tk.Toplevel):
     def _botoes_extras(self):
         ch = self.chave
         if ch == "produtos":
-            return [("Observações", self._abrir_observacoes), ("Composição", self._abrir_composicao),
-                    ("Imprimir Tabela", self._tabela_precos)]
+            return [("Ajustar estoque", self._ajustar_estoque), ("Observações", self._abrir_observacoes),
+                    ("Composição", self._abrir_composicao), ("Imprimir Tabela", self._tabela_precos)]
         if ch == "clientes":
             return [("Gerar arquivos", self._gerar_clientes)]
         if ch == "planos_contas":
             return [("Sub Planos", lambda: JanelaCadastro(self, self.ctx, "subplanos"))]
         return []
+
+    def _ajustar_estoque(self) -> None:
+        """Informa quanto o produto tem de verdade agora (contagem). Se ainda não controlava estoque, passa a controlar.
+        O 'Qt. atual' do formulário é só leitura de propósito: toda mudança de quantidade vira um movimento no histórico."""
+        if self.id_atual is None:
+            tema.aviso(self, "Grave o produto antes de ajustar o estoque.")
+            return
+        p = self.ctx.produtos.por_id(self.id_atual)
+        situacao = "Ainda não controla estoque: ao confirmar, ele passa a controlar." if not p["controla_estoque"] else \
+            f"Hoje o sistema tem {fmt.fmt_qtd(p['qt_atual'])}."
+
+        def validar(texto):
+            q = fmt.para_qtd(texto)
+            if q < 0:
+                raise ValueError("A quantidade não pode ser negativa.")
+            return q
+        q = tema.pedir_texto(self, "Ajustar estoque", f"{p['nome']}\n{situacao}\nQuantos existem de verdade agora?",
+                             fmt.fmt_qtd(p["qt_atual"]) if p["controla_estoque"] else "", largura=16, validar=validar)
+        if q is None:
+            return
+        ok, _ = tema.tratar(self, self.ctx.estoque.registrar_rapido, self.id_atual, "contagem", q)
+        if ok:
+            linha = self.cad.obter(self.chave, self.id_atual)
+            textos = self.cad.exibir(self.ent, linha)
+            for nome in ("controla_estoque", "qt_atual", "qt_inicial"):          # só os campos de estoque: não perde o que está sendo digitado
+                self.campos[nome].set(textos[nome], linha)
+            self.status.configure(text=f"Estoque ajustado para {fmt.fmt_qtd(q)}.")
 
     def _abrir_observacoes(self) -> None:
         JanelaCadastro(self, self.ctx, "observacoes")

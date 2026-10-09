@@ -308,3 +308,26 @@ class TestePainelDeEstoque(BaseTeste):
         with self.assertRaises(ErroNegocio):
             self.est.pedido_sugerido(forn)
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 0)
+
+    def test_produto_sem_controle_aparece_na_busca_e_comeca_a_controlar_com_uma_contagem(self):
+        redbull = self.novo_produto("REDBULL", 1500)                         # cadastrado sem 'Controla estoque'
+        self.assertNotIn("REDBULL", [p["nome"] for p in self.est.painel()])                     # a lista padrão só tem os controlados
+        achados = self.est.painel(texto="red")
+        self.assertEqual([(p["nome"], p["situacao"]) for p in achados], [("REDBULL", "livre")])
+        self.assertEqual([p["nome"] for p in self.est.painel("livre")], ["AGUA", "REDBULL"])
+        self.assertEqual(self.est.resumo()["livre"], 2)
+        self.assertEqual(self.est.resumo()["total"], 3)                       # os cartões continuam só com os controlados
+        self.assertEqual(achados[0]["repor"], 0)
+        self.est.registrar_rapido(redbull, "contagem", 48)
+        p = self.banco.um("SELECT controla_estoque, qt_atual FROM produtos WHERE id = ?", (redbull,))
+        self.assertEqual((p["controla_estoque"], p["qt_atual"]), (1, 48))
+        self.assertIn("REDBULL", [x["nome"] for x in self.est.painel()])
+        self.assertEqual(self.est.resumo()["livre"], 1)
+
+    def test_entrada_tambem_liga_o_controle_mas_saida_nao(self):
+        agua = self.banco.valor("SELECT id FROM produtos WHERE nome = 'AGUA'")
+        with self.assertRaises(ErroNegocio):
+            self.est.registrar_rapido(agua, "saida", 1)
+        self.assertEqual(self.banco.valor("SELECT controla_estoque FROM produtos WHERE id = ?", (agua,)), 0)
+        self.est.registrar_rapido(agua, "entrada", 12)
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (agua,)), 12)

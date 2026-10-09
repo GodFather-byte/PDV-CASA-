@@ -290,24 +290,29 @@ class EstoqueController:
     def painel(self, situacao: str | None = None, texto: str = "", grupo: str | None = None) -> list[dict]:
         """Produtos que controlam estoque, já com a situação (sem/ponto/normal), o valor parado e o quanto repor.
 
-        `situacao` filtra por 'sem', 'ponto' ou 'normal'; `texto` procura no nome/código; `grupo` no grupo do produto."""
+        `situacao` filtra por 'sem', 'ponto', 'normal' ou 'livre' (produtos que ainda não controlam estoque); `texto` procura no
+        nome/código (e inclui os que não controlam); `grupo` filtra pelo grupo do produto."""
         busca = (texto or "").strip().casefold()
+        # Quem procura por nome também acha o produto que ainda NÃO controla estoque (senão o RedBull cadastrado sem a marca
+        # "Controla estoque" ficava invisível, sem como começar a controlar). 'livre' lista só esses.
+        controle = "p.controla_estoque = 1" if not busca and situacao != "livre" else \
+                   "p.controla_estoque = 0" if situacao == "livre" else "1 = 1"
         linhas = []
         for r in self.banco.todos(
-                """SELECT p.id, p.codigo, p.nome, p.qt_atual, p.estoque_minimo, p.ult_preco_cent, p.ult_atualizacao,
-                          u.abreviatura AS unidade, g.nome AS grupo
+                f"""SELECT p.id, p.codigo, p.nome, p.qt_atual, p.estoque_minimo, p.ult_preco_cent, p.ult_atualizacao,
+                          p.controla_estoque, u.abreviatura AS unidade, g.nome AS grupo
                    FROM produtos p JOIN unidades u ON u.id = p.unidade_id
                    JOIN subgrupos s ON s.id = p.subgrupo_id JOIN grupos g ON g.id = s.grupo_id
-                   WHERE p.controla_estoque = 1 AND p.ativo = 1 ORDER BY p.nome"""):
+                   WHERE {controle} AND p.ativo = 1 ORDER BY p.controla_estoque DESC, p.nome"""):
             p = dict(r)
-            p["situacao"] = self.produtos.situacao_estoque(p)
+            p["situacao"] = self.produtos.situacao_estoque(p) if p["controla_estoque"] else "livre"
             if situacao and p["situacao"] != situacao:
                 continue
             if grupo and p["grupo"] != grupo:
                 continue
             if busca and busca not in p["nome"].casefold() and busca not in p["codigo"].casefold().lstrip("0"):
                 continue
-            p["valor_cent"] = round(max(p["qt_atual"], 0) * p["ult_preco_cent"])
+            p["valor_cent"] = round(max(p["qt_atual"], 0) * p["ult_preco_cent"]) if p["controla_estoque"] else 0
             p["repor"] = self.sugestao_reposicao(p)
             linhas.append(p)
         return linhas
@@ -315,7 +320,7 @@ class EstoqueController:
     @staticmethod
     def sugestao_reposicao(p: dict) -> float:
         """Quanto comprar para o produto voltar a uma folga confortável (o dobro do mínimo). Sem mínimo cadastrado, não sugere."""
-        if p["situacao"] == "normal" or p["estoque_minimo"] <= 0:
+        if p["situacao"] in ("normal", "livre") or p["estoque_minimo"] <= 0:
             return 0.0
         return fmt.arred_qtd(max(p["estoque_minimo"] * 2 - max(p["qt_atual"], 0), 0))
 
@@ -325,6 +330,7 @@ class EstoqueController:
         r = {"total": len(todos), "sem": 0, "ponto": 0, "normal": 0, "valor_cent": sum(p["valor_cent"] for p in todos)}
         for p in todos:
             r[p["situacao"]] += 1
+        r["livre"] = self.banco.valor("SELECT COUNT(*) FROM produtos WHERE controla_estoque = 0 AND ativo = 1", (), 0)
         return r
 
     def grupos(self) -> list[str]:
