@@ -77,8 +77,25 @@ ainda não tem o par de chaves, veja "Como emitir as licenças" no `README.md` (
 
 - Em **Utilitários > Pacote de suporte** o programa junta os registros de erro (nunca as vendas) para você me mandar.
 - Os registros ficam em `%LOCALAPPDATA%\WILL-PDV\logs`.
-- **Se o workflow ficar vermelho em poucos segundos**, sem rodar nenhum passo, o problema não é o código: é a conta do GitHub
-  (por exemplo limite de uso ou cobrança do Actions). Abra o job na aba Actions e leia a mensagem no topo.
+- **Se o workflow ficar vermelho em poucos segundos**, sem rodar nenhum passo, o problema não é o código: o GitHub não está
+  entregando uma máquina para o job (na API aparece `runner_id: 0`). Em geral é a conta: limite de uso ou cobrança do Actions
+  (repositório privado gasta minutos, e o Windows gasta o dobro), ou o Actions desabilitado em *Settings > Actions > General*.
+  Abra o job na aba Actions e leia a mensagem no topo; em *Settings > Billing and plans* veja o uso e o limite de gastos.
+
+## Plano B: gerar no seu próprio PC com Windows (sem GitHub Actions)
+
+1. Instale o **Python 3.12 de 64 bits** (python.org; deixe marcado "tcl/tk and IDLE" e "Add python.exe to PATH") e o
+   **Inno Setup 6** (jrsoftware.org/isdl.php).
+2. Baixe o projeto (botão *Code > Download ZIP* na branch, ou `git clone`) e abra o PowerShell na pasta.
+3. Rode:
+
+   ```powershell
+   pip install -r requirements.txt pyinstaller
+   python build_pdv.py
+   .\dist\WillPDV\WillPDV.exe --autoteste "$env:USERPROFILE\Desktop\autoteste.txt" --rede
+   ```
+
+4. O instalador sai em `instalador\saida\WillPDV-Setup-<versão>.exe`; o autoteste deve terminar em "TUDO CERTO".
 
 ## Para quem mantém o sistema
 
