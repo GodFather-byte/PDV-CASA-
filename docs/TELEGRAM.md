@@ -13,6 +13,8 @@ Não precisa de servidor, de abrir porta no computador nem de número de telefon
 | Item cancelado | `❌ Item cancelado — Comanda 45 · 3x SKOL (R$ 24,00) · Por: ANA · Motivo: não informado` |
 | Sangria e suprimento | `💸 Sangria: R$ 500,00 · Por: ANA · Obs.: fornecedor de gelo` |
 | Backup falhou | `⚠️ O backup automático do PDV falhou.` |
+| Produto acabando (na hora em que cruza o limite) | `🚨 SKOL ACABOU (sem estoque)` ou `⚠️ VODKA está acabando: restam 4 (mínimo 5)` |
+| Cada venda fechada (opcional, vem desligado) | `🧾 Venda — Comanda 45: R$ 132,00 · Pix R$ 132,00 · Por: ANA` |
 | Resumo da noite (todo dia, às 7h por padrão) | faturamento, vendas, ticket médio, formas de pagamento, cancelamentos, sangrias e se cada caixa bateu |
 
 No fechamento o dono vê o dinheiro **esperado** e o **contado**: o operador não vê o esperado (a conferência do PDV é cega), mas o
@@ -29,6 +31,21 @@ dono vê no celular se sobrou ou faltou.
 | 📦 Estoque | produtos zerados e no ponto de pedido |
 | 🪑 Abertas | mesas e comandas em aberto e o total na rua |
 | ❌ Cancelamentos | cupons e itens cancelados na noite, com motivo e quem cancelou |
+| 🛒 Comprar | lista do que repor (sem estoque e no ponto de pedido), com a quantidade sugerida |
+| 📈 Semana | faturamento dos últimos 7 dias, dia a dia, com o melhor dia |
+| 🗓️ Mês | o mês até hoje (faturamento, ticket, média, melhor dia) e a comparação com o mês anterior |
+| 🕐 Por hora | como a noite está andando hora a hora, com o pico |
+| 👥 Equipe | vendas por garçom/vendedor na noite |
+| 💳 Contas | contas a pagar vencidas e dos próximos 7 dias (só se o módulo de contas estiver ligado) |
+| 📒 Caderneta | quanto a casa tem a receber e quem mais deve (nome e valor; nunca CPF, telefone ou endereço) |
+| 🔎 Produto | explica como buscar um produto |
+
+Além dos botões, o dono pode **digitar**:
+
+* `produto skol` (ou só `skol`): preço, estoque, mínimo, último preço de compra e últimos movimentos do produto;
+* `mesa 12` ou `comanda 5`: o consumo daquela mesa agora, item a item, com o total.
+
+Tudo é respondido na hora, direto do PDV, enquanto ele estiver ligado e com internet.
 
 A "noite" segue a virada do dia do PDV (Configurações > Configurações > Caixa, opção da hora em que o dia vira; 6h por padrão): a venda das 2h da manhã
 conta na noite que começou na véspera.
@@ -49,7 +66,7 @@ Toque em **Gerar código**. Aparece algo como `/start 498499`. No celular, abra 
 mensagem. Em poucos segundos a tela mostra o celular na lista e o bot responde *✅ Conectado!* com os botões.
 
 **4. Teste.**
-Toque em **Enviar mensagem de teste**. Pronto. Para escolher quais avisos receber (e o horário do resumo):
+Toque em **Enviar mensagem de teste**. Pronto. Para escolher quais avisos receber (inclusive ligar o aviso de **cada venda**, para ver o dinheiro entrando ao vivo, e o horário do resumo):
 **Configurações > Configurações > aba Telegram**.
 
 Quer que um sócio também receba? Repita o passo 3 com o celular dele (gere um código novo).

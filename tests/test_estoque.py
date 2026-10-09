@@ -236,3 +236,75 @@ class TesteEstoque(BaseTeste):
         self.lancar("saida", [(pid, 4)])
         movs = self.banco.todos("SELECT tipo, quantidade, qt_apos FROM movimentos_estoque WHERE produto_id = ? ORDER BY id", (pid,))
         self.assertEqual([(m["tipo"], m["quantidade"], m["qt_apos"]) for m in movs], [("entrada", 10, 10), ("saida", -4, 6)])
+
+
+class TestePainelDeEstoque(BaseTeste):
+    """Visão geral do estoque: situação, valor parado, movimento rápido, pedido sugerido e histórico."""
+
+    def setUp(self):
+        super().setUp()
+        self.est = EstoqueController(self.banco)
+        self.sem = self.novo_produto("SKOL", 800, estoque=True)
+        self.ponto = self.novo_produto("BRAHMA", 800, estoque=True, qt=4)
+        self.normal = self.novo_produto("COCA", 500, estoque=True, qt=30)
+        self.novo_produto("AGUA", 300)                                      # não controla estoque: fica fora do painel
+        for pid, minimo, preco in ((self.sem, 10, 200), (self.ponto, 5, 300), (self.normal, 6, 100)):
+            self.banco.executar("UPDATE produtos SET estoque_minimo = ?, ult_preco_cent = ? WHERE id = ?", (minimo, preco, pid))
+
+    def test_painel_resumo_filtros_e_valor_parado(self):
+        r = self.est.resumo()
+        self.assertEqual((r["total"], r["sem"], r["ponto"], r["normal"]), (3, 1, 1, 1))
+        self.assertEqual(r["valor_cent"], 4 * 300 + 30 * 100)                # o zerado não conta
+        self.assertEqual([p["nome"] for p in self.est.painel("ponto")], ["BRAHMA"])
+        self.assertEqual([p["nome"] for p in self.est.painel(texto="co")], ["COCA"])
+        self.assertEqual([p["nome"] for p in self.est.painel(texto="brahma")], ["BRAHMA"])
+        grupo = self.est.painel()[0]["grupo"]
+        self.assertEqual(len(self.est.painel(grupo=grupo)), 3)
+        self.assertEqual(self.est.painel(grupo="NÃO EXISTE"), [])
+
+    def test_sugestao_repoe_ate_o_dobro_do_minimo(self):
+        por_nome = {p["nome"]: p for p in self.est.painel()}
+        self.assertEqual(por_nome["SKOL"]["repor"], 20)                      # 10*2 - 0
+        self.assertEqual(por_nome["BRAHMA"]["repor"], 6)                     # 5*2 - 4
+        self.assertEqual(por_nome["COCA"]["repor"], 0)
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 0 WHERE id = ?", (self.sem,))
+        self.assertEqual({p["nome"]: p["repor"] for p in self.est.painel()}["SKOL"], 0)   # sem mínimo, não sugere
+        self.assertEqual([p["nome"] for p in self.est.lista_de_compras()], ["BRAHMA"])
+
+    def test_movimento_rapido_atualiza_estoque_e_historico(self):
+        self.est.registrar_rapido(self.sem, "entrada", 24)
+        self.est.registrar_rapido(self.sem, "descarte", 4)
+        self.est.registrar_rapido(self.sem, "saida", 2)
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.sem,)), 18)
+        self.est.registrar_rapido(self.sem, "contagem", 15)                  # contei 15 na prateleira
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.sem,)), 15)
+        hist = self.est.historico(self.sem)
+        self.assertEqual([h["rotulo"] for h in hist], ["Contagem", "Saída", "Descarte", "Entrada"])
+        self.assertEqual((hist[0]["quantidade"], hist[0]["qt_apos"]), (-3, 15))
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 4)
+
+    def test_movimento_rapido_recusa_o_que_nao_faz_sentido(self):
+        with self.assertRaises(ErroNegocio):
+            self.est.registrar_rapido(self.ponto, "saida", 5)                # só há 4
+        with self.assertRaises(ErroNegocio):
+            self.est.registrar_rapido(self.ponto, "entrada", 0)
+        with self.assertRaises(ErroNegocio):
+            self.est.registrar_rapido(self.ponto, "compra", 1)               # compra precisa de fornecedor/nota: lançamento completo
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.ponto,)), 4)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 0)    # nada ficou pela metade
+
+    def test_pedido_sugerido_nao_mexe_no_estoque_ate_confirmar(self):
+        forn = self.banco.inserir("fornecedores", {"nome": "AMBEV"})
+        lanc = self.est.pedido_sugerido(forn)
+        self.assertEqual(self.est.lancamento(lanc)["tipo"], "pedido")
+        self.assertEqual({i["nome"]: i["quantidade"] for i in self.est.itens(lanc)}, {"SKOL": 20, "BRAHMA": 6})
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.ponto,)), 4)
+        self.est.confirmar_pedido(lanc)
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.ponto,)), 10)
+
+    def test_pedido_sugerido_sem_nada_a_repor(self):
+        forn = self.banco.inserir("fornecedores", {"nome": "AMBEV"})
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 0")
+        with self.assertRaises(ErroNegocio):
+            self.est.pedido_sugerido(forn)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 0)

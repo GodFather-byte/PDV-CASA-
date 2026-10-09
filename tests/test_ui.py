@@ -2425,3 +2425,129 @@ class TesteTelegramNaTela(BaseUI):
         self.assertIn("telegram", [c[0] for c in CONFIGURACOES])
         modulos = {m["modulo"] for m in self.ctx.acesso.modulos_permitidos(self.ctx.operador, "Configurações")}
         self.assertIn("cfg_telegram", modulos)
+
+
+class TestePainelEstoqueUI(BaseUI):
+    def _menu_do(self, nome, senha):
+        from src.ui.app import App
+        app = App(self.banco)
+        self.addCleanup(app.root.destroy)
+        app.ctx.operador = app.ctx.acesso.autenticar(nome, senha)
+        return app
+
+    def _painel(self):
+        from src.ui.estoque_ui import PainelEstoque
+        self.banco.executar("UPDATE produtos SET qt_atual = 0 WHERE id = ?", (self.skol,))
+        self.banco.executar("UPDATE produtos SET controla_estoque = 1, qt_atual = 4, estoque_minimo = 5 WHERE id = ?", (self.agua,))
+        j = PainelEstoque(self.root, self.ctx)
+        j.update()
+        return j
+
+    def test_painel_mostra_cartoes_lista_e_filtros(self):
+        j = self._painel()
+        self.assertEqual(j.tree.get_children(), (str(self.agua), str(self.skol)))      # em ordem de nome
+        self.assertEqual([j.cartoes[c].valor.cget("text") for c in ("total", "sem", "ponto", "normal")], ["2", "1", "1", "0"])
+        j.filtrar("sem"); j.update()
+        self.assertEqual(j.tree.get_children(), (str(self.skol),))
+        j.filtrar("todos")
+        j.v_busca.set("agu"); j.update()
+        self.assertEqual(j.tree.get_children(), (str(self.agua),))
+        j.v_busca.set("xyz"); j.update()
+        self.assertEqual(j.tree.get_children(), ())
+        j.destroy()
+
+    def test_selecionar_mostra_detalhe_e_registrar_entrada(self):
+        j = self._painel()
+        j.tree.selection_set(str(self.skol)); j.update()
+        self.assertEqual(j.produto["id"], self.skol)
+        self.assertIn("SKOL", j.d_nome.cget("text"))
+        self.assertTrue(j.botoes["entrada"].ativo)
+        self.assertTrue(j.registrar("entrada", 24)); j.update()
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.skol,)), 24)
+        self.assertEqual(j.produto["qt_atual"], 24)                          # a seleção sobrevive à atualização
+        self.assertEqual(len(j.hist.get_children()), 1)
+        self.assertEqual(j.cartoes["sem"].valor.cget("text"), "0")
+        j.destroy()
+
+    def test_registrar_erro_de_negocio_nao_grava(self):
+        from unittest import mock
+        j = self._painel()
+        j.tree.selection_set(str(self.skol)); j.update()
+        with mock.patch.object(tema, "erro") as erro:
+            self.assertFalse(j.registrar("saida", 5))                        # estoque zerado
+        erro.assert_called_once()
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_estoque"), 0)
+        j.destroy()
+
+    def test_dialogo_de_quantidade_mostra_previa(self):
+        j = self._painel()
+        j.tree.selection_set(str(self.agua)); j.update()
+
+        def preencher(dlg):
+            ent = next(w for w in dlg.corpo.winfo_children() if w.winfo_class() == "TEntry")
+            ent.insert(0, "6"); dlg.update()
+            previa = [w.cget("text") for w in dlg.corpo.winfo_children() if w.winfo_class() == "TLabel"]
+            self.assertIn("Vai ficar com 10 UN", previa)
+            dlg.event_generate("<Return>")
+        self.robo.quando("Dialogo", preencher)
+        j.registrar_dialogo("entrada"); j.update()
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (self.agua,)), 10)
+        self.sem_travar()
+        j.destroy()
+
+    def test_definir_minimo(self):
+        from unittest import mock
+        j = self._painel()
+        j.tree.selection_set(str(self.agua)); j.update()
+        with mock.patch.object(tema, "pedir_texto", return_value=7.5):
+            j.definir_minimo()
+        self.assertEqual(self.banco.valor("SELECT estoque_minimo FROM produtos WHERE id = ?", (self.agua,)), 7.5)
+        j.destroy()
+
+    def test_gerar_pedido_e_lista_de_compras(self):
+        from unittest import mock
+        from src.ui import estoque_ui
+        forn = self.banco.inserir("fornecedores", {"nome": "AMBEV"})
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 5 WHERE id = ?", (self.skol,))
+        j = self._painel()
+        abertos = []
+        j.novo_lancamento = lambda lid=None: abertos.append(lid)
+        with mock.patch.object(tema, "escolher", return_value=forn):
+            j.gerar_pedido(); j.update()
+        pedido = self.ctx.estoque.lancamentos("pedido")[0]
+        self.assertEqual((pedido["fornecedor"], abertos), ("AMBEV", [pedido["id"]]))
+        from src.ui.lancamentos_ui import JanelaEstoque
+        je = JanelaEstoque(self.root, self.ctx); je.carregar(pedido["id"]); je.update()
+        self.assertEqual((je.grade.total(), je.v_tipo.get(), je.lanc_id), (2, "pedido", pedido["id"]))
+        je.destroy()
+        with mock.patch.object(estoque_ui, "Visualizador") as vis:
+            j.lista_de_compras()
+        self.assertIn("SKOL", vis.call_args.args[3])
+        j.destroy()
+
+    def test_painel_vazio_orienta_o_operador(self):
+        from src.ui.estoque_ui import PainelEstoque
+        self.banco.executar("UPDATE produtos SET controla_estoque = 0")
+        j = PainelEstoque(self.root, self.ctx); j.update()
+        self.assertEqual(j.tree.get_children(), ())
+        self.assertIn("Nenhum produto controla estoque", j.lbl_vazio.cget("text"))
+        j.destroy()
+
+    def test_menu_abre_o_painel_e_cartoes_filtram(self):
+        app = self._menu_do("adm", "adm")
+        app.mostrar_menu(); app.root.update()
+        app.cartoes["estoque_sem"].clique()
+        j = app.janelas["lanc_estoque"]; j.update()
+        self.assertEqual(j.filtro, "sem")
+        app.cartoes["estoque_ponto"].clique()
+        self.assertIs(app.janelas["lanc_estoque"], j)                       # a mesma janela, só troca o filtro
+        self.assertEqual(j.filtro, "ponto")
+        j.destroy()
+
+    def test_lancamento_novo_pela_janela_mostra_tipos_e_dica(self):
+        from src.ui.lancamentos_ui import JanelaEstoque
+        j = JanelaEstoque(self.root, self.ctx); j.update()
+        j.tipos["pedido"].escolher("pedido"); j.update()           # o que o clique no cartão chama
+        self.assertEqual(j.v_tipo.get(), "pedido")
+        self.assertIn("NÃO mexe no estoque", j.lbl_dica.cget("text"))
+        j.v_forn.set(""); j.destroy()

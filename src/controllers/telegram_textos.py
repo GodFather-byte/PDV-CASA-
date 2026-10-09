@@ -1,10 +1,12 @@
 """Textos que o dono recebe no Telegram: resumos sob demanda (os botões do bot) e avisos de eventos do caixa.
 
 Só texto simples (sem formatação do Telegram, para nunca falhar por causa de um caractere). Dinheiro em reais, como no
-resto do PDV. Não leva dados de clientes (nome, CPF, telefone): só totais, números de comanda e nomes de operadores.
+resto do PDV. O celular é do dono e só quem ele pareou recebe: por isso a caderneta mostra quem deve. Nunca vão CPF, RG,
+telefone ou endereço de cliente: só nomes, números de comanda e nomes de operadores.
 """
 from __future__ import annotations
 
+from src.controllers.estoque_controller import EstoqueController
 from src.controllers.relatorio_vendas import virada_dia
 from src.controllers.turno_controller import TurnoController
 from src.core import formatacao as fmt
@@ -103,6 +105,9 @@ def resumo(banco, dia: str | None = None, fechado: bool = False) -> str:
         sem = banco.valor("SELECT COUNT(*) FROM produtos WHERE controla_estoque = 1 AND ativo = 1 AND qt_atual <= 0", (), 0)
         if sem:
             linhas += ["", f"📦 Produtos sem estoque: {sem} (toque em Estoque para ver)"]
+        vencendo = _contas_a_pagar(banco, fmt.hoje(), fmt.hoje())
+        if vencendo:
+            linhas += [f"💳 Contas a pagar hoje: {len(vencendo)} ({_brl(sum(c['valor_cent'] for c in vencendo))}) — toque em Contas"]
     return "\n".join(linhas)
 
 
@@ -216,9 +221,238 @@ def ajuda() -> str:
     return ("Sou o bot da sua casa. Toque nos botões aqui embaixo:\n\n"
             "📊 Resumo — vendas da noite até agora\n📅 Ontem — resumo da noite passada\n"
             "💵 Caixa — turno aberto, vendido e dinheiro esperado\n🍺 Mais vendidos — top 10 da noite\n"
-            "📦 Estoque — o que zerou ou está acabando\n🪑 Abertas — mesas e comandas em aberto\n"
-            "❌ Cancelamentos — cupons e itens cancelados\n\n"
-            "Os avisos (abertura/fechamento do caixa, cancelamentos, sangrias) chegam sozinhos.")
+            "📦 Estoque — o que zerou ou está acabando\n🛒 Comprar — lista do que repor\n"
+            "🪑 Abertas — mesas e comandas em aberto\n❌ Cancelamentos — cupons e itens cancelados\n"
+            "📈 Semana — faturamento dos últimos 7 dias\n🗓️ Mês — mês até hoje e comparação com o anterior\n"
+            "🕐 Por hora — como a noite está andando\n👥 Equipe — vendas por garçom/vendedor\n"
+            "💳 Contas — contas a pagar vencidas e próximas\n📒 Caderneta — quem está devendo\n\n"
+            "Também dá para digitar:\n • produto skol — preço, estoque e últimos movimentos\n"
+            " • mesa 12 (ou comanda 5) — o consumo da mesa agora\n\n"
+            "Os avisos (caixa, cancelamentos, sangrias, produto acabando) chegam sozinhos.")
+
+
+# ------------------------------------------------- consultas do dono (tudo do PDV)
+_BASE_VENDAS = ("FROM vendas v WHERE v.status = 'fechada' AND v.fechada_em >= ? AND v.fechada_em < ? AND v.subtotal_cent > 0 "
+                "AND EXISTS (SELECT 1 FROM itens_venda i WHERE i.venda_id = v.id AND i.cancelado = 0)")
+
+
+def _por_dia(banco, ini: str, fim: str) -> dict[str, tuple[int, int]]:
+    """{dia operacional: (vendas, faturamento)} entre dois instantes; só dias com venda."""
+    virada = virada_dia(banco)
+    linhas = banco.todos(
+        f"SELECT date(datetime(v.fechada_em, '-{virada} hours')) AS dia, COUNT(*) AS n, COALESCE(SUM(v.total_cent),0) AS total "
+        f"{_BASE_VENDAS} GROUP BY dia ORDER BY dia", (ini, fim))
+    return {r["dia"]: (r["n"], r["total"]) for r in linhas}
+
+
+def semana(banco) -> str:
+    """Faturamento dos últimos 7 dias operacionais (hoje incluído), com o melhor dia destacado."""
+    hoje = dia_atual(banco)
+    primeiro = fmt.somar_dias(hoje, -6)
+    por_dia = _por_dia(banco, _faixa(banco, primeiro)[0], _faixa(banco, hoje)[1])
+    dias = [fmt.somar_dias(primeiro, i) for i in range(7)]
+    total = sum(por_dia.get(d, (0, 0))[1] for d in dias)
+    vendas = sum(por_dia.get(d, (0, 0))[0] for d in dias)
+    if not vendas:
+        return "📈 Últimos 7 dias\n\nNenhuma venda nesse período."
+    melhor = max(dias, key=lambda d: por_dia.get(d, (0, 0))[1])
+    linhas = ["📈 Últimos 7 dias", ""]
+    for d in dias:
+        n, v = por_dia.get(d, (0, 0))
+        marca = " 🏆" if d == melhor else ""
+        sufixo = " (até agora)" if d == hoje else ""
+        linhas.append(f"{_dia_rotulo(d)}: {_brl(v)} · {n} vendas{sufixo}{marca}")
+    ativos = sum(1 for d in dias if por_dia.get(d, (0, 0))[0])
+    linhas += ["", f"💰 Total: {_brl(total)} em {vendas} vendas", f"📊 Média por dia com venda: {_brl(fmt.dividir_cent(total, ativos))}"]
+    return "\n".join(linhas)
+
+
+def mes(banco) -> str:
+    """O mês até hoje, comparado ao mês anterior no mesmo trecho (dia 1 até o mesmo dia)."""
+    from datetime import datetime
+    hoje = dia_atual(banco)
+    d = datetime.strptime(hoje, "%Y-%m-%d")
+    primeiro = d.strftime("%Y-%m-01")
+    mes_ant = fmt.somar_dias(primeiro, -1)[:8] + "01"
+    mesmo_dia_ant = min(fmt.somar_dias(mes_ant, d.day - 1), fmt.somar_dias(primeiro, -1))
+    atual = _por_dia(banco, _faixa(banco, primeiro)[0], _faixa(banco, hoje)[1])
+    anterior = _por_dia(banco, _faixa(banco, mes_ant)[0], _faixa(banco, mesmo_dia_ant)[1])
+    n = sum(v[0] for v in atual.values())
+    total = sum(v[1] for v in atual.values())
+    nome_mes = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro",
+                "dezembro"][d.month - 1]
+    if not n:
+        return f"🗓️ {nome_mes.capitalize()}\n\nNenhuma venda neste mês ainda."
+    total_ant = sum(v[1] for v in anterior.values())
+    melhor = max(atual, key=lambda k: atual[k][1])
+    linhas = [f"🗓️ {nome_mes.capitalize()} até hoje", "",
+              f"💰 Faturamento: {_brl(total)}", f"🧾 Vendas: {n}  ·  Ticket médio: {_brl(fmt.dividir_cent(total, n))}",
+              f"📊 Média por dia com venda: {_brl(fmt.dividir_cent(total, len(atual)))} ({len(atual)} dias)",
+              f"🏆 Melhor dia: {_dia_rotulo(melhor)} com {_brl(atual[melhor][1])}"]
+    if total_ant:
+        pct = round((total - total_ant) * 100 / total_ant)
+        linhas += ["", f"Mês anterior no mesmo trecho: {_brl(total_ant)}",
+                   f"{'📈' if pct >= 0 else '📉'} {'+' if pct >= 0 else ''}{pct}% em relação a ele"]
+    return "\n".join(linhas)
+
+
+def por_hora(banco, dia: str | None = None) -> str:
+    """Faturamento por hora da noite (na ordem em que a noite acontece), com barrinhas."""
+    dia = dia or dia_atual(banco)
+    ini, fim = _faixa(banco, dia)
+    virada = virada_dia(banco)
+    horas = {r["h"]: (r["n"], r["total"]) for r in banco.todos(
+        f"SELECT CAST(strftime('%H', v.fechada_em) AS INTEGER) AS h, COUNT(*) AS n, COALESCE(SUM(v.total_cent),0) AS total "
+        f"{_BASE_VENDAS} GROUP BY h", (ini, fim))}
+    if not horas:
+        return f"🕐 Por hora — {_dia_rotulo(dia)}\n\nNenhuma venda ainda."
+    ordem = [(virada + i) % 24 for i in range(24)]
+    usadas = [h for h in ordem if h in horas]
+    ate = ordem.index(usadas[-1])
+    maior = max(v[1] for v in horas.values()) or 1
+    linhas = [f"🕐 Por hora — {_dia_rotulo(dia)}", ""]
+    for h in ordem[ordem.index(usadas[0]):ate + 1]:
+        n, v = horas.get(h, (0, 0))
+        linhas.append(f"{h:02d}h {'█' * max(1, round(v * 10 / maior)) if v else '·':<10} {_brl(v)} ({n})")
+    pico = max(horas, key=lambda h: horas[h][1])
+    linhas += ["", f"🔥 Pico: {pico:02d}h com {_brl(horas[pico][1])}"]
+    return "\n".join(linhas)
+
+
+def equipe(banco, dia: str | None = None) -> str:
+    """Vendas fechadas por garçom/vendedor (quem não tem, vai para quem operou o caixa)."""
+    dia = dia or dia_atual(banco)
+    ini, fim = _faixa(banco, dia)
+    linhas = banco.todos(
+        f"""SELECT COALESCE(g.nome, vd.nome, o.nome, '?') AS quem, COUNT(*) AS n, COALESCE(SUM(v.total_cent),0) AS total
+            FROM vendas v LEFT JOIN operadores g ON g.id = v.garcom_id LEFT JOIN operadores vd ON vd.id = v.vendedor_id
+            LEFT JOIN operadores o ON o.id = v.operador_id
+            WHERE v.status = 'fechada' AND v.fechada_em >= ? AND v.fechada_em < ? AND v.subtotal_cent > 0
+              AND EXISTS (SELECT 1 FROM itens_venda i WHERE i.venda_id = v.id AND i.cancelado = 0)
+            GROUP BY quem ORDER BY total DESC""", (ini, fim))
+    if not linhas:
+        return f"👥 Equipe — {_dia_rotulo(dia)}\n\nNenhuma venda ainda."
+    return "\n".join([f"👥 Equipe — {_dia_rotulo(dia)}", ""] + _recortar(
+        [f"{n}. {r['quem']}: {_brl(r['total'])} · {r['n']} vendas · ticket {_brl(fmt.dividir_cent(r['total'], r['n']))}"
+         for n, r in enumerate(linhas, 1)], 15))
+
+
+def _contas_a_pagar(banco, de: str | None, ate: str | None, vencidas: bool = False) -> list[dict]:
+    onde = "c.dt_quitacao IS NULL AND pl.debito = 1"
+    params: list = []
+    if vencidas:
+        onde += " AND c.dt_vencimento < ?"
+        params.append(de)
+    else:
+        onde += " AND c.dt_vencimento >= ? AND c.dt_vencimento <= ?"
+        params += [de, ate]
+    return [dict(r) for r in banco.todos(
+        f"""SELECT c.descricao, c.valor_cent, c.dt_vencimento, f.nome AS fornecedor FROM contas c
+            JOIN subplanos sp ON sp.id = c.subplano_id JOIN planos_contas pl ON pl.id = sp.plano_id
+            LEFT JOIN fornecedores f ON f.id = c.fornecedor_id WHERE {onde} ORDER BY c.dt_vencimento, c.id""", params)]
+
+
+def contas(banco) -> str:
+    """Contas a pagar em aberto: vencidas, de hoje e dos próximos 7 dias."""
+    if not banco.cfg_bool("usar_contas", False):
+        return "💳 O módulo de contas está desligado neste PDV."
+    hoje = fmt.hoje()
+    vencidas = _contas_a_pagar(banco, hoje, None, vencidas=True)
+    proximas = _contas_a_pagar(banco, hoje, fmt.somar_dias(hoje, 7))
+    if not vencidas and not proximas:
+        return "💳 Contas a pagar\n\n✅ Nada vencido e nada vencendo nos próximos 7 dias."
+
+    def linha(c):
+        quem = c["fornecedor"] or c["descricao"]
+        return f" • {fmt.fmt_data(c['dt_vencimento'])[:5]} {quem[:28]}: {_brl(c['valor_cent'])}"
+    linhas = ["💳 Contas a pagar", ""]
+    if vencidas:
+        linhas += [f"🚨 Vencidas ({len(vencidas)}, {_brl(sum(c['valor_cent'] for c in vencidas))}):"] + \
+                  _recortar([linha(c) for c in vencidas], 10) + [""]
+    if proximas:
+        linhas += [f"📅 Hoje e próximos 7 dias ({len(proximas)}, {_brl(sum(c['valor_cent'] for c in proximas))}):"] + \
+                  _recortar([linha(c) for c in proximas], 10)
+    return "\n".join(linhas).rstrip()
+
+
+def caderneta(banco) -> str:
+    """Quanto a casa tem a receber na caderneta e quem mais deve."""
+    devedores = banco.todos("SELECT nome, saldo_cent FROM clientes WHERE saldo_cent < 0 AND ativo = 1 ORDER BY saldo_cent, nome")
+    if not devedores:
+        return "📒 Caderneta\n\n✅ Ninguém está devendo."
+    total = -sum(d["saldo_cent"] for d in devedores)
+    return "\n".join([f"📒 Caderneta — {len(devedores)} clientes devendo, total {_brl(total)}", ""] + _recortar(
+        [f"{n}. {d['nome']}: {_brl(-d['saldo_cent'])}" for n, d in enumerate(devedores, 1)], 15))
+
+
+def comprar(banco) -> str:
+    """O que precisa ser comprado agora (sem estoque e no ponto de pedido), na quantidade sugerida."""
+    lista = EstoqueController(banco).lista_de_compras()
+    if not lista:
+        return "🛒 Lista de compras\n\n✅ Nada para repor agora (ou falta definir o estoque mínimo dos produtos)."
+    linhas = [f"🛒 Comprar — {len(lista)} produtos", ""]
+    linhas += _recortar([f" • {p['nome']}: tem {_qtd(p['qt_atual'])}, comprar {_qtd(p['repor'])} {p['unidade']}"
+                         + (" 🚨" if p["situacao"] == "sem" else "") for p in lista], 25)
+    return "\n".join(linhas)
+
+
+def produto(banco, busca: str) -> str:
+    """Preço, estoque e últimos movimentos de um produto (ou a lista dos que combinam, se forem vários)."""
+    busca = (busca or "").strip()
+    if not busca:
+        return "🔎 Digite o nome depois da palavra produto. Exemplo: produto skol"
+    from src.controllers.cadastro_controller import CadastroController
+    achados = CadastroController(banco).listar("produtos", texto=busca, apenas_ativos=True)
+    if not achados:
+        return f"🔎 Não achei nenhum produto com '{busca}'."
+    exatos = [p for p in achados if p["nome"].casefold() == busca.casefold()]
+    if len(achados) > 1 and len(exatos) != 1:
+        return "\n".join([f"🔎 {len(achados)} produtos combinam com '{busca}':", ""] + _recortar(
+            [f" • {p['nome']} — {_brl(p['preco_cent'])}" for p in achados], 15) + ["", "Digite o nome completo para ver os detalhes."])
+    p = (exatos or achados)[0]
+    linhas = [f"🔎 {p['nome']}", f"Preço de venda: {_brl(p['preco_cent'])}"]
+    if not p["controla_estoque"]:
+        linhas.append("Não controla estoque.")
+        return "\n".join(linhas)
+    est = EstoqueController(banco)
+    situacao = est.produtos.situacao_estoque(p)
+    rotulo = {"sem": "🚨 SEM ESTOQUE", "ponto": "⚠️ no ponto de pedido", "normal": "✅ normal"}[situacao]
+    linhas += [f"Estoque: {_qtd(p['qt_atual'])} ({rotulo})",
+               f"Mínimo: {_qtd(p['estoque_minimo'])}" if p["estoque_minimo"] else "Mínimo: não definido",
+               f"Último preço de compra: {_brl(p['ult_preco_cent'])}"]
+    movs = est.historico(p["id"], 6)
+    if movs:
+        linhas += ["", "Últimos movimentos:"] + [
+            f" • {fmt.fmt_datahora(m['criado_em'])[:16]} {m['rotulo']} {'+' if m['quantidade'] > 0 else ''}{_qtd(m['quantidade'])} → {_qtd(m['qt_apos'])}"
+            for m in movs]
+    return "\n".join(linhas)
+
+
+def mesa(banco, texto: str) -> str:
+    """O consumo de uma mesa ou comanda aberta agora: itens, total e quanto tempo faz."""
+    from src.core import posicao as pos
+    try:
+        comanda, numero = pos.interpretar(texto, banco.cfg("posicao_padrao", "comanda"))
+    except ValueError as e:
+        return f"🪑 {e}"
+    if numero == 0:
+        return "🪑 Informe o número da mesa ou comanda. Exemplo: mesa 12"
+    vendas = banco.todos(
+        "SELECT * FROM vendas WHERE modalidade = 'mesa' AND comanda = ? AND posicao = ? AND status IN ('aberta','conta_enviada') "
+        "ORDER BY id", (int(comanda), numero))
+    nome = pos.nome(comanda, numero)
+    if not vendas:
+        return f"🪑 {nome} não está aberta."
+    v = vendas[0]
+    itens = banco.todos(
+        """SELECT p.nome, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS total FROM itens_venda i JOIN produtos p ON p.id = i.produto_id
+           WHERE i.venda_id = ? AND i.cancelado = 0 GROUP BY p.id ORDER BY MIN(i.id)""", (v["id"],))
+    if not itens:
+        return f"🪑 {nome} está aberta, sem consumo."
+    linhas = [f"🪑 {nome} — aberta às {_hora(v['aberta_em'])}" + (" · conta enviada" if v["status"] == "conta_enviada" else ""), ""]
+    linhas += _recortar([f" • {_qtd(i['qt'])}x {i['nome']}: {_brl(i['total'])}" for i in itens], 25)
+    linhas += ["", f"💰 Total até agora: {_brl(v['total_cent'] or sum(i['total'] for i in itens))}"]
+    return "\n".join(linhas)
 
 
 # -------------------------------------------------------- avisos de eventos
@@ -282,3 +516,29 @@ def movimento_caixa(banco, tipo: str, valor_cent: int, descricao: str, operador_
 
 def backup_falhou(banco, erro: str) -> str:
     return f"⚠️ O backup automático do PDV falhou.\n{erro[:200]}\nAbra Utilitários > Backup de dados e confira a pasta/disco."
+
+
+def venda_fechada(banco, venda_id: int) -> str | None:
+    """Aviso de cada venda fechada (opcional: em noite cheia são muitas mensagens). Pagamento de caderneta não conta como venda."""
+    v = banco.um("SELECT v.*, o.nome AS operador FROM vendas v LEFT JOIN operadores o ON o.id = v.operador_id WHERE v.id = ?", (venda_id,))
+    if v is None or v["subtotal_cent"] <= 0:
+        return None
+    local = {"mesa": nome_posicao(v["comanda"], v["posicao"]), "balcao": "balcão", "caderneta": "caderneta"}.get(v["modalidade"], "entrega")
+    formas = banco.todos("SELECT t.tipo, SUM(p.valor_cent - p.troco_cent) AS valor FROM pagamentos_venda p "
+                         "JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id WHERE p.venda_id = ? GROUP BY t.id", (venda_id,))
+    linhas = [f"🧾 Venda — {local}: {_brl(v['total_cent'])}"]
+    if formas:
+        linhas.append(" + ".join(f"{f['tipo']} {_brl(f['valor'])}" for f in formas))
+    linhas.append(f"Por: {v['operador'] or '?'} às {_hora(v['fechada_em'])}")
+    return "\n".join(linhas)
+
+
+def estoque_alerta(banco, alertas: list[tuple[str, str, float, float]]) -> str:
+    """`alertas` = [(nome, 'sem'|'ponto', quantidade_agora, minimo)] dos produtos que acabaram de cruzar o limite."""
+    linhas = []
+    for nome, situacao, qt, minimo in alertas:
+        if situacao == "sem":
+            linhas.append(f"🚨 {nome} ACABOU (sem estoque)")
+        else:
+            linhas.append(f"⚠️ {nome} está acabando: restam {_qtd(qt)} (mínimo {_qtd(minimo)})")
+    return "\n".join(linhas + ["", "Toque em 🛒 Comprar para ver a lista de reposição."]) if linhas else ""

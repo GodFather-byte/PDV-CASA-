@@ -9,9 +9,51 @@ from src.controllers.estoque_controller import TIPOS
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 from src.ui import tema
+from src.ui.menu_widgets import PAL, misturar
 from src.ui.visualizador import Visualizador
 
 LIMITE_LANCAMENTOS = 300   # a lista de lançamentos anteriores mostra os mais recentes; a tela avisa quando corta
+
+
+# Para cada tipo: (cor, frase curta no cartão, o que acontece ao lançar). Linguagem de quem toca a casa, não de contador.
+EXPLICACAO = {
+    "compra": (PAL["verde"], "Comprei do fornecedor", "SOMA ao estoque e guarda o preço pago. Pode gerar a conta a pagar."),
+    "entrada": (PAL["azul"], "Chegou mercadoria", "SOMA ao estoque, sem compra (doação, troca, devolução)."),
+    "saida": (PAL["violeta"], "Saiu sem ser venda", "TIRA do estoque (consumo da casa, empréstimo, transferência)."),
+    "descarte": (PAL["vermelho"], "Perda ou quebra", "TIRA do estoque o que quebrou, venceu ou estragou."),
+    "contagem": (PAL["ambar"], "Contei e ajusto", "O que você digitar passa a ser o estoque. A diferença fica registrada."),
+    "inicial": (PAL["turquesa"], "Estoque inicial", "Primeira contagem de cada produto. Também define o estoque mínimo."),
+    "pedido": (PAL["ardosia"], "Pedido ao fornecedor", "NÃO mexe no estoque até confirmar a entrega; aí vira compra."),
+    "desc_acabados": (PAL["vermelho"], "Descartar produto pronto", "Dá baixa nos ingredientes da ficha técnica do produto."),
+}
+
+
+class _Tipo(tk.Frame):
+    """Cartão clicável de um tipo de movimento: título, frase curta e cor própria; o escolhido fica realçado."""
+
+    def __init__(self, pai, chave: str, escolher):
+        cor, frase, _ = EXPLICACAO[chave]
+        super().__init__(pai, bg=PAL["cartao"], highlightthickness=1, highlightbackground=PAL["borda"], cursor="hand2")
+        self.chave, self.cor, self.escolher, self.ativo = chave, cor, escolher, True
+        self.barra = tk.Frame(self, width=4, bg=misturar(PAL["cartao"], cor, 0.6))
+        self.barra.pack(side="left", fill="y")
+        txt = self.corpo = tk.Frame(self, bg=PAL["cartao"])
+        txt.pack(side="left", fill="both", expand=True, padx=10, pady=6)
+        self.titulo = tk.Label(txt, text=TIPOS[chave], font=("Segoe UI", 10, "bold"), fg=PAL["texto"], bg=PAL["cartao"], anchor="w")
+        self.titulo.pack(fill="x")
+        self.frase = tk.Label(txt, text=frase, font=("Segoe UI", 8), fg=PAL["suave"], bg=PAL["cartao"], anchor="w")
+        self.frase.pack(fill="x")
+        for w in (self, txt, self.titulo, self.frase, self.barra):
+            w.bind("<Button-1>", lambda e: self.ativo and self.escolher(self.chave))
+
+    def marcar(self, escolhido: bool, ativo: bool) -> None:
+        self.ativo = ativo
+        fundo = misturar(PAL["cartao"], self.cor, 0.28) if escolhido else PAL["cartao"]
+        for w in (self, self.corpo, self.titulo, self.frase):
+            w.configure(bg=fundo)
+        self.barra.configure(bg=self.cor if escolhido else misturar(PAL["cartao"], self.cor, 0.6))
+        self.configure(highlightbackground=self.cor if escolhido else PAL["borda"], cursor="hand2" if ativo else "")
+        self.titulo.configure(fg=PAL["texto"] if ativo or escolhido else PAL["mudo"])
 
 
 def _campo(pai, rotulo, widget_fn, linha, coluna, span=1):
@@ -231,7 +273,7 @@ class JanelaEstoque(tk.Toplevel):
         self.produto: dict | None = None
         self.title("Lançamento de Estoques")
         self.configure(bg=tema.COR["fundo"])
-        self.geometry("1100x740")
+        self.geometry("1200x820")
         self.v_tipo = tk.StringVar(value="compra")
         self._montar()
         self.bind("<Escape>", lambda e: self.destroy())
@@ -239,25 +281,38 @@ class JanelaEstoque(tk.Toplevel):
         self.transient(master.winfo_toplevel())
 
     def _montar(self) -> None:
-        b = tk.Frame(self, bg=tema.COR["marinho"], padx=6, pady=5)
-        b.pack(fill="x")
-        for rotulo, cmd in (("Novo lançamento", self.novo), ("Abrir anterior...", self.abrir_anterior), ("Excluir lançamento", self.excluir),
-                            ("Imprimir", self.imprimir)):
-            ttk.Button(b, text=rotulo, style="Barra.TButton", command=cmd).pack(side="left", padx=2)
-        ttk.Button(b, text="Sair", style="Barra.TButton", command=self.destroy).pack(side="right")
+        faixa = tk.Frame(self, bg=PAL["fundo"])
+        faixa.pack(fill="x")
+        titulo = tk.Frame(faixa, bg=PAL["fundo"])
+        titulo.pack(side="left", padx=(16, 8), pady=8)
+        tk.Label(titulo, text="Lançamento de estoque", font=("Segoe UI", 16, "bold"), fg=PAL["texto"], bg=PAL["fundo"]).pack(anchor="w")
+        self.lbl_passo = tk.Label(titulo, text="", font=("Segoe UI", 9), fg=PAL["suave"], bg=PAL["fundo"])
+        self.lbl_passo.pack(anchor="w")
+        ttk.Button(faixa, text="Sair", style="Barra.TButton", command=self.destroy).pack(side="right", padx=(2, 12))
+        for rotulo, cmd in (("Imprimir", self.imprimir), ("Excluir lançamento", self.excluir), ("Abrir anterior...", self.abrir_anterior),
+                            ("Novo lançamento", self.novo)):
+            ttk.Button(faixa, text=rotulo, style="Barra.TButton", command=cmd).pack(side="right", padx=2)
 
-        tipos = ttk.LabelFrame(self, text="Tipo de movimentação de estoque", padding=8)
-        tipos.pack(fill="x", padx=10, pady=(8, 0))
-        for t in self.ORDEM:
-            ttk.Radiobutton(tipos, text=TIPOS[t], value=t, variable=self.v_tipo, command=self._tipo_mudou).pack(side="left", padx=8)
+        tipos = tk.Frame(self, bg=PAL["lateral"], padx=12, pady=10)
+        tipos.pack(fill="x")
+        tk.Label(tipos, text="1 · O que aconteceu com o estoque?", font=("Segoe UI", 9, "bold"), fg=PAL["suave"], bg=PAL["lateral"]).grid(
+            row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        self.tipos: dict[str, _Tipo] = {}
+        for i, t in enumerate(self.ORDEM):
+            c = _Tipo(tipos, t, self._escolher_tipo)
+            c.grid(row=1 + i // 4, column=i % 4, sticky="nsew", padx=(0, 8), pady=(0, 6))
+            tipos.columnconfigure(i % 4, weight=1, uniform="tipo")
+            self.tipos[t] = c
+        self.lbl_dica = tk.Label(tipos, text="", font=("Segoe UI", 10), fg=PAL["texto"], bg=PAL["lateral"], anchor="w", justify="left")
+        self.lbl_dica.grid(row=3, column=0, columnspan=4, sticky="we", pady=(2, 0))
 
-        cab = ttk.LabelFrame(self, text="Lançamento", padding=8)
+        cab = ttk.LabelFrame(self, text="2 · Dados do lançamento", padding=8)
         cab.pack(fill="x", padx=10, pady=8)
         forn = self.ctx.cadastros.opcoes("fornecedores")
         self.mapa_forn = {r: i for i, r in forn}
         self.v_forn, self.v_desc, self.v_data, self.v_valor, self.v_doc, self.v_nf = (tk.StringVar() for _ in range(6))
-        self.cb_forn = _campo(cab, "Fornecedor", lambda p: ttk.Combobox(p, textvariable=self.v_forn, values=[r for _, r in forn], state="readonly", width=28), 0, 0)
-        _campo(cab, "Descrição", lambda p: ttk.Entry(p, textvariable=self.v_desc, width=30), 0, 1)
+        self.cb_forn = _campo(cab, "Fornecedor", lambda p: ttk.Combobox(p, textvariable=self.v_forn, values=[r for _, r in forn], state="readonly", width=24), 0, 0)
+        _campo(cab, "Descrição", lambda p: ttk.Entry(p, textvariable=self.v_desc, width=26), 0, 1)
         _campo(cab, "Data", lambda p: ttk.Entry(p, textvariable=self.v_data, width=12), 0, 2)
         self.e_valor = _campo(cab, "Valor da nota", lambda p: ttk.Entry(p, textvariable=self.v_valor, width=14), 1, 0)
         _campo(cab, "Documento", lambda p: ttk.Entry(p, textvariable=self.v_doc, width=20), 1, 1)
@@ -271,7 +326,7 @@ class JanelaEstoque(tk.Toplevel):
         self.btn_confirma = ttk.Button(cab, text="Confirmar entrega do pedido", command=self.confirmar_entrega)
         self.btn_confirma.grid(row=1, column=3, padx=6)
 
-        self.painel_item = ttk.LabelFrame(self, text="Lançamento de itens", padding=8)
+        self.painel_item = ttk.LabelFrame(self, text="3 · Itens (código, nome ou \"150 skol\" para lançar direto)", padding=8)
         self.painel_item.pack(fill="x", padx=10)
         self.v_cod, self.v_prod, self.v_qtd, self.v_desc_item, self.v_val_item, self.v_min = (tk.StringVar() for _ in range(6))
         self.e_cod = _campo(self.painel_item, "Código", lambda p: ttk.Entry(p, textvariable=self.v_cod, width=16), 0, 0)
@@ -284,7 +339,7 @@ class JanelaEstoque(tk.Toplevel):
         self.lbl_atual = ttk.Label(self.painel_item, text="", foreground=tema.COR["suave"])
         self.lbl_atual.grid(row=1, column=0, columnspan=5, sticky="w")
         bb = ttk.Frame(self.painel_item)
-        bb.grid(row=1, column=5, sticky="e")
+        bb.grid(row=1, column=4, columnspan=2, sticky="e")
         ttk.Button(bb, text="Confirmar item (Enter)", style="Ok.TButton", command=self.adicionar_item).pack(side="left")
         ttk.Button(bb, text="Limpar", command=self._limpar_item).pack(side="left", padx=6)
 
@@ -299,14 +354,31 @@ class JanelaEstoque(tk.Toplevel):
         self.grade.tree.bind("<Return>", lambda e: (self.remover_item(), "break")[1])
         self.grade.tree.bind("<Delete>", lambda e: self.remover_item())
         self.e_cod.bind("<Return>", lambda e: self._achar_codigo())
+        self._todos_nomes = nomes
+        self.cb_prod.bind("<KeyRelease>", self._filtrar_nomes)
         self.cb_prod.bind("<<ComboboxSelected>>", lambda e: self._achar_nome())
         self.cb_prod.bind("<Return>", lambda e: self._achar_nome() if self.v_prod.get().strip() else None)
         for w in (self.e_qtd, self.e_desc_item, self.e_val_item, self.e_min):
             w.bind("<Return>", lambda e: self.adicionar_item())
 
     # -------------------------------------------------------------- estado
+    def _escolher_tipo(self, tipo: str) -> None:
+        self.v_tipo.set(tipo)
+        self._tipo_mudou()
+
+    def _pintar_tipos(self) -> None:
+        escolhido = self.v_tipo.get()
+        livre = self.lanc_id is None             # depois de iniciar o lançamento o tipo não muda mais (só pedido -> compra, ao confirmar)
+        for chave, c in self.tipos.items():
+            c.marcar(chave == escolhido, livre)
+        _, _, dica = EXPLICACAO[escolhido]
+        self.lbl_dica.configure(text=f"{TIPOS[escolhido]}:  {dica}")
+        self.lbl_passo.configure(text="Escolha o tipo, preencha os dados e toque em \"Lançar itens\"." if livre else
+                                      f"Lançamento aberto: digite o código ou nome do produto e a quantidade.  (Tipo: {TIPOS[escolhido]})")
+
     def _tipo_mudou(self) -> None:
         t = self.v_tipo.get()
+        self._pintar_tipos()
         usa_forn = t in ("compra", "pedido")
         self.cb_forn.configure(state="readonly" if usa_forn else "disabled")
         self.e_valor.configure(state="normal" if t == "compra" else "disabled")
@@ -374,13 +446,17 @@ class JanelaEstoque(tk.Toplevel):
             rotulo = f"Mostrando os {len(lancs)} lançamentos mais recentes de {len(todos)}. Filtrar por texto:"
         lid = tema.escolher(self, "Lançamentos de estoque", itens, rotulo, colunas=cols, altura=14)
         if lid:
-            l = self.est.lancamento(lid)
-            self.lanc_id = lid
-            self.v_tipo.set(l["tipo"]); self.v_forn.set(l["fornecedor"] or ""); self.v_desc.set(l["descricao"] or "")
-            self.v_data.set(fmt.fmt_data(l["data"])); self.v_valor.set(fmt.fmt_num(l["valor_cent"])); self.v_doc.set(l["documento"] or "")
-            self.v_nf.set(l["nota_fiscal"] or "")
-            self._estado_header(editavel=False)
-            self.atualizar()
+            self.carregar(lid)
+
+    def carregar(self, lid: int) -> None:
+        """Abre um lançamento já gravado (da lista de anteriores ou de um pedido recém-gerado pelo painel)."""
+        l = self.est.lancamento(lid)
+        self.lanc_id = lid
+        self.v_tipo.set(l["tipo"]); self.v_forn.set(l["fornecedor"] or ""); self.v_desc.set(l["descricao"] or "")
+        self.v_data.set(fmt.fmt_data(l["data"])); self.v_valor.set(fmt.fmt_num(l["valor_cent"])); self.v_doc.set(l["documento"] or "")
+        self.v_nf.set(l["nota_fiscal"] or "")
+        self._estado_header(editavel=False)
+        self.atualizar()
 
     def atualizar(self) -> None:
         itens = self.est.itens(self.lanc_id)
@@ -441,6 +517,13 @@ class JanelaEstoque(tk.Toplevel):
         self.v_qtd.set(m.group(1))
         self.adicionar_item()
         return True
+
+    def _filtrar_nomes(self, evento) -> None:
+        """Enquanto digita o nome, a lista suspensa já mostra só os produtos que combinam (sem perder o que foi digitado)."""
+        if evento.keysym in ("Return", "Up", "Down", "Escape", "Tab", "Left", "Right"):
+            return
+        t = self.v_prod.get().strip().casefold()
+        self.cb_prod.configure(values=[n for n in self._todos_nomes if t in n.casefold()][:60] if t else self._todos_nomes)
 
     def _achar_nome(self) -> None:
         nome = self.v_prod.get()
