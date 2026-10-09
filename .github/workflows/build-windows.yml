@@ -97,7 +97,30 @@ jobs:
           if (-not $t.WaitForExit(240000)) { $t.Kill(); throw "O autoteste do programa instalado travou." }
           if (Test-Path $saida) { Get-Content $saida }
           if ($t.ExitCode -ne 0) { throw "Autoteste do programa instalado falhou (código $($t.ExitCode))." }
+
+      # O caso do PC da boate: o WillPDV continua rodando (tela de entrada aberta e o processo de segundo plano --sync, que nem
+      # janela tem) quando se roda o instalador de novo. O Restart Manager não fecha o que não tem janela e a instalação travava em
+      # "os aplicativos a seguir estão usando arquivos que precisam ser atualizados". Aqui reproduzimos isso e exigimos que passe.
+      - name: Atualizar por cima com o WillPDV aberto (instalador não pode travar)
+        run: |
+          $inst = (Get-ChildItem instalador\saida\WillPDV-Setup-*.exe | Select-Object -First 1).FullName
+          $destino = Join-Path $env:RUNNER_TEMP "WillPDV-instalado"
+          $gui = Start-Process -FilePath "$destino\WillPDV.exe" -PassThru
+          $bg = Start-Process -FilePath "$destino\WillPDV.exe" -ArgumentList "--sync" -PassThru
+          Start-Sleep -Seconds 8
+          $vivos = @(Get-Process -Name WillPDV -ErrorAction SilentlyContinue)
+          Write-Host "WillPDV rodando antes de atualizar: $($vivos.Count) (esperado: 2)"
+          if ($vivos.Count -lt 2) { throw "Não consegui deixar o programa aberto para testar a atualização por cima." }
+          $log = Join-Path $env:RUNNER_TEMP "instalador-por-cima.log"
+          $p = Start-Process -FilePath $inst -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$destino`"", "/LOG=`"$log`"" -PassThru
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); throw "O instalador travou com o WillPDV aberto (mais de 5 minutos)." }
+          if (Test-Path $log) { Get-Content $log | Select-String -Pattern "close|Restart|in use|WillPDV.exe|Exit code" | Select-Object -Last 25 }
+          Start-Sleep -Seconds 2
+          $restam = @(Get-Process -Name WillPDV -ErrorAction SilentlyContinue)
+          Write-Host "WillPDV rodando depois de atualizar: $($restam.Count) (esperado: 0 ou o recém-aberto)"
+          if ($p.ExitCode -ne 0) { throw "O instalador falhou com o WillPDV aberto (código $($p.ExitCode))." }
           # desinstala (confere também que o desinstalador funciona)
+          Get-Process -Name WillPDV -ErrorAction SilentlyContinue | Stop-Process -Force
           $u = Start-Process -FilePath "$destino\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru
           $u.WaitForExit(120000) | Out-Null
 
