@@ -68,7 +68,7 @@ python -m tools.gerar_licenca emitir --loja TESTE --dias 30
 ```
 
 Cole a linha que começa por `PDVL1.` e confirme. Depois entre com **ADM / ADM**: o sistema obriga a trocar a senha. Se você
-ainda não tem o par de chaves, veja "Como emitir as licenças" no `README.md` (a chave pública que vai no programa é a de
+ainda não tem o par de chaves, veja "WillPDV Licenças: o gerador de licenças" no `README.md` (ou `docs/LICENCIADOR.md`) (a chave pública que vai no programa é a de
 `src/core/licenca.py`; um código só vale se foi emitido pela chave privada correspondente).
 
 ## 5. Roteiro rápido de teste (uns 15 minutos)
