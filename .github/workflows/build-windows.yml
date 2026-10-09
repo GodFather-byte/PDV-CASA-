@@ -4,8 +4,9 @@
 #   * Manual: aba Actions > "Gerar instalador (Windows)" > Run workflow  (escolha a branch).
 #   * Automático: a cada push na main ou numa branch claude/**, e numa tag v* (esta ainda publica uma Release).
 #
-# Onde pegar: na página da execução, em "Artifacts" (WillPDV-Instalador-<versão>-<commit> é o .exe de instalação, dentro de um
-# .zip que o GitHub cria). Numa tag v*, o instalador também vai para a aba Releases, sem zip.
+# Onde pegar (o mais fácil): aba Releases > "WillPDV - última versão". A cada push na main o instalador (WillPDV-Instalador.exe)
+# e a versão portátil (WillPDV-Portatil.zip) são republicados ali, com link fixo e sem .zip em volta. Também ficam nos
+# "Artifacts" da página da execução (o .exe vem dentro de um .zip que o GitHub cria). Numa tag v*, vai uma Release de versão.
 name: Gerar instalador (Windows)
 
 on:
@@ -142,7 +143,8 @@ jobs:
 
           O programa e o instalador passaram no autoteste (módulos, banco, telas e conexão HTTPS com o Telegram).
 
-          **Baixe em *Artifacts*, no fim desta página:** ``WillPDV-Instalador-${{ steps.info.outputs.versao }}-${{ steps.info.outputs.curto }}`` (o instalador, dentro de um .zip) e ``WillPDV-Portatil`` (a pasta do programa, sem instalar).
+          **Mais fácil:** na main, o instalador também vai para a aba **Releases** (link fixo, sem .zip): https://github.com/${{ github.repository }}/releases/tag/ultima-versao
+          Em qualquer branch: baixe em *Artifacts*, no fim desta página: ``WillPDV-Instalador-${{ steps.info.outputs.versao }}-${{ steps.info.outputs.curto }}`` (o instalador, dentro de um .zip) e ``WillPDV-Portatil`` (a pasta do programa, sem instalar).
           Passo a passo: ``docs/INSTALAR_E_TESTAR.md``.
           "@ >> $env:GITHUB_STEP_SUMMARY
 
@@ -293,3 +295,41 @@ jobs:
         with:
           files: publicar/WillPDV-Setup-*.exe
           generate_release_notes: true
+
+  # A cada push na main: republica o instalador e a versão portátil numa Release "última versão", com link fixo. É o lugar mais
+  # fácil de achar (aba Releases, lado direito da página principal do repositório) e dá para mandar o link a quem vai testar.
+  # O programa de licenças (do fornecedor) NÃO vai para cá: a Release é pública. Ele fica nos Artifacts da execução.
+  ultima_versao:
+    name: Publicar "última versão" na aba Releases
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publicar-ultima-versao
+      cancel-in-progress: false          # nunca interrompe no meio de apagar e recriar a Release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: WillPDV-*
+          merge-multiple: true
+          path: publicar
+
+      - name: Nomes fixos (o link não muda a cada versão)
+        run: |
+          ls -l publicar
+          cp publicar/WillPDV-Setup-*.exe publicar/WillPDV-Instalador.exe
+          ls -l publicar
+
+      - name: Recriar a Release "ultima-versao" apontando para este commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSAO: ${{ needs.build.outputs.versao }}
+        run: |
+          gh release delete ultima-versao --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          curto="${GITHUB_SHA:0:7}"
+          notas="Instalador e versão portátil gerados automaticamente a partir do código mais recente da main (versão $VERSAO, commit $curto). Já passaram no autoteste do programa empacotado, na instalação silenciosa e na atualização por cima com o programa aberto. Esta Release é sobrescrita a cada atualização da main; para uma versão numerada, veja as outras Releases. Passo a passo: docs/INSTALAR_E_TESTAR.md"
+          gh release create ultima-versao --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "WillPDV - última versão ($VERSAO, commit $curto)" --notes "$notas" \
+            publicar/WillPDV-Instalador.exe publicar/WillPDV-Portatil.zip

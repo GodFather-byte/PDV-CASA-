@@ -19,7 +19,8 @@ entrada (nunca com um turno recente aberto). Renovar é emitir um código novo e
 
 ## Instalar
 
-1. No GitHub: aba **Actions > Gerar instalador (Windows)** > execução mais recente > **Artifacts** >
+1. No GitHub: aba **Actions > Gerar instalador (Windows)** > clique na execução mais recente (a primeira da lista, com o ✔ verde)
+   > role até o fim da página, em **Artifacts** >
    `WillLicencas-Instalador-<versão>-<commit>`. Baixe, extraia o .zip e rode `WillLicencas-Setup-1.0.0.exe`.
 2. Se o Windows avisar "protegeu o seu computador", clique em **Mais informações > Executar assim mesmo** (o instalador ainda não
    tem assinatura digital paga).
