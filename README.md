@@ -226,6 +226,9 @@ dois controles. Outras ideias, que mudam regras ou o banco, estão em `docs/ESPE
 
 ## Impressão térmica
 
+> **Elgin i9 (ou outra térmica) não imprime?** Abra Configurações > Máquinas > *Assistente de impressora*: ele aponta o que
+> está errado, configura o caixa de uma vez e imprime o teste. Guia: [`docs/IMPRESSORA.md`](docs/IMPRESSORA.md).
+
 O caixa imprime em impressora térmica ESC/POS (Epson TM, Bematech, Elgin, Tanca e compatíveis; 58 mm ou 80 mm). Cupom,
 pré-conta, pedido de entrega, comprovante de sangria, fechamento do turno, recibo e via da comissão das garotas e Leituras X/Z saem por ela. Todos são
 **não fiscais**.

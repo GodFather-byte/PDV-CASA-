@@ -42,11 +42,16 @@ class JanelaFilaImpressao(tk.Toplevel):
         ttk.Button(barra, text="Cancelar selecionado", style="Perigo.TButton", command=self.cancelar).pack(side="left")
         ttk.Button(barra, text="Imprimir página de teste", command=self.teste).pack(side="left", padx=6)
         ttk.Button(barra, text="Limpar impressos", command=self.limpar).pack(side="left")
+        ttk.Button(barra, text="Assistente de impressora", command=self.assistente).pack(side="left", padx=6)
         ttk.Button(barra, text="Fechar (Esc)", command=self.destroy).pack(side="right")
         self.bind("<Escape>", lambda e: self.destroy())
         self.atualizar()
         tema.centralizar(self, master.winfo_toplevel())
         self.transient(master.winfo_toplevel())
+
+    def assistente(self) -> None:
+        from src.ui.assistente_impressora_ui import JanelaAssistenteImpressora
+        JanelaAssistenteImpressora(self, self.ctx, self.atualizar)
 
     def _cancelar_agendamento(self) -> None:
         if self._id_after:

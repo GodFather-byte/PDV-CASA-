@@ -40,12 +40,29 @@ def abrir(master, ctx, chave: str):
         return JanelaFormulario(master, ctx, "Máquinas", campos, ctx.config.maquina, ctx.config.salvar_maquina,
                                 aviso="Atenção: as mudanças nas configurações do equipamento só valem depois de sair do programa e entrar novamente.",
                                 somente_leitura=("terminal",),
-                                acoes=[("Escolher impressora do computador", lambda j: escolher_impressora(j, ctx, "termica")),
+                                acoes=[("Assistente de impressora (Elgin i9)", lambda j: abrir_assistente(j, ctx)),
+                                       ("Escolher impressora do computador", lambda j: escolher_impressora(j, ctx, "termica")),
                                        ("Imprimir página de teste", _testar), ("Abrir gaveta", _gaveta)],
                                 botoes_campo={"impressora_termica_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "termica")),
                                               "impressora_remota_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "remota"))})
     return JanelaFormulario(master, ctx, "Configurações", [(c[0], c[1], c[2], c[3], c[4] if len(c) > 4 else None) for c in CAMPOS_CONFIG],
                             ctx.config.todas, ctx.config.salvar_config)
+
+
+def abrir_assistente(janela, ctx):
+    """Assistente que escolhe a impressora, grava a configuração certa e imprime o teste. Grava direto no banco, então a janela de
+    Máquinas (aberta por trás) recarrega os campos quando o assistente configura, para um 'Gravar' dela não desfazer a escolha."""
+    from src.ui.assistente_impressora_ui import JanelaAssistenteImpressora
+
+    def recarregar() -> None:
+        try:
+            dados = ctx.config.maquina()
+            for campo in ("modo_impressao", "impressora_termica_conexao", "impressora_termica_endereco", "impressora_termica_codepage",
+                          "colunas_fita", "impressora_termica_cortar"):
+                janela.definir(campo, dados[campo])
+        except tk.TclError:
+            pass            # a janela de Máquinas foi fechada com o assistente aberto
+    return JanelaAssistenteImpressora(janela, ctx, recarregar)
 
 
 def escolher_impressora(janela, ctx, alvo: str):
