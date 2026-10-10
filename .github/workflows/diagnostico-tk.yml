@@ -11,20 +11,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        filtro:
-          - "-k test_assistente_marca -k test_cozinha"
-          - "-k test_assistente_quando -k test_cozinha"
-          - "-k test_assistente_copia -k test_cozinha"
-          - "-k test_assistente_sem -k test_cozinha"
-          - "-k test_botoes -k test_cozinha"
-          - "-k test_cozinha"
+        diag:
           - ""
+          - "nocent"
+          - "notrans"
+          - "nobind"
+          - "noatualizar"
+          - "nocent notrans"
+          - "nocent notrans nobind noatualizar"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt -r backend/requirements.txt httpx
-      - run: |
+      - env:
+          DIAG_TK: ${{ matrix.diag }}
+        run: |
           sudo apt-get update -q && sudo apt-get install -y -q xvfb python3-tk
-          xvfb-run -a -s "-screen 0 1920x1080x24" python -X faulthandler -m unittest tests.test_ui.TesteSeletorDeImpressoras ${{ matrix.filtro }} -v
+          xvfb-run -a -s "-screen 0 1920x1080x24" python -X faulthandler -m unittest tests.test_ui.TesteSeletorDeImpressoras -k test_assistente_sem -k test_cozinha -v
