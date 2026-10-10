@@ -87,6 +87,24 @@ impressão RAW do Windows precisa de `pip install -r requirements.txt`.
 - **Qualidade:** a suíte cobre regras de caixa, estoque, cadastro, formatação,
   segurança e banco local. Rode os testes antes de integrar alterações.
 
+## A tela do caixa
+
+Visual escuro, no mesmo azul-noite do menu principal. Na **direita**: o **total a pagar** em destaque (com o troco), o botão
+verde **Pagar (F12)** e as demais ações em dois grupos, *Venda* (cancelar, consultar, mesa/comanda, pré-conta, transferir,
+repique, delivery, caderneta, consulta de comanda, comissões) e *Caixa* (sangria, gaveta, impressora, balança, leitor, fechar
+turno); **Sair** fica no canto do cabeçalho, longe dos botões do dia a dia. Na **esquerda**: a comanda/mesa e a venda atual,
+o cartão de **entrada do item** (código, descrição, quantidade e preço, com a dica das teclas), a lista de itens (com um convite
+quando está vazia) e, embaixo, os ícones das mesas e comandas abertas. As setas e o Enter continuam percorrendo as ações como
+antes (**Enter** com o código vazio entra na barra; a ordem das setas é a que se vê na tela). Em notebook de tela estreita os
+campos encolhem sozinhos.
+
+**Pagamento (F12):** as formas (Dinheiro, Débito, Crédito e Pix) são linhas grandes com a **tecla** de cada uma: **1 a 4**, ou
+a inicial (**D** alterna Dinheiro e Débito, **C** é Crédito, **P** é Pix); um clique na forma já leva ao valor, e o valor sugerido é o
+que falta. O valor só aceita número (sem `1e5`, sinal ou mais de 2 casas; `1.000` é mil); **Débito, Crédito e Pix não aceitam mais
+do que falta** (só o dinheiro dá troco) e um **troco acima de R$ 500** pede confirmação, para um zero a mais não virar um troco
+absurdo. **Remover (Delete)** tira o pagamento selecionado (sem seleção, o último). F10 duas vezes seguidas grava uma venda só, e
+se o cupom não puder ser preparado a venda continua gravada e a tela avisa para reimprimir pelo botão Impressora.
+
 ## Mesas e comandas
 
 No caixa, o campo **Comanda** (tecla **F4**) recebe só o número: digite `123` e Enter para abrir a comanda 123 (vai até

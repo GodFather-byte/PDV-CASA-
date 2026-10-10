@@ -15,18 +15,19 @@ from typing import Callable
 
 from src.core import formatacao as fmt
 from src.ui import tema
+from src.ui.caixa_tema import CX
 
 LARGURA, ALTURA, MARGEM = 74, 72, 6
 LINHAS_VISIVEIS = 2           # acima disso a faixa rola, para não tomar a tela do caixa
 RESERVA_BARRA = 18            # espaço da barra de rolagem (sobreposta), reservado sempre para a disposição não oscilar
 LARGURA_PADRAO = 900          # antes de a janela ser mostrada o Tk ainda não sabe a largura real
 
-ESTADOS = {
-    "consumindo": {"fundo": "#ffffff", "borda": "#9fb3e0", "texto": tema.COR["marinho"]},
-    "parada": {"fundo": "#fdeaea", "borda": "#e39a9a", "texto": tema.COR["perigo"]},
-    "conta": {"fundo": "#fff3dc", "borda": "#e2b25a", "texto": "#8a5a00"},
-    "balcao": {"fundo": "#eaf6ef", "borda": "#8cc8a5", "texto": "#14623f"},
-    "garota": {"fundo": "#e4f5f2", "borda": "#7cc4b8", "texto": "#0b7a6b"},
+ESTADOS = {          # cores para o fundo escuro do caixa
+    "consumindo": {"fundo": "#17234d", "borda": "#3d57a8", "texto": CX["texto"]},
+    "parada": {"fundo": "#3a1a2a", "borda": "#a24a5b", "texto": "#ff8a98"},
+    "conta": {"fundo": "#3a2f17", "borda": "#b08a2e", "texto": "#ffcf6e"},
+    "balcao": {"fundo": "#13302a", "borda": "#2e8f6c", "texto": "#5fe0b0"},
+    "garota": {"fundo": "#0f3434", "borda": "#2a9d92", "texto": "#4fd8c6"},
 }
 
 
@@ -146,7 +147,7 @@ class PainelMesas(ttk.Frame):
 
     def __init__(self, master, ao_escolher: Callable[[str], None], ao_transferir: Callable[[str], None],
                  ao_voltar: Callable[[], None], ao_digitar: Callable[[str], None]):
-        super().__init__(master)
+        super().__init__(master, style="Cx.TFrame")
         self._ao_escolher, self._ao_transferir = ao_escolher, ao_transferir
         self._ao_voltar, self._ao_digitar = ao_voltar, ao_digitar
         self._tiles: list[dict] = []
@@ -159,17 +160,17 @@ class PainelMesas(ttk.Frame):
         self._por_linha = 1
         self._id_redesenho = None
 
-        cabecalho = ttk.Frame(self)
+        cabecalho = ttk.Frame(self, style="Cx.TFrame")
         cabecalho.pack(fill="x")
-        ttk.Label(cabecalho, text="Mesas e comandas abertas", style="Rotulo.TLabel").pack(side="left")
-        ttk.Label(cabecalho, text="Esc marca a comanda   |   setas + Enter escolhem   |   T transfere outras para a escolhida"
-                                  "   |   0 = balcão   |   estrela = comissão de garota a pagar",
-                  font=("Segoe UI", 8), foreground=tema.COR["suave"]).pack(side="right")
-        c = self.canvas = tk.Canvas(self, height=ALTURA + 2 * MARGEM, bg=tema.COR["fundo"], bd=0, takefocus=True,
-                                    highlightthickness=1, highlightbackground=tema.COR["borda"],
-                                    highlightcolor=tema.COR["marinho2"], yscrollincrement=ALTURA)
+        ttk.Label(cabecalho, text="MESAS E COMANDAS ABERTAS", style="Cx.Rotulo.TLabel").pack(side="left")
+        ttk.Label(cabecalho, text="Esc marca a comanda  |  setas + Enter escolhem  |  T transfere outras para a escolhida"
+                                  "  |  0 = balcão  |  estrela = comissão a pagar",
+                  font=("Segoe UI", 8), style="Cx.TLabel", foreground=CX["mudo"]).pack(side="right")
+        c = self.canvas = tk.Canvas(self, height=ALTURA + 2 * MARGEM, bg=CX["fundo"], bd=0, takefocus=True,
+                                    highlightthickness=1, highlightbackground=CX["borda"],
+                                    highlightcolor=CX["azul"], yscrollincrement=ALTURA)
         c.pack(fill="x")
-        self.barra = ttk.Scrollbar(c, orient="vertical", command=c.yview)    # sobreposta ao canvas (place)
+        self.barra = ttk.Scrollbar(c, orient="vertical", command=c.yview, style="Cx.Vertical.TScrollbar")    # sobreposta ao canvas (place)
         c.configure(yscrollcommand=self.barra.set)
         c.bind("<Configure>", self._ao_configurar)
         c.bind("<MouseWheel>", self._roda)
@@ -270,7 +271,7 @@ class PainelMesas(ttk.Frame):
         estilo = ESTADOS[t["estado"]]
         atual = t["chave"] == self._atual
         _cartao(c, x + 3, y + 3, x + LARGURA - 3, y + ALTURA - 3, fill=estilo["fundo"],
-                outline=tema.COR["marinho2"] if atual else estilo["borda"], width=3 if atual else 1,
+                outline=CX["azul"] if atual else estilo["borda"], width=3 if atual else 1,
                 tags=marca + ("fundo",))
         ox, oy = x + (LARGURA - 36) // 2, y + 7
         tipo_icone = "conta" if t["estado"] == "conta" else t["tipo"]
@@ -282,7 +283,7 @@ class PainelMesas(ttk.Frame):
         meio = x + LARGURA // 2
         c.create_text(meio, y + 46, text=t["rotulo"], font=("Segoe UI", 11, "bold"), fill=estilo["texto"], tags=marca + ("rotulo",))
         if t["total"]:
-            c.create_text(meio, y + 60, text=t["total"], font=("Segoe UI", 8), fill=tema.COR["suave"], tags=marca + ("total",))
+            c.create_text(meio, y + 60, text=t["total"], font=("Segoe UI", 8), fill=CX["suave"], tags=marca + ("total",))
 
     def _marcar_cursor(self) -> None:
         c = self.canvas
