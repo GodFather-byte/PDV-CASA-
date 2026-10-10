@@ -123,6 +123,24 @@ class TurnoController:
             "SELECT tipo, COALESCE(SUM(valor_cent), 0) AS total FROM movimentos_caixa WHERE turno_id = ? GROUP BY tipo", (turno_id,))}
         return t["valor_inicial_cent"] + na_gaveta + movimentos.get("entrada", 0) - movimentos.get("saida", 0)
 
+    def maquininha(self, turno_id: int) -> dict:
+        """Tudo o que foi lançado neste turno nas formas que NÃO ficam na gaveta (cartão débito, cartão crédito, Pix...), uma linha
+        por forma, com a quantidade de pagamentos e o valor: é o que o operador compara com o que passou na maquininha antes de
+        fechar. Mostra o débito e o crédito sempre (mesmo zerados) para ninguém achar que ficaram de fora; é seguro mostrar antes
+        da contagem da gaveta, porque não revela o dinheiro esperado."""
+        recebidos = {r["tipo_id"]: r for r in self.banco.todos(
+            f"""SELECT t.id AS tipo_id, COUNT(*) AS qtd, SUM(p.valor_cent - p.troco_cent) AS valor
+                FROM pagamentos_venda p JOIN vendas v ON v.id = p.venda_id JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id
+                WHERE {RECEBIDO_NO_TURNO} AND t.na_gaveta = 0 GROUP BY t.id""", (turno_id,))}
+        linhas = []
+        for t in self.banco.todos("SELECT id, tipo FROM tipos_pagamento WHERE na_gaveta = 0 AND caixa = 1 ORDER BY ordem, tipo"):
+            r = recebidos.pop(t["id"], None)
+            linhas.append({"tipo_id": t["id"], "tipo": t["tipo"], "qtd": r["qtd"] if r else 0, "valor": r["valor"] if r else 0})
+        for tipo_id, r in recebidos.items():          # forma tirada do caixa mas com movimento neste turno: não pode sumir
+            nome = self.banco.valor("SELECT tipo FROM tipos_pagamento WHERE id = ?", (tipo_id,), "")
+            linhas.append({"tipo_id": tipo_id, "tipo": nome, "qtd": r["qtd"], "valor": r["valor"]})
+        return {"linhas": linhas, "qtd": sum(l["qtd"] for l in linhas), "total": sum(l["valor"] for l in linhas)}
+
     def sangria_do_horario(self, turno_id: int, agora: datetime | None = None) -> str | None:
         """Sangria por horário (Configurações > Caixa > *Horários de sangria*, ex.: "02:00, 04:30"): devolve o horário
         combinado que já passou neste turno sem nenhuma sangria depois dele, ou None. Serve de lembrete no caixa."""
@@ -228,6 +246,7 @@ class TurnoController:
             (turno_id, turno_id), 0)
         r["esperado"] = t["valor_inicial_cent"] + na_gaveta + entradas - saidas
         r["fora_da_gaveta"] = total_recebido - na_gaveta
+        r["maquininha"] = self.maquininha(turno_id)
         r.update(conferencia_turno.conferencia(b, t))      # posições abertas, cancelamentos e transferências do turno
         return r
 

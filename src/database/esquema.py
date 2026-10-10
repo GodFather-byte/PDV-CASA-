@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 11
+VERSAO_ESQUEMA = 12
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -451,6 +451,24 @@ TABELAS = [
     "CREATE INDEX IF NOT EXISTS ix_comissoes_garota ON comissoes_garotas(garota, status)",
     "CREATE INDEX IF NOT EXISTS ix_comissoes_criado ON comissoes_garotas(criado_em)",
     "CREATE INDEX IF NOT EXISTS ix_comissoes_turno ON comissoes_garotas(turno_id)",
+    # Acerto da garota (v12): cada pagamento a ela guarda a comissão paga, os shows lançados pelo operador (quantidade e valor de
+    # cada um) e o total entregue. Shows nunca são contados sozinhos: só existem quando o operador digita no fechamento dela.
+    """CREATE TABLE IF NOT EXISTS acertos_garotas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        garota INTEGER NOT NULL CHECK (garota BETWEEN 1 AND 99999),
+        turno_id INTEGER REFERENCES turnos(id),
+        operador_id INTEGER REFERENCES operadores(id),
+        criado_em TEXT NOT NULL,
+        comissao_cent INTEGER NOT NULL DEFAULT 0,
+        shows_qtd INTEGER NOT NULL DEFAULT 0,
+        show_valor_cent INTEGER NOT NULL DEFAULT 0,
+        shows_cent INTEGER NOT NULL DEFAULT 0,
+        total_cent INTEGER NOT NULL,
+        movimento_id INTEGER REFERENCES movimentos_caixa(id),
+        tirou_do_caixa INTEGER NOT NULL DEFAULT 0
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_acertos_garota ON acertos_garotas(garota, criado_em)",
+    "CREATE INDEX IF NOT EXISTS ix_acertos_turno ON acertos_garotas(turno_id)",
     # Índices dos relatórios e do fechamento (v3). São criados também em bancos antigos, na próxima abertura.
     "CREATE INDEX IF NOT EXISTS ix_vendas_status_fechada ON vendas(status, fechada_em)",
     "CREATE INDEX IF NOT EXISTS ix_vendas_cliente ON vendas(cliente_id, status, fechada_em)",
@@ -541,4 +559,7 @@ MIGRACOES = {
     # v11: Telegram do dono. As tabelas telegram_chats e telegram_fila nascem em TABELAS (IF NOT EXISTS); as chaves novas de
     # configuração (telegram_*) nascem em CONFIG_PADRAO e o módulo cfg_telegram em ACESSOS, na abertura seguinte. Nada a migrar.
     11: [],
+    # v12: acerto da garota com shows. A tabela acertos_garotas nasce em TABELAS (IF NOT EXISTS); as chaves novas de
+    # configuração (show_valores, comissao_pede_shows) nascem em CONFIG_PADRAO. Nada a migrar.
+    12: [],
 }

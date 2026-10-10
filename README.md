@@ -171,6 +171,14 @@ entra na venda: a comanda da garota continua vazia e some sozinha, e a comissão
   linha de assinatura; desmarcando a opção, paga fora do caixa (só dá baixa). Se a comanda também tem consumo, o F12 pergunta o
   que pagar. **Delete** numa linha de comissão cancela aquele lançamento (pede confirmação e, se o operador não tem nível, a
   senha de supervisor, como no cancelamento de item); comissão já paga não se cancela.
+- **Shows no acerto da garota:** ao fechar a conta dela (F12, ou o botão *Comissões*), a janela *Pagar comissão* tem o campo
+  **Quantidade de shows** e a escolha do **valor de cada show (R$ 50,00 ou R$ 60,00)**. Os shows são lançados **pelo operador**,
+  nunca contados sozinhos, e a janela só mostra isso na hora de fechar a conta da garota. O total é a comissão marcada mais
+  quantidade x valor: comissão de R$ 25,00 (5 pontos) + 10 shows de R$ 50,00 = **R$ 525,00**. O recibo impresso traz a comissão,
+  a linha `SHOWS: 10 x 50,00`, o total e a assinatura; o dinheiro (comissão + shows) sai da gaveta como uma só sangria
+  "Acerto garota 180 NOME" (desmarcando a opção, paga fora do caixa). Sem comissão marcada dá para acertar só os shows (F12 na
+  comanda vazia de uma garota cadastrada). O fechamento do turno lista os shows pagos por garota. Em Configurações > Caixa:
+  *Valores do show* (padrão `50;60`, separados por ponto e vírgula) e *perguntar quantos shows ela fez* (ligado).
 - **Contra erro de digitação:** havendo garotas cadastradas, um número que não está no cadastro (ou de garota inativa) pede
   confirmação, e valor acima de R$ 500,00 também.
 - **Comissões** (botão na barra do caixa): a lista geral, com o que há a pagar a cada garota e os lançamentos dela, para pagar
@@ -196,6 +204,11 @@ noite:
 - **Cupons cancelados** (cupom, onde era, valor, motivo e quem cancelou) e **itens cancelados** (hora, onde, produto,
   quantidade, valor e quem cancelou).
 - **Transferências** entre mesas e comandas (inteira, várias para uma ou parte dos itens): de onde para onde, valor e quem fez.
+
+- **Conferência da maquininha:** ao tocar em *Fecha Turno*, **antes** de pedir o dinheiro da gaveta, a tela *Conferir maquininha*
+  mostra quanto foi lançado no turno em **Cartão Débito**, **Cartão Crédito** e Pix (quantidade e valor de cada um, mais o
+  total) para comparar com o fechamento do lote da maquininha. Se não bate, cancele e confira os pagamentos. Não mostra o
+  dinheiro esperado: a contagem da gaveta continua às cegas. A fita do fechamento repete o bloco *CONFERIR NA MAQUININHA*.
 
 No painel do fechamento aparecem as contagens e o botão **Conferência do turno** mostra o detalhe na tela; na fita
 impressa as seções só saem quando há ocorrências (a linha das posições abertas sai sempre, com "nenhuma" se não houver).

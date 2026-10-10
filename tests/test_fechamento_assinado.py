@@ -292,14 +292,16 @@ class TesteTrocaDeTurnoImprimeSozinha(BaseUI):
 
         def dialogo(w):
             campos = entradas(w)
-            if w.title() == "Atenção":
+            if w.title() == "Conferir maquininha":
+                clicar(w, "Continuar")
+            elif w.title() == "Atenção":
                 self.erros.append(rotulos(w)); clicar(w, "OK")
             elif campos:
                 campos[0].delete(0, "end"); campos[0].insert(0, valor); clicar(w, "OK")
             else:
                 clicar(w, "Sim")
         self.erros = []
-        self.robo.quando("Dialogo", dialogo, vezes=6)
+        self.robo.quando("Dialogo", dialogo, vezes=7)
         self.robo.quando("PainelFechamento", lambda w: (self.painel.append(rotulos(w)), w.destroy()))
         ok = caixa_dialogos.trocar_turno(self.root, self.ctx)
         self.assertTrue(ok)

@@ -794,11 +794,13 @@ class TesteFluxosCaixa(BaseUI):
 
         def trocar(w):
             campos = entradas(w)
-            if campos:                           # 1º diálogo: valor encontrado na gaveta
+            if w.title() == "Conferir maquininha":      # 1º diálogo: o que foi lançado em cartão/Pix
+                clicar(w, "Continuar")
+            elif campos:                         # 2º diálogo: valor encontrado na gaveta
                 campos[0].delete(0, "end"); campos[0].insert(0, "88,00"); clicar(w, "OK")
-            else:                                # 2º diálogo: "Confirma?"
+            else:                                # 3º diálogo: "Confirma?"
                 clicar(w, "Sim")
-        self.robo.quando("Dialogo", trocar, vezes=2)
+        self.robo.quando("Dialogo", trocar, vezes=3)
         self.robo.quando("PainelFechamento", lambda w: w.destroy())
         self.cx.fechar_turno(); self.cx.update()
         t = self.banco.um("SELECT status, resultado_cent FROM turnos")
@@ -2196,7 +2198,7 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
     def test_troca_de_turno_avisa_da_comissao_a_pagar(self):
         self.dar(180, 25); self.dar(156, 40)
         textos = []
-        self.dialogos({"Troca de turno": self.trocando_o_turno(textos, "Não")})
+        self.dialogos({"Conferir maquininha": "Continuar", "Troca de turno": self.trocando_o_turno(textos, "Não")})
         self.cx.fechar_turno(); self.cx.update()
         aviso = " ".join(t for t in textos[0] if "Comissão" in t)
         self.assertIn("Comissão das garotas a pagar: R$ 65,00 (2 garota(s))", aviso)
@@ -2206,7 +2208,7 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
 
     def test_troca_de_turno_sem_comissao_pendente_nao_avisa(self):
         textos = []
-        self.dialogos({"Troca de turno": self.trocando_o_turno(textos, "Não")})
+        self.dialogos({"Conferir maquininha": "Continuar", "Troca de turno": self.trocando_o_turno(textos, "Não")})
         self.cx.fechar_turno(); self.cx.update()
         self.assertFalse([t for t in textos[0] if "Comissão" in t], textos)
         self.sem_travar()
@@ -2215,7 +2217,7 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         self.dar(180, 25); self.dar(180, 30)
         vistos = []
         self.robo.quando("PainelFechamento", lambda w: (vistos.append(self.textos(w)), w.destroy()))
-        self.dialogos({"Troca de turno": self.trocando_o_turno([], "Sim")})
+        self.dialogos({"Conferir maquininha": "Continuar", "Troca de turno": self.trocando_o_turno([], "Sim")})
         self.cx.fechar_turno(); self.cx.update()
         self.assertIn("Comissões das garotas", vistos[0])
         self.assertIn("55,00", vistos[0])

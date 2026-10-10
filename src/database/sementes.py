@@ -71,6 +71,7 @@ CONFIG_PADRAO = {
     "comissao_em_pontos": "S", "comissao_valor_ponto": "5",   # comissão das garotas: 0,1 = R$ 5,00
     "comissao_paga_do_caixa": "N",   # nem sempre sobra dinheiro: por padrão a comissão só é registrada (sem sangria)
     # Comissão na tela do caixa e documentos da boate (chaves novas: bancos existentes ganham o padrão na próxima abertura).
+    "show_valores": "50;60", "comissao_pede_shows": "S",   # acerto da garota: valores do show (R$) e se pergunta os shows
     "comissao_na_linha": "S", "imprimir_via_comissao": "S", "painel_mostra_garotas": "S",
     "imprimir_fechamento_ao_trocar": "S", "vias_fechamento": "1", "limite_gaveta": "0",
     "chave_loja": "", "licenca_ativa": "1",

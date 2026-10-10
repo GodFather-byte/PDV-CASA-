@@ -779,3 +779,136 @@ class TesteComissaoPagaSoComoRegistro(BaseNaTela):
         self.assertEqual(self.ctx.turnos.resumo(self.turno)["esperado"], esperado)
         self.assertIn("Pago fora do caixa.", recibos[0])
         self.sem_travar()
+
+
+def _radio(w, texto):
+    """O botão de opção (valor do show) com esse texto, em qualquer ponto da janela."""
+    pilha = [w]
+    while pilha:
+        f = pilha.pop()
+        pilha.extend(f.winfo_children())
+        if isinstance(f, ttk.Radiobutton) and str(f.cget("text")) == texto:
+            return f
+    raise AssertionError(f"opção {texto!r} não encontrada")
+
+
+class TesteAcertoComShowsNaTela(BaseNaTela):
+    """Fechar a conta da garota: o operador lança quantos shows ela fez e escolhe R$ 50 ou R$ 60."""
+
+    def acertar_com(self, shows, valor, textos=None):
+        def acao(w):
+            if textos is not None:
+                textos.append(self.textos(w))
+            if shows is not None:
+                entradas(w)[0].insert(0, str(shows))
+            if valor is not None:
+                _radio(w, valor).invoke()
+            clicar(w, "Pagar")
+        return acao
+
+    def test_f12_acerta_comissao_mais_10_shows_de_50_e_imprime_525(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 25)                                                            # 5 pontos = R$ 25,00
+        recibos, textos = [], []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.dialogos({"Pagar comissão": self.acertar_com(10, "R$ 50,00", textos)})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertIn("Quantidade de shows:", textos[0])
+        self.assertIn("R$ 25,00", " ".join(textos[0]))
+        self.assertEqual(self.com.pendente(180), 0)
+        a = self.banco.um("SELECT shows_qtd, show_valor_cent, comissao_cent, total_cent FROM acertos_garotas")
+        self.assertEqual(tuple(a), (10, 5000, 2500, 52500))
+        for trecho in ("RECIBO DE ACERTO", "SHOWS: 10 x 50,00", "500,00", "525,00"):
+            self.assertIn(trecho, recibos[0])
+        self.assertIn("Acerto de R$ 525,00 pago à garota 180", self.status())
+        self.sem_travar()
+
+    def test_o_total_na_janela_acompanha_a_quantidade_e_o_valor(self):
+        self.dar(180, 25)
+        totais = []
+
+        def olhar(w):
+            entradas(w)[0].insert(0, "10")
+            _radio(w, "R$ 60,00").invoke()
+            w.update()
+            totais.append(self.textos(w))
+            clicar(w, "Cancelar")
+        self.dialogos({"Pagar comissão": olhar})
+        self.posicao("180")
+        self.cx.pagar()
+        self.assertIn("R$ 625,00", totais[0])                                        # 25 + 10 x 60
+        self.assertEqual(self.com.pendente(180), 2500)                               # cancelou: nada foi pago
+
+    def test_shows_sem_escolher_o_valor_nao_paga_e_avisa_na_janela(self):
+        self.dar(180, 25)
+        avisos = []
+
+        def sem_valor(w):
+            entradas(w)[0].insert(0, "3")
+            clicar(w, "Pagar")
+            w.update()
+            avisos.append(self.textos(w))
+            _radio(w, "R$ 50,00").invoke()
+            clicar(w, "Pagar")
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.dialogos({"Pagar comissão": sem_valor})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertIn("Escolha o valor do show.", avisos[0])
+        self.assertEqual(self.banco.valor("SELECT total_cent FROM acertos_garotas"), 2500 + 3 * 5000)
+
+    def test_sem_digitar_shows_paga_so_a_comissao_como_sempre(self):
+        self.dar(180, 25)
+        recibos = []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.dialogos({"Pagar comissão": "Pagar"})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(self.banco.valor("SELECT total_cent FROM acertos_garotas"), 2500)
+        self.assertIn("RECIBO DE COMISSÃO", recibos[0])
+        self.assertIn("Comissão de R$ 25,00 paga à garota 180", self.status())
+
+    def test_garota_cadastrada_sem_comissao_acerta_so_os_shows_no_f12(self):
+        self.cadastrar(180, "MARIA")
+        recibos = []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.dialogos({"Pagar comissão": self.acertar_com(4, "R$ 60,00")})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(self.banco.valor("SELECT total_cent FROM acertos_garotas"), 24000)
+        self.assertIn("240,00", recibos[0])
+        self.sem_travar()
+
+    def test_sem_comissao_o_acerto_exige_shows(self):
+        self.cadastrar(180, "MARIA")
+        avisos = []
+
+        def sem_nada(w):
+            clicar(w, "Pagar")
+            w.update()
+            avisos.append(self.textos(w))
+            clicar(w, "Cancelar")
+        self.dialogos({"Pagar comissão": sem_nada})
+        self.posicao("180")
+        self.cx.pagar()
+        self.assertTrue(any("informe os shows" in t for t in avisos[0]), avisos)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM acertos_garotas"), 0)
+
+    def test_comanda_vazia_de_quem_nao_e_garota_cadastrada_continua_pedindo_item(self):
+        avisos = []
+        self.dialogos({"Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
+        self.posicao("7")
+        self.cx.pagar()
+        self.assertTrue(any("Lance ao menos um item" in t for t in avisos[0]), avisos)
+
+    def test_desligado_nas_configuracoes_nao_pergunta_shows(self):
+        self.banco.cfg_set("comissao_pede_shows", "N")
+        self.dar(180, 25)
+        campos = []
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.dialogos({"Pagar comissão": lambda w: (campos.append(len(entradas(w))), clicar(w, "Pagar"))})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(campos, [0])
+        self.assertEqual(self.com.pendente(180), 0)

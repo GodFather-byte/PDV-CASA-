@@ -137,7 +137,8 @@ def conferencia(banco, turno: dict) -> dict:
             "produtos_vendidos": _produtos_vendidos(banco, turno["id"]),
             "vendas_por_tipo": _vendas_por_tipo(banco, turno["id"]),
             "saidas_liberadas": _saidas_liberadas(banco, turno["id"]),
-            "comissoes": {**comissoes.resumo_turno(turno["id"]), "a_pagar_cent": comissoes.total_a_pagar()}}
+            "comissoes": {**comissoes.resumo_turno(turno["id"]), "a_pagar_cent": comissoes.total_a_pagar()},
+            "shows": comissoes.shows_do_turno(turno["id"])}
 
 
 # ----------------------------------------------------------------- texto da fita
@@ -236,6 +237,15 @@ def linhas_fita(res: dict, w: int = 40) -> list[str]:
             saida.append(_lr("  Total lançado no turno", M(c["total_cent"]), w))
         if c.get("a_pagar_cent"):
             saida.append(_lr("  A pagar às garotas (todas)", M(c["a_pagar_cent"]), w))
+
+    def show(g):
+        quem = f"{g['garota']} {g['nome']}".strip()
+        return [_lr(f"  {quem} ({g['shows']}x)", M(g["total_cent"]), w)]
+
+    shows = res.get("shows") or {}
+    if shows.get("quantidade"):
+        saida += _secao("SHOWS PAGOS ÀS GAROTAS", shows["por_garota"], show, w)
+        saida.append(_lr("  Total de shows", M(shows["total_cent"]), w))
     return saida
 
 
