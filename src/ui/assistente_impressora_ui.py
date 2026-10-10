@@ -22,7 +22,6 @@ SIMBOLO = {"erro": "ERRO:", "aviso": "ATENÇÃO:", "ok": "OK:"}
 class JanelaAssistenteImpressora(tk.Toplevel):
     def __init__(self, master, ctx, ao_configurar=None):
         super().__init__(master)
-        _d = set(os.environ.get("DIAG_TK", "").split())      # TEMPORÁRIO (diagnóstico do segfault)
         self.ctx = ctx
         self.ao_configurar = ao_configurar          # avisa a janela de Máquinas (aberta por trás) para recarregar os campos
         self.impressoras: list[impressoras_so.ImpressoraWindows] = []
@@ -40,12 +39,9 @@ class JanelaAssistenteImpressora(tk.Toplevel):
                                       "3) escolha-a na lista e toque em 'Configurar e imprimir teste'.", wraplength=820, font=tema.FONTE_B)
         intro.pack(side="top", fill="x", anchor="w")
         self._textos_que_quebram = [intro]
-        if "nobind" not in _d:
-            corpo.bind("<Configure>", lambda e: self._ajustar_quebra(e.width))
+        corpo.bind("<Configure>", lambda e: self._ajustar_quebra(e.width))
         self.quadro_achados = ttk.LabelFrame(corpo, text="O que o assistente encontrou", padding=8)
         self.quadro_achados.pack(side="top", fill="x", pady=(8, 8))
-        if "nogeo" in _d:
-            self.geometry("")
         self.grade = tema.Grade(corpo, [("nome", "Impressora do Windows", 260, "w"), ("detalhe", "Porta e driver", 330, "w"),
                                         ("situacao", "Situação", 190, "w"), ("fila", "Na fila", 70, "e")], altura=8)
         self.grade.pack(side="top", fill="both", expand=True)
@@ -65,12 +61,9 @@ class JanelaAssistenteImpressora(tk.Toplevel):
         ttk.Button(linha2, text="Fechar (Esc)", command=self.destroy).pack(side="right")
         self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<F5>", lambda e: self.atualizar())
-        if "noatualizar" not in _d:
-            self.atualizar()
-        if "nocent" not in _d:
-            tema.centralizar(self, master.winfo_toplevel())
-        if "notrans" not in _d:
-            self.transient(master.winfo_toplevel())
+        self.atualizar()
+        tema.centralizar(self, master.winfo_toplevel())
+        self.transient(master.winfo_toplevel())
 
     def _ajustar_quebra(self, largura: int) -> None:
         """Os textos quebram de linha na largura da janela (em tela pequena nada fica cortado no lado direito)."""

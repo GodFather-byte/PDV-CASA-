@@ -131,3 +131,76 @@ class TesteErrosDoWindows(BaseTeste):
         with mock.patch.object(term.ctypes, "get_last_error", lambda: 9999, create=True), \
                 mock.patch.object(term.ctypes, "FormatError", lambda c: "Algo.", create=True):
             self.assertEqual(term._erro_windows(), "Algo. [erro 9999]")
+
+
+class TesteElginNaoInstalada(BaseTeste):
+    """O caso real: no Windows só aparecem PDF/XPS/OneNote, a Elgin i9 nunca foi instalada."""
+
+    VIRTUAIS = [PDF, Imp("Microsoft XPS Document Writer", "PORTPROMPT:", "Microsoft XPS Document Writer v4", virtual=True)]
+
+    def achados(self, impressoras, portas):
+        return [(a.nivel, a.texto, a.solucao) for a in assistente.diagnosticar(self.banco, impressoras, True, portas)]
+
+    def test_com_porta_usb_manda_instalar_o_driver_generico(self):
+        erros = [a for a in self.achados(self.VIRTUAIS, ["USB001"]) if a[0] == "erro"]
+        texto = " ".join(a[1] + a[2] for a in erros)
+        self.assertIn("não está instalada no Windows", texto)
+        self.assertIn("USB001", texto)
+        self.assertIn("Instalar Elgin i9 (driver genérico)", texto)
+
+    def test_sem_porta_usb_manda_conferir_cabo_e_energia(self):
+        erros = [a for a in self.achados(self.VIRTUAIS, []) if a[0] == "erro"]
+        texto = " ".join(a[1] + a[2] for a in erros)
+        self.assertIn("nada de impressora detectado no cabo USB", texto)
+        self.assertIn("cabo", texto)
+
+    def test_com_a_elgin_instalada_o_aviso_some(self):
+        achados = self.achados([ELGIN, *self.VIRTUAIS], ["USB001"])
+        self.assertFalse([a for a in achados if "não está instalada" in a[1] or "não encontrou a Elgin" in a[1]])
+
+    def test_relatorio_mostra_as_portas_usb(self):
+        self.assertIn("Portas USB de impressora detectadas: USB001", assistente.relatorio(self.banco, self.VIRTUAIS, True, portas_usb=["USB001"]))
+        self.assertIn("Portas USB de impressora detectadas: nenhuma", assistente.relatorio(self.banco, self.VIRTUAIS, True, portas_usb=[]))
+
+
+class TesteInstalarGenerica(BaseTeste):
+    def test_fora_do_windows_recusa(self):
+        with mock.patch.object(assistente, "_eh_windows", return_value=False), self.assertRaisesRegex(term.ErroImpressao, "só existe no Windows"):
+            assistente.instalar_generica()
+
+    def test_sem_porta_usb_explica_o_que_conferir(self):
+        with mock.patch.object(assistente, "_eh_windows", return_value=True), \
+                mock.patch.object(assistente.impressoras_so, "listar_impressoras", return_value=[PDF]), \
+                mock.patch.object(assistente.impressoras_so, "listar_portas_usb", return_value=[]), \
+                self.assertRaisesRegex(term.ErroImpressao, "não detectou nenhuma impressora na USB"):
+            assistente.instalar_generica()
+
+    def test_instala_com_o_printui_na_porta_usb_e_confere_o_resultado(self):
+        chamadas = []
+        instalada = Imp("Elgin i9", "USB001", "Generic / Text Only")
+        listas = iter([[PDF], [PDF, instalada]])                      # antes não existe; depois que o printui roda, existe
+        with mock.patch.object(assistente, "_eh_windows", return_value=True), \
+                mock.patch.object(assistente.impressoras_so, "listar_impressoras", side_effect=lambda: next(listas)), \
+                mock.patch.object(assistente.impressoras_so, "listar_portas_usb", return_value=["USB001"]), \
+                mock.patch.object(assistente.subprocess, "run", side_effect=lambda cmd, **kw: chamadas.append(cmd)):
+            self.assertEqual(assistente.instalar_generica(), "Elgin i9")
+        comando = chamadas[0]
+        self.assertEqual(comando[:3], ["rundll32", "printui.dll,PrintUIEntry", "/if"])
+        self.assertIn("USB001", comando)
+        self.assertIn("Generic / Text Only", comando)
+        self.assertEqual(comando[comando.index("/b") + 1], "Elgin i9")
+
+    def test_se_o_windows_nao_instalou_orienta_a_instalar_a_mao(self):
+        with mock.patch.object(assistente, "_eh_windows", return_value=True), \
+                mock.patch.object(assistente.impressoras_so, "listar_impressoras", return_value=[PDF]), \
+                mock.patch.object(assistente.impressoras_so, "listar_portas_usb", return_value=["USB002"]), \
+                mock.patch.object(assistente.subprocess, "run"), \
+                self.assertRaisesRegex(term.ErroImpressao, "USB002.*Generic / Text Only"):
+            assistente.instalar_generica()
+
+    def test_ja_instalada_nao_roda_de_novo(self):
+        with mock.patch.object(assistente, "_eh_windows", return_value=True), \
+                mock.patch.object(assistente.impressoras_so, "listar_impressoras", return_value=[ELGIN]), \
+                mock.patch.object(assistente.subprocess, "run") as rodar:
+            self.assertEqual(assistente.instalar_generica("Elgin i9"), "Elgin i9")
+        rodar.assert_not_called()

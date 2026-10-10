@@ -15,6 +15,7 @@ from unittest import mock
 from src.controllers.cadastro_controller import CadastroController
 from src.controllers.entidades import ENTIDADES
 from src.core import formatacao as fmt
+from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
 from src.ui import tema
 from src.ui.contexto import Contexto
@@ -954,6 +955,13 @@ class TesteLancamentosUI(BaseUI):
 class TesteAvisosDeCorteNasTelas(BaseUI):
     """Listas que mostram só os mais recentes avisam o operador em vez de cortar em silêncio."""
 
+    def setUp(self):
+        super().setUp()
+        # Relógio fixo no meio da tarde: de 0h às 6h (virada do dia) o "hoje" do calendário e o dia operacional são dias diferentes e
+        # o teste, que vende "agora" e consulta "hoje", falhava se a CI rodasse de madrugada.
+        fmt.definir_relogio(lambda: datetime(2026, 10, 9, 15, 0, 0))
+        self.addCleanup(fmt.definir_relogio, None)
+
     def vender(self, n):
         self.abrir_turno()
         for _ in range(n):
@@ -1376,6 +1384,24 @@ class TesteSeletorDeImpressoras(BaseUI):
             a.destravar()
         self.assertEqual([c.args for c in controlar.call_args_list],
                          [("Elgin i9", self.so.CONTROLE_RETOMAR), ("Elgin i9", self.so.CONTROLE_LIMPAR)])
+        a.destroy()
+
+    def test_assistente_instala_a_elgin_pelo_botao_e_atualiza_a_lista(self):
+        from unittest import mock
+        a = self._assistente([])
+        with mock.patch.object(tema, "confirmar", return_value=True), mock.patch.object(tema, "mensagem") as msg, \
+                mock.patch("src.controllers.impressao_assistente.instalar_generica", return_value="Elgin i9") as instalar:
+            a.instalar()
+        instalar.assert_called_once_with("Elgin i9")
+        self.assertIn("instalada no Windows", msg.call_args.args[1])
+        with mock.patch.object(tema, "confirmar", return_value=False), \
+                mock.patch("src.controllers.impressao_assistente.instalar_generica") as instalar:
+            a.instalar()                                              # o operador desistiu: nada é instalado
+        instalar.assert_not_called()
+        with mock.patch.object(tema, "confirmar", return_value=True), mock.patch.object(tema, "erro") as erro, \
+                mock.patch("src.controllers.impressao_assistente.instalar_generica", side_effect=ErroNegocio("sem USB")):
+            a.instalar()
+        self.assertIn("sem USB", erro.call_args.args[1])
         a.destroy()
 
     def test_assistente_sem_nenhuma_impressora_avisa_em_vez_de_travar(self):
