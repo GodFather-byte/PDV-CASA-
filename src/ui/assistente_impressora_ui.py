@@ -13,7 +13,9 @@ from src.hardware import impressoras_so
 from src.ui import tema
 
 COR_NIVEL = {"erro": tema.COR["perigo"], "aviso": tema.COR["aviso"], "ok": tema.COR["ok"]}
-SIMBOLO = {"erro": "✖", "aviso": "▲", "ok": "✔"}
+# Só caracteres comuns (nada de ✖ ✔ ▲): no Linux o Tk cai (segmentation fault) ao desenhar símbolos que a fonte de emojis
+# do sistema também tem, e a queda aparece só no teste seguinte. A cor da linha já diz o nível.
+SIMBOLO = {"erro": "ERRO:", "aviso": "ATENÇÃO:", "ok": "OK:"}
 
 
 class JanelaAssistenteImpressora(tk.Toplevel):
@@ -91,7 +93,7 @@ class JanelaAssistenteImpressora(tk.Toplevel):
         for w in self.quadro_achados.winfo_children():
             w.destroy()
         for a in assistente.diagnosticar(self.ctx.banco, self.impressoras):
-            texto = f"{SIMBOLO[a.nivel]}  {a.texto}" + (f"\n      → {a.solucao}" if a.solucao else "")
+            texto = f"{SIMBOLO[a.nivel]}  {a.texto}" + (f"\n      Como resolver: {a.solucao}" if a.solucao else "")
             ttk.Label(self.quadro_achados, text=texto, foreground=COR_NIVEL[a.nivel], wraplength=900, justify="left").pack(anchor="w", pady=1)
 
     def _escolhida(self) -> impressoras_so.ImpressoraWindows | None:

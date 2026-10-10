@@ -130,7 +130,7 @@ def relatorio(banco, impressoras: list[ImpressoraWindows] | None = None, spooler
     linhas += ["", "O que foi encontrado:"]
     for a in diagnosticar(banco, impressoras, spooler):
         marca = {"erro": "[ERRO] ", "aviso": "[AVISO] ", "ok": "[OK] "}[a.nivel]
-        linhas.append(f"  {marca}{a.texto}" + (f"\n         → {a.solucao}" if a.solucao else ""))
+        linhas.append(f"  {marca}{a.texto}" + (f"\n         Como resolver: {a.solucao}" if a.solucao else ""))
     return "\n".join(linhas)
 
 
