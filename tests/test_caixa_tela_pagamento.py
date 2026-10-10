@@ -308,16 +308,20 @@ class TesteTelaDoCaixa(BasePagamento):
         self.assertEqual(self.cx.lbl_loja.cget("text"), "CASA DE TESTE")
 
     def test_tela_estreita_economiza_espaco_dos_campos(self):
+        """As duas larguras são simuladas: o resultado não pode depender do tamanho da tela de quem roda o teste."""
         from src.ui.caixa_ui import JanelaCaixa
-        with mock.patch.object(tk.Misc, "winfo_screenwidth", return_value=1024):
-            estreita = JanelaCaixa(self.root, self.ctx)
-        self.addCleanup(estreita.destroy)
-        estreita.update()
+        janelas = {}
+        for largura in (1024, 1920):
+            with mock.patch.object(tk.Misc, "winfo_screenwidth", return_value=largura):
+                janelas[largura] = JanelaCaixa(self.root, self.ctx)
+            self.addCleanup(janelas[largura].destroy)
+            janelas[largura].update()
+        estreita, larga = janelas[1024], janelas[1920]
         self.assertTrue(estreita.compacto)
-        botoes_do_cartao = [w for w in estreita.cartao_entrada.winfo_children() if isinstance(w, ttk.Button)]
-        self.assertEqual(botoes_do_cartao, [])                                  # o "Consultar" fica só na coluna de ações
-        self.assertFalse(self.cx.compacto)
-        self.assertTrue([w for w in self.cx.cartao_entrada.winfo_children() if isinstance(w, ttk.Button)])
+        self.assertFalse(larga.compacto)
+        botoes_do_cartao = lambda cx: [w for w in cx.cartao_entrada.winfo_children() if isinstance(w, ttk.Button)]
+        self.assertEqual(botoes_do_cartao(estreita), [])                      # o "Consultar" fica só na coluna de ações
+        self.assertTrue(botoes_do_cartao(larga))
 
     def test_estilos_escuros_so_valem_para_quem_pede(self):
         s = ttk.Style(self.root)
