@@ -252,6 +252,33 @@ def controlar_fila(nome: str, acao: int) -> None:
         dll.ClosePrinter(handle)
 
 
+class _PortInfo1(ctypes.Structure):
+    _fields_ = [("pName", wintypes.LPWSTR)]
+
+
+def listar_portas_usb() -> list[str]:
+    """Portas de impressora USB que o Windows criou (USB001, USB002...): existem quando há uma impressora USB LIGADA e reconhecida
+    como impressora, mesmo sem driver instalado. Vazio = o Windows não enxerga nada de impressora no cabo USB."""
+    if not _WINDOWS:
+        return []
+    try:
+        dll = winspool()
+        dll.EnumPortsW.argtypes = [wintypes.LPWSTR, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                                   ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD)]
+        dll.EnumPortsW.restype = wintypes.BOOL
+        precisa, retornou = wintypes.DWORD(0), wintypes.DWORD(0)
+        dll.EnumPortsW(None, 1, None, 0, ctypes.byref(precisa), ctypes.byref(retornou))
+        if precisa.value == 0:
+            return []
+        buf = ctypes.create_string_buffer(precisa.value)
+        if not dll.EnumPortsW(None, 1, buf, precisa.value, ctypes.byref(precisa), ctypes.byref(retornou)):
+            return []
+        portas = [(p.pName or "") for p in (_PortInfo1 * retornou.value).from_buffer(buf)]
+    except (OSError, AttributeError):
+        return []
+    return sorted(p for p in portas if re.fullmatch(r"USB\d+", p.strip(), re.I))
+
+
 def servico_spooler_rodando() -> bool | None:
     """True/False: o serviço 'Spooler de Impressão' do Windows está rodando? None se não deu para saber (fora do Windows)."""
     if not _WINDOWS:

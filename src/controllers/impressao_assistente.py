@@ -6,7 +6,9 @@ montar o DIAGNÓSTICO (o que está errado e como resolver). Nada aqui imprime so
 """
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 
@@ -20,6 +22,10 @@ from src.hardware.impressoras_so import ImpressoraWindows
 _ELGIN = re.compile(r"elgin|\bi[79]\b", re.I)
 PERFIL = {"modo_impressao": "termica", "impressora_termica_conexao": "spooler", "impressora_termica_codepage": "cp850",
           "colunas_fita": 48, "impressora_termica_cortar": "S"}
+
+
+def _eh_windows() -> bool:
+    return sys.platform == "win32"
 
 
 @dataclass(frozen=True)
@@ -53,14 +59,26 @@ def configurar(banco, nome: str, colunas: int | None = None) -> None:
     banco.log("impressora_configurada", nome)
 
 
-def diagnosticar(banco, impressoras: list[ImpressoraWindows] | None = None, spooler: bool | None = None) -> list[Achado]:
+def diagnosticar(banco, impressoras: list[ImpressoraWindows] | None = None, spooler: bool | None = None,
+                 portas_usb: list[str] | None = None) -> list[Achado]:
     """Tudo que pode impedir o cupom de sair, na ordem em que costuma acontecer. Lista vazia de 'erro' = a configuração está certa."""
     m = ConfigController(banco).maquina()
     if impressoras is None:
         impressoras = impressoras_so.listar_impressoras()
     if spooler is None:
         spooler = impressoras_so.servico_spooler_rodando()
+    if portas_usb is None:
+        portas_usb = impressoras_so.listar_portas_usb()
     achados: list[Achado] = []
+    if (impressoras or _eh_windows()) and not any(i.termica_provavel or _ELGIN.search(f"{i.nome} {i.driver}")
+                                                  for i in impressoras if not i.virtual):
+        # O caso mais comum: a Elgin i9 nunca foi instalada no Windows (só aparecem PDF, XPS, OneNote...). Sem isso nada imprime.
+        if portas_usb:
+            achados.append(Achado("erro", f"A Elgin i9 não está instalada no Windows: ela está ligada na porta {portas_usb[0]}, mas sem driver.",
+                                  "Toque em 'Instalar Elgin i9 (driver genérico)'. Se o Windows pedir permissão, aceite."))
+        else:
+            achados.append(Achado("erro", "O Windows não encontrou a Elgin i9: nenhuma impressora de cupom instalada e nada de impressora detectado no cabo USB.",
+                                  "Ligue a impressora (luz acesa), troque o cabo/porta USB do computador (sem hub) e toque em Atualizar. Se continuar, instale o driver do site da Elgin."))
     modo, conexao = m["modo_impressao"], m["impressora_termica_conexao"]
     endereco = (m["impressora_termica_endereco"] or "").strip()
 
@@ -88,8 +106,6 @@ def diagnosticar(banco, impressoras: list[ImpressoraWindows] | None = None, spoo
             if achada.trabalhos and not achada.pausada and not achada.offline:
                 achados.append(Achado("aviso", f"Há {achada.trabalhos} documento(s) parado(s) na fila do Windows de '{achada.nome}'.",
                                       "Se não estão saindo, use 'Destravar fila do Windows'."))
-    elif not impressoras and sys.platform == "win32":
-        achados.append(Achado("aviso", "O Windows não listou nenhuma impressora.", "Instale o driver da Elgin i9 e ligue o cabo USB."))
 
     fila = banco.um("SELECT COALESCE(SUM(status = 'erro'),0) AS erros, COALESCE(SUM(status = 'pendente'),0) AS pendentes "
                     "FROM fila_impressao WHERE status IN ('pendente','erro')")
@@ -104,19 +120,23 @@ def diagnosticar(banco, impressoras: list[ImpressoraWindows] | None = None, spoo
     return achados
 
 
-def relatorio(banco, impressoras: list[ImpressoraWindows] | None = None, spooler: bool | None = None, versao: str = "") -> str:
+def relatorio(banco, impressoras: list[ImpressoraWindows] | None = None, spooler: bool | None = None, versao: str = "",
+              portas_usb: list[str] | None = None) -> str:
     """O diagnóstico em texto, para copiar e mandar a quem dá suporte."""
     m = ConfigController(banco).maquina()
     if impressoras is None:
         impressoras = impressoras_so.listar_impressoras()
     if spooler is None:
         spooler = impressoras_so.servico_spooler_rodando()
+    if portas_usb is None:
+        portas_usb = impressoras_so.listar_portas_usb()
     linhas = [f"DIAGNÓSTICO DE IMPRESSÃO — WillPDV {versao}".strip(), f"{fmt.fmt_datahora(fmt.agora())}  ·  sistema: {sys.platform}", "",
               "Configuração desta máquina:",
               f"  modo: {m['modo_impressao']}   conexão: {m['impressora_termica_conexao']}   endereço: {m['impressora_termica_endereco'] or '-'}",
               f"  colunas: {m['colunas_fita']}   página de código: {m['impressora_termica_codepage']}   cortar: {'sim' if m['impressora_termica_cortar'] else 'não'}"
               f"   gaveta: {'sim' if m['impressora_termica_gaveta'] else 'não'}", "",
               f"Spooler de Impressão do Windows: {'rodando' if spooler else 'PARADO' if spooler is False else 'não verificado'}",
+              f"Portas USB de impressora detectadas: {', '.join(portas_usb) if portas_usb else 'nenhuma'}",
               f"Impressoras no Windows ({len(impressoras)}):"]
     for i in impressoras:
         linhas.append(f"  - {i.nome}{' [padrão]' if i.padrao else ''}  porta: {i.porta or '-'}  driver: {i.driver or '-'}  "
@@ -128,7 +148,7 @@ def relatorio(banco, impressoras: list[ImpressoraWindows] | None = None, spooler
     linhas += [f"  #{r['id']} {fmt.fmt_datahora(r['criado_em'])[:16]} {r['nome']} — {r['status']}, {r['tentativas']} tentativa(s)"
                + (f" — {r['ultimo_erro']}" if r["ultimo_erro"] else "") for r in recentes] or ["  (nenhum)"]
     linhas += ["", "O que foi encontrado:"]
-    for a in diagnosticar(banco, impressoras, spooler):
+    for a in diagnosticar(banco, impressoras, spooler, portas_usb):
         marca = {"erro": "[ERRO] ", "aviso": "[AVISO] ", "ok": "[OK] "}[a.nivel]
         linhas.append(f"  {marca}{a.texto}" + (f"\n         Como resolver: {a.solucao}" if a.solucao else ""))
     return "\n".join(linhas)
@@ -143,3 +163,30 @@ def destravar_fila(nome: str, limpar: bool = False) -> str:
     except (OSError, AttributeError) as e:
         raise ErroImpressao(str(e)) from e
     return "Fila retomada e esvaziada." if limpar else "Fila retomada."
+
+
+def instalar_generica(nome: str = "Elgin i9", porta: str | None = None) -> str:
+    """Instala no Windows uma impressora "Generic / Text Only" na porta USB da Elgin i9 (a que o Windows criou ao detectá-la).
+
+    É o que dá certo quando o driver do fabricante não está instalado: o PDV manda os comandos ESC/POS direto (modo RAW) e o
+    driver genérico só repassa. Usa o instalador de impressoras do próprio Windows (printui). Devolve o nome instalado."""
+    if not _eh_windows():
+        raise ErroImpressao("A instalação da impressora só existe no Windows.")
+    nome = (nome or "").strip() or "Elgin i9"
+    if any(i.nome.strip().lower() == nome.lower() for i in impressoras_so.listar_impressoras()):
+        return nome                                                             # já instalada: nada a fazer
+    porta = porta or next(iter(impressoras_so.listar_portas_usb()), None)
+    if not porta:
+        raise ErroImpressao("O Windows não detectou nenhuma impressora na USB. Ligue a Elgin i9 (luz acesa), troque o cabo ou a porta USB do "
+                            "computador e tente de novo.")
+    inf = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "inf", "ntprint.inf")
+    comando = ["rundll32", "printui.dll,PrintUIEntry", "/if", "/b", nome, "/f", inf, "/r", porta, "/m", "Generic / Text Only"]
+    try:
+        subprocess.run(comando, capture_output=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError) as e:
+        raise ErroImpressao(f"Não consegui rodar o instalador de impressoras do Windows ({e}).") from e
+    if not any(i.nome.strip().lower() == nome.lower() for i in impressoras_so.listar_impressoras()):
+        raise ErroImpressao("O Windows não instalou a impressora. Feche o PDV, abra-o de novo com 'Executar como administrador' e repita, ou "
+                            "instale pelo Windows: Configurações > Impressoras > Adicionar > impressora local, porta "
+                            f"{porta}, fabricante Generic, modelo 'Generic / Text Only', nome '{nome}'.")
+    return nome

@@ -21,6 +21,20 @@ Configurações > Máquinas > **Assistente de impressora (Elgin i9)** (ou, na Fi
 5. Se ainda não sair, **Copiar diagnóstico** e mande o texto para o suporte: ele traz a configuração, as impressoras do Windows
    (porta, driver, situação), a fila do PDV e os erros.
 
+## A Elgin i9 não aparece na lista do assistente
+
+É o caso mais comum: o Windows mostra só "Microsoft Print to PDF", "XPS Document Writer", "OneNote"... A Elgin i9 nunca foi **instalada**
+no Windows, e sem isso nada imprime. O assistente avisa isso em vermelho e oferece o botão **Instalar Elgin i9 (driver genérico)**:
+
+1. Ligue a Elgin i9 (luz acesa) e conecte o cabo USB direto no computador (sem hub).
+2. Toque em **Instalar Elgin i9 (driver genérico)**. Ele usa a porta USB que o Windows cria ao detectar a impressora (USB001...) e
+   instala o driver "Generic / Text Only", que só repassa os comandos do cupom. Se o Windows pedir permissão, aceite.
+3. Toque em **Configurar e imprimir teste**.
+
+Se o assistente disser que o Windows não detectou nada na USB, o problema é físico: impressora desligada, cabo ruim ou porta USB.
+Também dá para instalar o driver oficial pelo site da Elgin (botão **Impressoras do Windows** abre a tela do Windows). Instalação à mão:
+Configurações > Impressoras e scanners > Adicionar > impressora local > porta USB001 > fabricante Generic > modelo "Generic / Text Only".
+
 ## Erros comuns do Windows (o PDV agora explica em português)
 
 | Código | Significa | O que fazer |
