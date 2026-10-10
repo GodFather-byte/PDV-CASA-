@@ -259,7 +259,15 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
 
     b = tema._botoes(dlg, "Pagar", comando_ok=confirmar)
     dlg.bind("<Return>", confirmar)
-    return dlg.mostrar(en_qtd if en_qtd is not None else b)
+    try:
+        return dlg.mostrar(en_qtd if en_qtd is not None else b)
+    finally:
+        try:
+            for variavel in (qtd, valor_show, pix):       # desfaz os ciclos variável <-> função: nada fica para o coletor de lixo
+                for _modo, comando in variavel.trace_info():
+                    variavel.trace_remove("write", comando)
+        except tk.TclError:
+            pass
 
 
 def pagar_garota(master, ctx, numero: int) -> dict | None:

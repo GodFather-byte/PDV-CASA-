@@ -2,6 +2,7 @@
 Pulados automaticamente se não houver ambiente gráfico."""
 from __future__ import annotations
 
+import gc
 import shutil
 import tempfile
 import tkinter as tk
@@ -69,6 +70,11 @@ class BaseUI(unittest.TestCase):
         except tk.TclError:
             pass
         self.banco.fechar()
+        # Variáveis e janelas do Tk que ficaram em ciclos precisam morrer AQUI, na thread principal: se o coletor de lixo as
+        # pegasse numa thread de fundo (fila de impressão, Telegram), o Tcl cai com "Tcl_AsyncDelete: async handler deleted
+        # by the wrong thread" (visto no Windows/Python 3.12).
+        self.robo = self.root = self.ctx = None
+        gc.collect()
 
     def sem_travar(self):
         self.assertFalse([l for l in self.robo.log if l.startswith("TRAVADO") or l.startswith("TclError")], self.robo.log)
