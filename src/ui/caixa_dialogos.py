@@ -27,11 +27,44 @@ def abrir_turno(master, ctx) -> bool:
     return ok
 
 
+def conferir_maquininha(master, ctx, turno_id: int) -> bool:
+    """Antes de contar a gaveta: o que foi lançado no turno em cartão (débito e crédito, separados) e Pix, para o operador
+    comparar com o que a maquininha imprimiu. Devolve False se desistiu de fechar. Não mostra o dinheiro esperado."""
+    maq = ctx.turnos.maquininha(turno_id)
+    if not maq["linhas"]:
+        return True                                  # a casa não tem forma fora da gaveta: nada a conferir
+    dlg = tema.Dialogo(master, "Conferir maquininha")
+    ttk.Label(dlg.corpo, text="Lançado neste turno no sistema", font=tema.FONTE_B).pack(anchor="w")
+    ttk.Label(dlg.corpo, text="Compare cada linha com o total que a maquininha (fechamento do lote) mostra.",
+              foreground=tema.COR["suave"], wraplength=420, justify="left").pack(anchor="w", pady=(0, 8))
+    grade = ttk.Frame(dlg.corpo)
+    grade.pack(fill="x")
+    grade.columnconfigure(0, weight=1)
+    for i, cab in enumerate(("Forma", "Qtd.", "Valor (R$)")):
+        ttk.Label(grade, text=cab, style="Rotulo.TLabel").grid(row=0, column=i, sticky="w" if i == 0 else "e", padx=(0, 16))
+    for i, r in enumerate(maq["linhas"], start=1):
+        ttk.Label(grade, text=r["tipo"], font=tema.FONTE_B).grid(row=i, column=0, sticky="w", padx=(0, 16))
+        ttk.Label(grade, text=str(r["qtd"])).grid(row=i, column=1, sticky="e", padx=(0, 16))
+        ttk.Label(grade, text=fmt.fmt_num(r["valor"]), font=("Georgia", 15, "bold")).grid(row=i, column=2, sticky="e")
+    fim = len(maq["linhas"]) + 1
+    ttk.Separator(grade).grid(row=fim, column=0, columnspan=3, sticky="ew", pady=6)
+    ttk.Label(grade, text="Total", font=tema.FONTE_B).grid(row=fim + 1, column=0, sticky="w")
+    ttk.Label(grade, text=str(maq["qtd"])).grid(row=fim + 1, column=1, sticky="e", padx=(0, 16))
+    ttk.Label(grade, text=fmt.fmt_num(maq["total"]), font=("Georgia", 15, "bold")).grid(row=fim + 1, column=2, sticky="e")
+    ttk.Label(dlg.corpo, text="Se algum valor não bate, cancele e confira os pagamentos antes de fechar o turno.",
+              foreground=tema.COR["suave"], wraplength=420, justify="left").pack(anchor="w", pady=(8, 0))
+    b = tema._botoes(dlg, "Continuar", comando_ok=dlg.ok)
+    dlg.bind("<Return>", lambda e: dlg.ok())
+    return bool(dlg.mostrar(b))
+
+
 def trocar_turno(master, ctx) -> bool:
-    """Troca de turno: o operador declara o valor da gaveta ANTES de ver o esperado."""
+    """Troca de turno: a maquininha é conferida primeiro e o operador declara o valor da gaveta ANTES de ver o esperado."""
     turno = ctx.turnos.atual()
     if turno is None:
         tema.aviso(master, "Não há turno aberto.")
+        return False
+    if not conferir_maquininha(master, ctx, turno["id"]):
         return False
     valor = tema.pedir_dinheiro(master, "Troca de turno", "Digite o valor encontrado na gaveta (+ cheques/tickets):",
                                 0, permitir_zero=True)
@@ -109,6 +142,7 @@ class PainelFechamento(tk.Toplevel):
                  ("Itens cancelados", len(res.get("itens_cancelados") or ())),
                  ("Transferências", len(res.get("transferencias") or ())),
                  ("Comissões das garotas", M(com["total_cent"]) if com.get("quantidade") else "nenhuma"),
+                 ("Shows pagos às garotas", M(res["shows"]["total_cent"]) if (res.get("shows") or {}).get("quantidade") else "nenhum"),
                  ("Saídas sem consumo (1002)", len(res.get("saidas_liberadas") or ())),
                  ("Produtos vendidos", f"{len(res.get('produtos_vendidos') or ())} (lista na conferência)")]
         if not res["entregas"] and not ctx.banco.cfg_bool("usar_delivery", False):    # casa sem delivery: linhas zeradas somem

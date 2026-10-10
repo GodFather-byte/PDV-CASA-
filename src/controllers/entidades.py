@@ -149,7 +149,8 @@ def _antes_cliente(banco, d, id_):
 
 def _antes_excluir_garota(banco, id_):
     g = banco.um("SELECT numero FROM garotas WHERE id = ?", (id_,))
-    if g and banco.valor("SELECT 1 FROM comissoes_garotas WHERE garota = ? LIMIT 1", (g["numero"],)):
+    if g and (banco.valor("SELECT 1 FROM comissoes_garotas WHERE garota = ? LIMIT 1", (g["numero"],))
+              or banco.valor("SELECT 1 FROM acertos_garotas WHERE garota = ? LIMIT 1", (g["numero"],))):
         raise ErroNegocio("Esta garota tem comissões registradas. Desmarque 'Ativa' em vez de excluir.")
 
 

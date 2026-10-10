@@ -175,6 +175,7 @@ class UtilitarioController:
                 self.banco.executar("UPDATE comissoes_garotas SET pago_turno_id = NULL WHERE pago_turno_id = ?", (t,))
                 comissoes += self.banco.executar(
                     "DELETE FROM comissoes_garotas WHERE turno_id = ? AND status <> 'pendente'", (t,)).rowcount
+                self.banco.executar("DELETE FROM acertos_garotas WHERE turno_id = ?", (t,))      # o acerto sai com o turno e a sangria dele
                 self.banco.executar("DELETE FROM movimentos_caixa WHERE turno_id = ?", (t,))
                 self.banco.executar("DELETE FROM repiques WHERE turno_id = ?", (t,))
                 self.banco.executar("DELETE FROM turnos WHERE id = ?", (t,))

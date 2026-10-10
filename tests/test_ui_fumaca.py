@@ -5,6 +5,7 @@ atributo faltando) que os testes de controlador não enxergam. Pula se não houv
 """
 from __future__ import annotations
 
+import gc
 import tkinter as tk
 import unittest
 
@@ -45,6 +46,8 @@ class TesteFumacaUI(BaseTeste):
             self.root.destroy()
         except tk.TclError:
             pass
+        self.root = None
+        gc.collect()        # o lixo do Tk morre na thread principal (ver BaseUI._fechar em test_ui.py)
 
     def _abrir_e_fechar(self, criar):
         janela = criar()

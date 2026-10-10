@@ -886,6 +886,9 @@ class JanelaCaixa(tk.Toplevel):
             if so_comissao and self._comissao_na_linha():
                 self._pagar_comissao(v)                  # comanda da garota só com comissão: F12 paga a ela
                 return
+            if v is not None and not so_comissao and self._acerto_so_de_shows(v):
+                self._pagar_comissao(v)                  # garota cadastrada sem comissão marcada: F12 acerta só os shows dela
+                return
             tema.aviso(self, "Esta comanda só tem comissão marcada.\nPara pagar à garota, use o botão Comissões."
                        if so_comissao else "Lance ao menos um item antes de pagar.")
             return
@@ -1153,13 +1156,24 @@ class JanelaCaixa(tk.Toplevel):
     def _a_pagar_na_comanda(self) -> bool:
         return any(c["status"] == "pendente" for c in self.comissao_marcada)
 
+    def _acerto_so_de_shows(self, v: dict) -> bool:
+        """Comanda vazia de uma garota cadastrada e ativa: dá para acertar com ela só os shows (sem comissão marcada)."""
+        if not v["comanda"] or not self._comissao_na_linha() or not self.ctx.comissoes.pede_shows():
+            return False
+        g = self.ctx.comissoes.garota(v["posicao"])
+        return g is not None and bool(g["ativo"])
+
     def _pagar_comissao(self, v: dict) -> None:
-        """F12 na comanda da garota: paga a ela o que está marcado (recibo na impressora e sangria no caixa)."""
+        """F12 na comanda da garota: acerta com ela o que está marcado e os shows que o operador lançar (recibo e, se marcado,
+        sangria no caixa)."""
         numero = v["posicao"]
         pag = comissao_ui.pagar_garota(self, self.ctx, numero)
         if pag is not None:
             self.recarregar()
-            self.avisar(f"Comissão de {fmt.fmt_brl(pag['total_cent'])} paga à garota {numero}.", tema.COR["ok"])
+            self.avisar(f"Comissão de {fmt.fmt_brl(pag['total_cent'])} paga à garota {numero}." if not pag["shows"] else
+                        f"Acerto de {fmt.fmt_brl(pag['total_cent'])} pago à garota {numero} "
+                        f"(comissão {fmt.fmt_brl(pag['comissao_cent'])} + {pag['shows']} shows {fmt.fmt_brl(pag['shows_cent'])}).",
+                        tema.COR["ok"])
         self.ent_codigo.focus_set()
 
     def _cancelar_comissao(self, iid) -> None:

@@ -259,6 +259,14 @@ class ImpressaoController:
         if resumo.get("recebido_turno_anterior"):
             linhas.append(_lr("Pago em turno anterior", M(resumo["recebido_turno_anterior"]), w))
 
+        # 2b) Cartão e Pix lançados no sistema, para o gerente bater com o que a maquininha imprimiu.
+        maquininha = resumo.get("maquininha") or {}
+        if maquininha.get("linhas"):
+            linhas += ["", faixa("CONFERIR NA MAQUININHA", w)]
+            for r in maquininha["linhas"]:
+                linhas.append(_lr(f"{r['tipo']} ({r['qtd']})", M(r["valor"]), w))
+            linhas.append(_lr(f"TOTAL ({maquininha['qtd']})", M(maquininha["total"]), w))
+
         # 3) Vendas.
         linhas += ["", faixa("VENDAS", w), _lr("Produtos", M(resumo["venda"]), w)]
         liga = {"desconto": "usar_desconto", "venda_caderneta": "usar_caderneta", "pagtos_caderneta": "usar_caderneta"}
@@ -394,17 +402,32 @@ class ImpressaoController:
         return self.enviar(texto, f"via_comissao_{lanc['garota']}_{lancamento_id}", tipo="via_comissao")
 
     def recibo_comissao(self, pag: dict, operador: str) -> str:
-        """Recibo da comissão paga a uma garota (não fiscal): cada lançamento, o total e a linha da assinatura."""
+        """Recibo do acerto da garota (não fiscal): cada comissão lançada, os shows que o operador lançou (quantidade x valor),
+        o total entregue e a linha da assinatura. Sem shows é o recibo de comissão de sempre."""
         w = self.largura()
         quem = f"{pag['garota']} {pag['nome']}".strip()
-        linhas = self.cabecalho(w) + _titulo("RECIBO DE COMISSÃO", w) + [
+        shows = pag.get("shows", 0)
+        comissao = pag.get("comissao_cent", pag["total_cent"] - pag.get("shows_cent", 0))
+        linhas = self.cabecalho(w) + _titulo("RECIBO DE ACERTO" if shows else "RECIBO DE COMISSÃO", w) + [
             f"Garota: {quem}"[:w], _lr("Pago em:", fmt.fmt_datahora(pag["pago_em"])[:16], w), "-" * w]
         for i in pag["lancamentos"]:
             d = fmt.fmt_datahora(i["criado_em"])
             linhas.append(_lr(f"{d[:5]} {d[11:16]}  lançamento {i['id']}", M(i["valor_cent"]), w))
-        linhas += ["-" * w, _lr(f"TOTAL PAGO ({pag['quantidade']})", M(pag["total_cent"]), w),
-                   "Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.",
-                   f"Operador: {operador}", "", "", "_" * w, "Assinatura da garota".center(w), "=" * w]
+        if shows:
+            linhas += ["-" * w, _lr(f"COMISSÃO ({pag['quantidade']})", M(comissao), w),
+                       _lr(f"SHOWS: {shows} x {M(pag['valor_show_cent'])}", M(pag["shows_cent"]), w),
+                       "-" * w, _lr("TOTAL PAGO", M(pag["total_cent"]), w)]
+        else:
+            linhas += ["-" * w, _lr(f"TOTAL PAGO ({pag['quantidade']})", M(pag["total_cent"]), w)]
+        pix = pag.get("pix_cent", 0)
+        if pix:
+            dinheiro = pag["total_cent"] - pix
+            if dinheiro:
+                linhas.append(_lr("Dinheiro" + (" (saiu do caixa)" if pag.get("tirou_do_caixa") else " (fora do caixa)"), M(dinheiro), w))
+            linhas.append(_lr("Pix", M(pix), w))
+        else:
+            linhas.append("Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.")
+        linhas += [f"Operador: {operador}", "", "", "_" * w, "Assinatura da garota".center(w), "=" * w]
         return "\n".join(linhas)
 
     def leitura_x(self, turno_id: int) -> str:

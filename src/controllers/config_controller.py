@@ -79,6 +79,8 @@ CAMPOS_CONFIG = [
      "Caixa"),
     ("comissao_na_linha", "Marcar, pagar e cancelar a comissão das garotas na própria tela do caixa (desligado: abre janelas)", "sn", "Caixa"),
     ("imprimir_via_comissao", "Imprimir a via da garota a cada comissão lançada", "sn", "Caixa"),
+    ("comissao_pede_shows", "Ao acertar a conta da garota, perguntar quantos shows ela fez (lançados pelo operador)", "sn", "Caixa"),
+    ("show_valores", "Valores do show (R$), separados por ponto e vírgula. Ex.: 50;60", "texto", "Caixa"),
     ("imprimir_fechamento_ao_trocar", "Imprimir o fechamento ao trocar o turno (com a assinatura do caixa)", "sn", "Caixa"),
     ("vias_fechamento", "Vias do fechamento do turno (1 a 3)", "int", "Caixa"),
     ("consumacao_minima", "Consumação mínima por comanda (R$, 0 = desligada): na saída cobra a diferença até o mínimo", "int", "Mesas e serviço"),
@@ -220,6 +222,19 @@ class ConfigController:
             raise ErroValidacao("A comissão e a saída não podem usar o mesmo código.", {chave: "em uso"})
         return v
 
+    @staticmethod
+    def _validar_show_valores(v: str) -> str:
+        """"50;60" -> "50;60". Valores em reais, separados por ponto e vírgula (a vírgula é dos centavos); no máximo 4."""
+        partes = [p for p in re.split(r"[;/\s]+", v) if p]
+        try:
+            cents = [fmt.para_centavos(p) for p in partes]
+        except ValueError:
+            raise ErroValidacao("Valores do show inválidos. Use números separados por ponto e vírgula, ex.: 50;60.",
+                                {"show_valores": "inválido"}) from None
+        if not cents or any(c <= 0 for c in cents) or len(cents) > 4:
+            raise ErroValidacao("Informe de 1 a 4 valores de show maiores que zero, ex.: 50;60.", {"show_valores": "inválido"})
+        return ";".join(str(c // 100) if c % 100 == 0 else f"{c // 100},{c % 100:02d}" for c in cents)
+
     def todas(self) -> dict:
         return {c[0]: self.banco.cfg(c[0]) for c in CAMPOS_CONFIG}
 
@@ -253,6 +268,8 @@ class ConfigController:
                     v = self._validar_codigo_comissao(v)
                 if chave == "codigo_saida":
                     v = self._validar_codigo_comissao(v, "codigo_saida", "a saída")
+                if chave == "show_valores":
+                    v = self._validar_show_valores(v)
                 if chave == "telegram_resumo_hora":
                     try:
                         v = fmt.para_hora(v) or ""

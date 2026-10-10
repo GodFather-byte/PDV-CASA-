@@ -166,11 +166,13 @@ class TesteFechamentoNaTela(BaseUI):
 
         def trocar(w):
             campos = entradas(w)
-            if campos:                           # 1º diálogo: valor encontrado na gaveta
+            if w.title() == "Conferir maquininha":      # 1º diálogo: cartão/Pix lançados, para bater com a maquininha
+                clicar(w, "Continuar")
+            elif campos:                         # 2º diálogo: valor encontrado na gaveta
                 campos[0].delete(0, "end"); campos[0].insert(0, "100,00"); clicar(w, "OK")
-            else:                                # 2º diálogo: "Confirma?"
+            else:                                # 3º diálogo: "Confirma?"
                 textos.append(rotulos(w)); clicar(w, "Sim")
-        self.robo.quando("Dialogo", trocar, vezes=2)
+        self.robo.quando("Dialogo", trocar, vezes=3)
         self.robo.quando("PainelFechamento", lambda w: w.destroy())
         self.assertTrue(caixa_dialogos.trocar_turno(self.root, self.ctx))
         self.assertIn("1 mesa(s)/comanda(s) aberta(s), R$ 8,80", textos[0])
@@ -185,11 +187,13 @@ class TesteFechamentoNaTela(BaseUI):
 
         def trocar(w):
             campos = entradas(w)
-            if campos:
+            if w.title() == "Conferir maquininha":
+                clicar(w, "Continuar")
+            elif campos:
                 campos[0].delete(0, "end"); campos[0].insert(0, "100,00"); clicar(w, "OK")
             else:
                 textos.append(rotulos(w)); clicar(w, "Sim")
-        self.robo.quando("Dialogo", trocar, vezes=2)
+        self.robo.quando("Dialogo", trocar, vezes=3)
         self.robo.quando("PainelFechamento", lambda w: w.destroy())
         caixa_dialogos.trocar_turno(self.root, self.ctx)
         self.assertNotIn("ATENÇÃO", textos[0])
@@ -226,3 +230,49 @@ class TesteFechamentoNaTela(BaseUI):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TesteConferenciaDaMaquininhaNaTela(BaseUI):
+    """Antes de contar a gaveta, a tela mostra o cartão (débito e crédito separados) para comparar com a maquininha."""
+
+    def vender_em(self, forma, valor):
+        v = self.ctx.caixa.abrir_balcao()
+        self.ctx.caixa.adicionar_item(v, self.skol, 1)
+        self.ctx.caixa.adicionar_pagamento(v, self.tipo(forma), valor)
+        self.ctx.caixa.fechar(v)
+
+    def tipo(self, nome):
+        return self.banco.valor("SELECT id FROM tipos_pagamento WHERE tipo = ?", (nome,))
+
+    def test_mostra_debito_e_credito_antes_de_pedir_o_dinheiro(self):
+        from src.ui import caixa_dialogos
+        self.abrir_turno()
+        self.vender_em("Cartão Débito", 800)
+        self.vender_em("Cartão Débito", 800)
+        self.vender_em("Cartão Crédito", 800)
+        ordem, tela = [], []
+
+        def trocar(w):
+            if w.title() == "Conferir maquininha":
+                ordem.append("maquininha"); tela.append(rotulos(w)); clicar(w, "Continuar")
+            elif entradas(w):
+                ordem.append("gaveta")
+                entradas(w)[0].delete(0, "end"); entradas(w)[0].insert(0, "100,00"); clicar(w, "OK")
+            else:
+                ordem.append("confirma"); clicar(w, "Sim")
+        self.robo.quando("Dialogo", trocar, vezes=3)
+        self.robo.quando("PainelFechamento", lambda w: w.destroy())
+        self.assertTrue(caixa_dialogos.trocar_turno(self.root, self.ctx))
+        self.assertEqual(ordem, ["maquininha", "gaveta", "confirma"])
+        for trecho in ("Cartão Débito", "Cartão Crédito", "16,00", "8,00", "24,00"):
+            self.assertIn(trecho, tela[0])
+        self.assertNotIn("esperado", tela[0].lower())                      # a contagem da gaveta continua às cegas
+        self.sem_travar()
+
+    def test_cancelar_a_conferencia_nao_fecha_o_turno(self):
+        from src.ui import caixa_dialogos
+        self.abrir_turno()
+        self.robo.quando("Dialogo", lambda w: clicar(w, "Cancelar"), vezes=1)
+        self.assertFalse(caixa_dialogos.trocar_turno(self.root, self.ctx))
+        self.assertEqual(self.banco.valor("SELECT status FROM turnos"), "aberto")
+        self.sem_travar()
