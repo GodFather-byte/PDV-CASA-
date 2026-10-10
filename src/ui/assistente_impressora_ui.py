@@ -62,8 +62,10 @@ class JanelaAssistenteImpressora(tk.Toplevel):
         self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<F5>", lambda e: self.atualizar())
         self.atualizar()
-        tema.centralizar(self, master.winfo_toplevel())
+        # transient ANTES de centralizar: centralizar força o mapeamento da janela, e mapeá-la antes de ligá-la a uma janela-mãe
+        # escondida deixava o Tk instável (segmentation fault no teste seguinte, no Linux).
         self.transient(master.winfo_toplevel())
+        tema.centralizar(self, master.winfo_toplevel())
 
     def _ajustar_quebra(self, largura: int) -> None:
         """Os textos quebram de linha na largura da janela (em tela pequena nada fica cortado no lado direito)."""

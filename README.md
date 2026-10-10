@@ -73,7 +73,7 @@ impressão RAW do Windows precisa de `pip install -r requirements.txt`.
   serviço, pagamentos, troco/vale e cancelamento.
 - **Estoque:** painel com a situação de cada produto (sem estoque / repor / normal), valor parado, busca e filtros
   enquanto digita, entrada/saída/perda/contagem em dois cliques, histórico por produto, pedido e lista de compras
-  sugeridos pelo estoque mínimo ([docs/ESTOQUE.md](docs/ESTOQUE.md)); compras e outros lançamentos completos, pedidos,
+  sugeridos pelo estoque mínimo ([docs/ESTOQUE.md](docs/ESTOQUE.md)); importação de produtos em massa por planilha, com prévia ([docs/IMPORTAR_PRODUTOS.md](docs/IMPORTAR_PRODUTOS.md)); compras e outros lançamentos completos, pedidos,
   contagem, composição de produtos e histórico de movimentos; a venda fechada baixa o estoque e o
   cancelamento estorna os movimentos.
 - **Cadastros e operação:** produtos, clientes, operadores, formas de pagamento,
