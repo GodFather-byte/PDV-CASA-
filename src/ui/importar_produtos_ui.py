@@ -26,8 +26,12 @@ class JanelaImportarProdutos(tk.Toplevel):
         self.previa: Previa | None = None
         self.title("Importar produtos")
         self.configure(bg=tema.COR["fundo"])
-        self.geometry("1100x700")
-        self.minsize(820, 560)
+        # cabe também em notebook de 768 px (barra de tarefas e título do Windows tiram ~100 px): sem isso o botão Importar,
+        # que fica embaixo, saía da tela
+        tela_l, tela_a = self.winfo_screenwidth(), self.winfo_screenheight()
+        self._larg, self._alt = min(1100, max(tela_l - 40, 640)), min(700, max(tela_a - 110, 460))
+        self.geometry(f"{self._larg}x{self._alt}")
+        self.minsize(min(820, self._larg), min(560, self._alt))
         self.v_atualizar = tk.BooleanVar(value=True)
         self.v_codigo = tk.StringVar(value="planilha")
         self.v_inicio = tk.StringVar(value=str(self.imp.numero_inicial_sugerido()))
@@ -37,8 +41,6 @@ class JanelaImportarProdutos(tk.Toplevel):
 
         barra = ttk.Frame(corpo)
         barra.pack(side="bottom", fill="x", pady=(10, 0))
-        self.b_importar = ttk.Button(barra, text="Importar", style="Ok.TButton", command=self.importar, state="disabled")
-        self.b_importar.pack(side="left")
         ttk.Button(barra, text="Fechar (Esc)", command=self.destroy).pack(side="right")
 
         topo = ttk.Frame(corpo)
@@ -65,8 +67,13 @@ class JanelaImportarProdutos(tk.Toplevel):
         ttk.Checkbutton(opcoes, text="Escrever os nomes dos produtos em MAIÚSCULAS", variable=self.v_maiusculas,
                         command=self.analisar).grid(row=3, column=0, columnspan=3, sticky="w")
 
-        self.lbl_resumo = ttk.Label(corpo, text="3. Confira a prévia abaixo e toque em Importar.", font=tema.FONTE_B)
-        self.lbl_resumo.pack(side="top", anchor="w", pady=(4, 4))
+        passo3 = ttk.Frame(corpo)
+        passo3.pack(side="top", fill="x", pady=(4, 4))
+        self.b_importar = ttk.Button(passo3, text="Importar", style="Ok.TButton", command=self.importar, state="disabled")
+        self.b_importar.pack(side="right", padx=(10, 0))
+        self.lbl_resumo = ttk.Label(passo3, text="3. Confira a prévia abaixo e clique em Importar (botão verde, aqui ao lado).",
+                                    font=tema.FONTE_B, wraplength=max(self._larg - 260, 300), justify="left")
+        self.lbl_resumo.pack(side="left", fill="x", expand=True)
         self.grade = tema.Grade(corpo, [("lin", "Linha", 55, "e"), ("acao", "Ação", 90, "w"), ("cod", "Código", 65, "w"),
                                         ("nome", "Produto", 220, "w"), ("preco", "Preço", 80, "e"), ("com", "Comissão", 80, "e"),
                                         ("grupo", "Grupo", 160, "w"), ("qtd", "Estoque", 70, "e"), ("obs", "Observação", 300, "w")], altura=14)
@@ -79,6 +86,13 @@ class JanelaImportarProdutos(tk.Toplevel):
         # escondida deixava o Tk instável (segmentation fault no teste seguinte, no Linux).
         self.transient(master.winfo_toplevel())
         tema.centralizar(self, master.winfo_toplevel())
+        self._caber_na_tela()
+
+    def _caber_na_tela(self) -> None:
+        """Garante que a janela inteira (com título e barra de tarefas) fique dentro da tela."""
+        x = min(max(self.winfo_x(), 0), max(self.winfo_screenwidth() - self._larg, 0))
+        y = min(max(self.winfo_y(), 0), max(self.winfo_screenheight() - self._alt - 80, 0))
+        self.geometry(f"+{x}+{y}")
 
     # ------------------------------------------------------------------ arquivo
     def escolher_arquivo(self) -> None:
@@ -120,6 +134,9 @@ class JanelaImportarProdutos(tk.Toplevel):
             ids.append(str(n))
             tags.append((l.acao,))
         self.grade.preencher(linhas, ids, tags)
+        # a coluna Comissão só aparece quando a planilha traz comissão
+        com = any(l.comissao_pct for l in previa.linhas)
+        self.grade.tree.configure(displaycolumns=[c[0] for c in self.grade.colunas if com or c[0] != "com"])
         recusados = previa.contar("recusar")
         self.lbl_resumo.configure(text=f"Prévia: {previa.resumo()}." + ("  Os recusados NÃO serão importados (veja o motivo na última coluna)."
                                                                        if recusados else ""),

@@ -2706,6 +2706,20 @@ class TesteImportarProdutosUI(BaseUI):
         caminho.write_bytes(texto.encode("utf-8-sig"))
         return str(caminho)
 
+    def test_botao_importar_aparece_em_tela_pequena(self):
+        """Em notebook de 768 px a janela de 700 px saía da tela e o botão Importar (embaixo) sumia."""
+        from src.ui.importar_produtos_ui import JanelaImportarProdutos
+        with mock.patch.object(tk.Misc, "winfo_screenheight", return_value=768):
+            j = JanelaImportarProdutos(self.root, self.ctx); j.update()
+        self.addCleanup(j.destroy)
+        j.carregar(self._arquivo("Código;Produto;Preço\n10;CAMPARI;45,00\n"))
+        j.update(); j.update_idletasks()
+        self.assertLessEqual(j.winfo_y() + j.winfo_height(), 768 - 70)                       # janela inteira dentro da tela
+        b = j.b_importar
+        self.assertLessEqual(b.winfo_rooty() + b.winfo_height(), j.winfo_rooty() + j.winfo_height())
+        self.assertLess(b.winfo_rooty() - j.winfo_rooty(), 400)                              # no alto da janela, não no rodapé
+        self.assertEqual(b.cget("text"), "Importar 1 produto(s)")
+
     def test_previa_confere_e_importa_com_confirmacao(self):
         from src.ui.importar_produtos_ui import JanelaImportarProdutos
         recarregou = []

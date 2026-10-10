@@ -8,7 +8,7 @@ preços em massa ou levar o cardápio de outro sistema. O PDV **não traz produt
    que o Excel brasileiro abre direto; também dá para importar um `.xlsx`.
 2. Preencha. Só **Produto** e **Preço** são obrigatórios; os títulos aceitam variações ("Bebida", "Valor", "Código"...).
 3. **Escolher a planilha**. O PDV mostra a **prévia**: o que vai ser criado (verde), atualizado (azul) ou recusado (vermelho, com o
-   motivo na última coluna). **Nada é gravado até você tocar em Importar.** Se algo falhar no meio, nada fica pela metade.
+   motivo na última coluna). **Nada é gravado até você clicar em Importar** (botão verde logo acima da lista, à direita). Se algo falhar no meio, nada fica pela metade.
 
 ## Colunas
 | Coluna | Para quê |
