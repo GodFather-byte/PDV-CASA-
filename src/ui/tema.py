@@ -69,11 +69,18 @@ def centralizar(janela: tk.Toplevel, pai: tk.Misc | None = None) -> None:
 
 
 def modalizar(janela: tk.Toplevel) -> None:
-    """Torna a janela modal. `grab_set` falha se a janela ainda não estiver visível, então espera o mapeamento."""
+    """Torna a janela modal. `grab_set` falha se a janela ainda não estiver visível, então espera o mapeamento.
+
+    Se a janela é `transient` de uma janela escondida ou minimizada, ela nunca ficaria visível e a espera travaria o
+    caixa para sempre: nesse caso não espera nem prende o teclado (a janela abre normalmente, só não é modal)."""
     try:
-        janela.wait_visibility()
+        if not janela.winfo_viewable():
+            mestre = janela.wm_transient()
+            if mestre and not janela.nametowidget(str(mestre)).winfo_viewable():
+                return
+            janela.wait_visibility()
         janela.grab_set()
-    except tk.TclError:
+    except (tk.TclError, KeyError):
         pass
 
 
@@ -81,23 +88,27 @@ def modalizar(janela: tk.Toplevel) -> None:
 class Grade(ttk.Frame):
     """Treeview com barra de rolagem e linhas alternadas.
 
-    `colunas`: lista de (id, título, largura_px, alinhamento['w'|'e'|'center'])."""
+    `colunas`: lista de (id, título, largura_px, alinhamento['w'|'e'|'center']).
+    `estilo`: prefixo de um conjunto de estilos próprio (ex.: "Cx" usa Cx.Treeview e Cx.Vertical.TScrollbar, do caixa escuro);
+    `cor_par`: cor da listra das linhas pares nesse estilo."""
 
-    def __init__(self, master, colunas, altura: int = 10, selectmode: str = "browse"):
+    def __init__(self, master, colunas, altura: int = 10, selectmode: str = "browse", estilo: str = "",
+                 cor_par: str | None = None):
         super().__init__(master)
         self.colunas = colunas
+        pre = f"{estilo}." if estilo else ""
         self.tree = ttk.Treeview(self, columns=[c[0] for c in colunas], show="headings", height=altura,
-                                 selectmode=selectmode)
+                                 selectmode=selectmode, style=f"{pre}Treeview")
         for cid, titulo, largura, anchor in colunas:
-            self.tree.heading(cid, text=titulo)
+            self.tree.heading(cid, text=titulo, anchor=anchor if estilo else "center")
             self.tree.column(cid, width=largura, anchor=anchor, stretch=anchor == "w")
-        barra = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
-        horiz = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
+        barra = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview, style=f"{pre}Vertical.TScrollbar")
+        horiz = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview, style=f"{pre}Horizontal.TScrollbar")
         self.tree.configure(yscrollcommand=barra.set, xscrollcommand=horiz.set)
         horiz.pack(side="bottom", fill="x")
         barra.pack(side="right", fill="y")
         self.tree.pack(side="left", fill="both", expand=True)
-        self.tree.tag_configure("par", background=COR["linha_par"])
+        self.tree.tag_configure("par", background=cor_par or COR["linha_par"])
         self._n = 0
 
     def limpar(self) -> None:

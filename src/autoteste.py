@@ -37,7 +37,7 @@ MODULOS = [
     "src.hardware.impressoras_so",
     "src.sync.atualizacoes", "src.sync.licenca_nuvem", "src.sync.sincronizador", "src.sync.telegram_api",
     "src.ui.app", "src.ui.assistente_impressora_ui", "src.ui.atualizacao_ui", "src.ui.cadastro_loja_ui", "src.ui.cadastros_tk", "src.ui.caixa_dialogos",
-    "src.ui.caixa_pagamento", "src.ui.caixa_ui", "src.ui.clientes_ui", "src.ui.comissao_ui", "src.ui.composicao_ui",
+    "src.ui.caixa_pagamento", "src.ui.caixa_tema", "src.ui.caixa_ui", "src.ui.clientes_ui", "src.ui.comissao_ui", "src.ui.composicao_ui",
     "src.ui.config_ui", "src.ui.contexto", "src.ui.escolher_impressora_ui", "src.ui.fila_impressao_ui", "src.ui.icone",
     "src.ui.estoque_ui", "src.ui.importar_produtos_ui", "src.ui.inicializacao", "src.ui.lancamentos_ui", "src.ui.login", "src.ui.menu_widgets", "src.ui.painel_mesas",
     "src.ui.relatorios_ui", "src.ui.telegram_ui", "src.ui.tema", "src.ui.utilitarios_ui", "src.ui.visualizador",
