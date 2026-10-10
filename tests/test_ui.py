@@ -2696,3 +2696,76 @@ class TestePainelEstoqueUI(BaseUI):
         self.assertEqual(j.v_tipo.get(), "pedido")
         self.assertIn("NÃO mexe no estoque", j.lbl_dica.cget("text"))
         j.v_forn.set(""); j.destroy()
+
+
+class TesteImportarProdutosUI(BaseUI):
+    def _arquivo(self, texto: str) -> str:
+        pasta = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, pasta, True)
+        caminho = Path(pasta) / "produtos.csv"
+        caminho.write_bytes(texto.encode("utf-8-sig"))
+        return str(caminho)
+
+    def test_previa_confere_e_importa_com_confirmacao(self):
+        from src.ui.importar_produtos_ui import JanelaImportarProdutos
+        recarregou = []
+        j = JanelaImportarProdutos(self.root, self.ctx, lambda: recarregou.append(1)); j.update()
+        self.assertEqual(str(j.b_importar.cget("state")), "disabled")
+        j.carregar(self._arquivo("Código;Produto;Preço;Comissão\n10;CAMPARI;45,00;15,00\n50;COMISSAO;1,00;\n;SEM CODIGO;5,00;\n1;SKOL;9,00;\n"))
+        j.update()
+        acoes = [j.grade.valores(i)[1] for i in j.grade.tree.get_children()]
+        self.assertEqual(acoes, ["Criar", "Recusado", "Criar", "Atualizar"])       # 50 é da comissão; SKOL (código 1) já existe
+        self.assertIn("2 para criar, 1 para atualizar, 1 recusados", j.lbl_resumo.cget("text"))
+        self.assertIn("reservado", j.grade.valores(j.grade.tree.get_children()[1])[8])
+        self.assertEqual(j.b_importar.cget("text"), "Importar 3 produto(s)")
+        with mock.patch.object(tema, "confirmar", return_value=False):
+            j.importar()
+        self.assertIsNone(self.banco.um("SELECT 1 FROM produtos WHERE nome = 'CAMPARI'"))        # voltou: nada gravado
+        with mock.patch.object(tema, "confirmar", return_value=True), mock.patch.object(tema, "mensagem") as msg:
+            j.importar()
+        self.assertIn("2 produto(s) criado(s), 1 atualizado(s)", msg.call_args.args[1])
+        self.assertEqual(self.banco.valor("SELECT preco_cent FROM produtos WHERE nome = 'CAMPARI'"), 4500)
+        self.assertEqual(self.banco.valor("SELECT preco_cent FROM produtos WHERE nome = 'SKOL'"), 900)
+        self.assertEqual(recarregou, [1])
+        self.assertEqual(j.grade.total(), 0)
+        j.destroy()
+
+    def test_opcoes_mudam_a_previa(self):
+        from src.ui.importar_produtos_ui import JanelaImportarProdutos
+        j = JanelaImportarProdutos(self.root, self.ctx); j.update()
+        j.carregar(self._arquivo("Produto;Preço\nA;1\nB;1\n"))
+        j.v_codigo.set("sequencia"); j.v_inicio.set("48"); j.analisar()
+        self.assertEqual([j.grade.valores(i)[2] for i in j.grade.tree.get_children()], ["48", "49"])
+        j.v_atualizar.set(False); j.v_codigo.set("planilha"); j.analisar()
+        j.destroy()
+
+    def test_planilha_ruim_mostra_o_motivo_e_nao_trava(self):
+        from src.ui.importar_produtos_ui import JanelaImportarProdutos
+        j = JanelaImportarProdutos(self.root, self.ctx); j.update()
+        with mock.patch.object(tema, "erro") as erro:
+            j.carregar(self._arquivo("Preço;Qtd\n1;2\n"))
+        self.assertIn("coluna do nome", erro.call_args.args[1])
+        self.assertEqual(j.grade.total(), 0)
+        j.destroy()
+
+    def test_baixar_modelo_e_exportar_gravam_o_arquivo(self):
+        from src.ui import importar_produtos_ui
+        from src.ui.importar_produtos_ui import JanelaImportarProdutos
+        j = JanelaImportarProdutos(self.root, self.ctx); j.update()
+        pasta = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, pasta, True)
+        modelo, atuais = str(Path(pasta) / "modelo.csv"), str(Path(pasta) / "atuais.csv")
+        with mock.patch.object(importar_produtos_ui.filedialog, "asksaveasfilename", side_effect=[modelo, atuais]), mock.patch.object(tema, "mensagem"):
+            j.salvar_modelo()
+            j.exportar()
+        self.assertIn("Produto;Preço", Path(modelo).read_text(encoding="utf-8-sig"))
+        self.assertIn("SKOL", Path(atuais).read_text(encoding="utf-8-sig"))
+        j.destroy()
+
+    def test_botao_importar_planilha_no_cadastro_de_produtos(self):
+        from src.ui.cadastros_tk import JanelaCadastro
+        from src.ui.importar_produtos_ui import JanelaImportarProdutos
+        c = JanelaCadastro(self.root, self.ctx, "produtos"); c.update()
+        c._importar_planilha(); c.update()
+        self.assertTrue(any(isinstance(w, JanelaImportarProdutos) for w in c.winfo_children()))
+        c.destroy()

@@ -320,13 +320,19 @@ class JanelaCadastro(tk.Toplevel):
     def _botoes_extras(self):
         ch = self.chave
         if ch == "produtos":
-            return [("Ajustar estoque", self._ajustar_estoque), ("Observações", self._abrir_observacoes),
+            return [("Importar planilha", self._importar_planilha), ("Ajustar estoque", self._ajustar_estoque),
+                    ("Observações", self._abrir_observacoes),
                     ("Composição", self._abrir_composicao), ("Imprimir Tabela", self._tabela_precos)]
         if ch == "clientes":
             return [("Gerar arquivos", self._gerar_clientes)]
         if ch == "planos_contas":
             return [("Sub Planos", lambda: JanelaCadastro(self, self.ctx, "subplanos"))]
         return []
+
+    def _importar_planilha(self) -> None:
+        """Cadastra/atualiza vários produtos de uma vez a partir de uma planilha (CSV ou Excel), com prévia."""
+        from src.ui.importar_produtos_ui import JanelaImportarProdutos
+        JanelaImportarProdutos(self, self.ctx, self.carregar)
 
     def _ajustar_estoque(self) -> None:
         """Informa quanto o produto tem de verdade agora (contagem). Se ainda não controlava estoque, passa a controlar.
