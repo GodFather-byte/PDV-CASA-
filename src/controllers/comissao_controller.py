@@ -219,13 +219,19 @@ class ComissaoController:
         self.banco.log("comissao_cancelada", f"garota {c['garota']} {fmt.fmt_brl(c['valor_cent'])} {motivo}".strip(), operador_id)
 
     def pagar(self, garota, turno_id: int | None, operador_id: int | None, tirar_do_caixa: bool = True,
-              shows: int = 0, valor_show_cent: int = 0) -> dict:
+              shows: int = 0, valor_show_cent: int = 0, pix_cent: int = 0) -> dict:
         """Acerta a garota: paga TUDO que está pendente e, se o operador lançou, os shows (`shows` x `valor_show_cent`). Com
         `tirar_do_caixa` registra a saída do dinheiro no turno (uma sangria 'Comissão garota 180 NOME'), então a conferência da
         gaveta já conta com ela. Só shows, sem comissão pendente, também é um acerto válido. Devolve o resumo do pagamento:
-        `comissao_cent` (o marcado), `shows_cent` e `total_cent` (o que ela recebe, comissão + shows)."""
+        `comissao_cent` (o marcado), `shows_cent` e `total_cent` (o que ela recebe, comissão + shows).
+
+        `pix_cent` é a parte do total paga por Pix (sem dinheiro no caixa, ou só parte dele): o Pix nunca passa pela gaveta, então
+        só o restante em dinheiro (`dinheiro_cent`) vira sangria. Sem `tirar_do_caixa` o dinheiro é só registrado, como antes."""
         n = self.validar_numero(garota)
         shows, valor_show_cent = self.validar_shows(shows, valor_show_cent)
+        pix_cent = int(pix_cent or 0)
+        if pix_cent < 0:
+            raise ErroNegocio("O valor pago por Pix não pode ser negativo.")
         with self.banco.transacao():
             itens = self.lancamentos(n, "pendente")
             if not itens and not shows:
@@ -233,14 +239,19 @@ class ComissaoController:
             comissao = sum(i["valor_cent"] for i in itens)
             shows_cent = shows * valor_show_cent
             total = comissao + shows_cent
+            if pix_cent > total:
+                raise ErroNegocio(f"O Pix ({fmt.fmt_brl(pix_cent)}) não pode ser maior que o total a pagar ({fmt.fmt_brl(total)}).")
+            dinheiro = total - pix_cent
             nome = self.nome(n)
             movimento = None
-            if tirar_do_caixa:
+            if tirar_do_caixa and dinheiro > 0:
                 if turno_id is None:
                     raise ErroNegocio("Abra o turno do caixa para pagar com o dinheiro do caixa.")
                 rotulo = "Acerto" if shows else "Comissão"
+                parte_pix = f" (resto no Pix: {fmt.fmt_brl(pix_cent)})" if pix_cent else ""
                 movimento = TurnoController(self.banco).movimentar(
-                    turno_id, operador_id, "saida", total, f"{rotulo} garota {n}{' ' + nome if nome else ''}")
+                    turno_id, operador_id, "saida", dinheiro, f"{rotulo} garota {n}{' ' + nome if nome else ''}{parte_pix}")
+            tirou = movimento is not None
             agora = fmt.agora()
             self.banco.executar(
                 "UPDATE comissoes_garotas SET status = 'paga', paga_em = ?, pago_por = ?, pago_turno_id = ?, movimento_id = ? "
@@ -248,13 +259,19 @@ class ComissaoController:
             acerto = self.banco.inserir("acertos_garotas", {
                 "garota": n, "turno_id": turno_id, "operador_id": operador_id, "criado_em": agora, "comissao_cent": comissao,
                 "shows_qtd": shows, "show_valor_cent": valor_show_cent, "shows_cent": shows_cent, "total_cent": total,
-                "movimento_id": movimento, "tirou_do_caixa": int(bool(tirar_do_caixa))})
+                "movimento_id": movimento, "tirou_do_caixa": int(tirou), "pix_cent": pix_cent})
             self.banco.log("comissao_paga", f"garota {n} {fmt.fmt_brl(total)} ({len(itens)} lançamentos"
                            + (f", {shows} shows de {fmt.fmt_brl(valor_show_cent)}" if shows else "") + ")"
-                           + ("" if tirar_do_caixa else " fora do caixa"), operador_id)
+                           + (f" Pix {fmt.fmt_brl(pix_cent)}" if pix_cent else "")
+                           + ("" if tirar_do_caixa or dinheiro == 0 else " fora do caixa"), operador_id)
         return {"garota": n, "nome": nome, "total_cent": total, "comissao_cent": comissao, "quantidade": len(itens),
                 "shows": shows, "valor_show_cent": valor_show_cent, "shows_cent": shows_cent, "acerto_id": acerto,
-                "movimento_id": movimento, "lancamentos": itens, "pago_em": agora, "tirou_do_caixa": bool(tirar_do_caixa)}
+                "pix_cent": pix_cent, "dinheiro_cent": dinheiro, "movimento_id": movimento, "lancamentos": itens, "pago_em": agora,
+                "tirou_do_caixa": tirou}
+
+    def pix_do_turno(self, turno_id: int) -> int:
+        """Quanto das contas das garotas foi pago por Pix neste turno (não passa pela gaveta; aparece no fechamento)."""
+        return self.banco.valor("SELECT COALESCE(SUM(pix_cent), 0) FROM acertos_garotas WHERE turno_id = ?", (turno_id,), 0)
 
     def shows_do_turno(self, turno_id: int) -> dict:
         """Shows pagos nas contas das garotas neste turno: quantidade, total e o de cada garota (para o fechamento)."""

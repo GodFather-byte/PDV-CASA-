@@ -138,7 +138,8 @@ def conferencia(banco, turno: dict) -> dict:
             "vendas_por_tipo": _vendas_por_tipo(banco, turno["id"]),
             "saidas_liberadas": _saidas_liberadas(banco, turno["id"]),
             "comissoes": {**comissoes.resumo_turno(turno["id"]), "a_pagar_cent": comissoes.total_a_pagar()},
-            "shows": comissoes.shows_do_turno(turno["id"])}
+            "shows": comissoes.shows_do_turno(turno["id"]),
+            "pix_garotas_cent": comissoes.pix_do_turno(turno["id"])}
 
 
 # ----------------------------------------------------------------- texto da fita
@@ -242,6 +243,8 @@ def linhas_fita(res: dict, w: int = 40) -> list[str]:
         quem = f"{g['garota']} {g['nome']}".strip()
         return [_lr(f"  {quem} ({g['shows']}x)", M(g["total_cent"]), w)]
 
+    if res.get("pix_garotas_cent"):
+        saida += ["", _lr("Pago às garotas por Pix", M(res["pix_garotas_cent"]), w), "  (não saiu da gaveta)"]
     shows = res.get("shows") or {}
     if shows.get("quantidade"):
         saida += _secao("SHOWS PAGOS ÀS GAROTAS", shows["por_garota"], show, w)

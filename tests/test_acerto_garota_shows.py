@@ -106,6 +106,66 @@ class TesteAcertoComShows(BaseComissao):
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM acertos_garotas"), 0)
 
 
+class TestePixNoAcerto(BaseComissao):
+    def test_so_o_dinheiro_sai_da_gaveta_e_o_resto_vai_no_pix(self):
+        self.garota(180, "MARIA")
+        self.lancar(180, 25)
+        esperado = self.turnos.resumo(self.turno)["esperado"]
+        p = self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, pix_cent=30000)     # total 525
+        self.assertEqual((p["total_cent"], p["pix_cent"], p["dinheiro_cent"], p["tirou_do_caixa"]), (52500, 30000, 22500, True))
+        m = self.banco.um("SELECT valor_cent, descricao FROM movimentos_caixa")
+        self.assertEqual(m["valor_cent"], 22500)
+        self.assertIn("resto no Pix: R$ 300,00", m["descricao"])
+        self.assertEqual(self.turnos.resumo(self.turno)["esperado"], esperado - 22500)
+        self.assertEqual(self.banco.valor("SELECT pix_cent FROM acertos_garotas"), 30000)
+
+    def test_tudo_no_pix_nao_faz_sangria_mesmo_pedindo_para_tirar_do_caixa(self):
+        self.lancar(180, 25)
+        p = self.com.pagar(180, self.turno, self.adm, True, pix_cent=2500)
+        self.assertEqual((p["movimento_id"], p["tirou_do_caixa"], p["dinheiro_cent"]), (None, False, 0))
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
+        self.assertEqual(self.com.pendente(180), 0)
+
+    def test_tudo_no_pix_nao_exige_turno_aberto_para_a_gaveta(self):
+        self.lancar(180, 25)
+        p = self.com.pagar(180, None, self.adm, True, pix_cent=2500)
+        self.assertEqual(p["pix_cent"], 2500)
+
+    def test_pix_invalido(self):
+        self.lancar(180, 25)
+        for pix in (-1, 2501):
+            with self.assertRaises(ErroNegocio, msg=pix):
+                self.com.pagar(180, self.turno, self.adm, pix_cent=pix)
+        self.assertEqual(self.com.pendente(180), 2500)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
+
+    def test_recibo_separa_dinheiro_e_pix(self):
+        self.lancar(180, 100)
+        p = self.com.pagar(180, self.turno, self.adm, pix_cent=4000)
+        recibo = ImpressaoController(self.banco).recibo_comissao(p, "ADM")
+        for trecho in ("Dinheiro (saiu do caixa)", "60,00", "Pix", "40,00"):
+            self.assertIn(trecho, recibo)
+        self.assertNotIn("Saiu do dinheiro do caixa.", recibo)
+        self.assertTrue(all(len(l) <= 40 for l in recibo.splitlines()), recibo)
+        tudo = self.com.pagar(156, self.turno, self.adm, pix_cent=500) if self.lancar(156, 5) else None
+        self.assertNotIn("Dinheiro (", ImpressaoController(self.banco).recibo_comissao(tudo, "ADM"))
+
+    def test_fechamento_mostra_o_pix_pago_as_garotas(self):
+        self.lancar(180, 100)
+        self.com.pagar(180, self.turno, self.adm, pix_cent=4000)
+        res = self.turnos.fechar(self.turno, self.adm, 10000 - 6000)
+        self.assertEqual(res["pix_garotas_cent"], 4000)
+        fita = ImpressaoController(self.banco).fechamento(res)
+        self.assertIn("Pago às garotas por Pix", fita)
+        self.assertIn("não saiu da gaveta", fita)
+
+    def test_sem_pix_o_recibo_e_o_de_sempre(self):
+        self.lancar(180, 25)
+        p = self.com.pagar(180, self.turno, self.adm)
+        self.assertEqual((p["pix_cent"], p["dinheiro_cent"]), (0, 2500))
+        self.assertIn("Saiu do dinheiro do caixa.", ImpressaoController(self.banco).recibo_comissao(p, "ADM"))
+
+
 class TesteConferenciaDaMaquininha(BaseComissao):
     def vender_em(self, forma, valor):
         vid = self.vender((self.skol, 1))

@@ -905,10 +905,76 @@ class TesteAcertoComShowsNaTela(BaseNaTela):
     def test_desligado_nas_configuracoes_nao_pergunta_shows(self):
         self.banco.cfg_set("comissao_pede_shows", "N")
         self.dar(180, 25)
-        campos = []
+        vistos = []
         self.robo.quando("Visualizador", lambda w: w.destroy())
-        self.dialogos({"Pagar comissão": lambda w: (campos.append(len(entradas(w))), clicar(w, "Pagar"))})
+        self.dialogos({"Pagar comissão": lambda w: (vistos.append(self.textos(w)), clicar(w, "Pagar"))})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
-        self.assertEqual(campos, [0])
+        self.assertNotIn("Quantidade de shows:", vistos[0])
         self.assertEqual(self.com.pendente(180), 0)
+
+
+class TestePixNoAcertoDaGarotaNaTela(BaseNaTela):
+    """Sem dinheiro no caixa (ou só uma parte): o resto do acerto da garota vai por Pix e não sai da gaveta."""
+
+    def com_pix(self, valor, textos=None):
+        def acao(w):
+            campos = entradas(w)
+            if textos is not None:
+                textos.append(self.textos(w))
+            campos[-1].insert(0, valor)                          # o campo do Pix é o último
+            w.update()
+            if textos is not None:
+                textos.append(self.textos(w))
+            clicar(w, "Pagar")                                   # a gaveta já vem marcada nos testes (comissao_paga_do_caixa)
+        return acao
+
+    def test_parte_em_dinheiro_da_gaveta_e_o_resto_no_pix(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 100)
+        esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
+        recibos, textos = [], []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.dialogos({"Pagar comissão": self.com_pix("40", textos=textos)})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertIn("Dinheiro R$ 60,00  +  Pix R$ 40,00", textos[-1])
+        a = self.banco.um("SELECT total_cent, pix_cent, tirou_do_caixa FROM acertos_garotas")
+        self.assertEqual(tuple(a), (10000, 4000, 1))
+        self.assertEqual(self.banco.valor("SELECT valor_cent FROM movimentos_caixa"), 6000)      # só o dinheiro sai da gaveta
+        self.assertEqual(self.ctx.turnos.resumo(self.turno)["esperado"], esperado - 6000)
+        for trecho in ("Dinheiro (saiu do caixa)", "60,00", "Pix", "40,00", "TOTAL PAGO"):
+            self.assertIn(trecho, recibos[0])
+        self.sem_travar()
+
+    def test_tudo_no_pix_nao_mexe_na_gaveta(self):
+        self.dar(180, 25)
+        esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
+        self.robo.quando("Visualizador", lambda w: w.destroy())
+
+        def tudo(w):
+            [b for b in __import__("tests.ui_robo", fromlist=["botoes"]).botoes(w) if str(b.cget("text")) == "Tudo no Pix"][0].invoke()
+            clicar(w, "Pagar")                                   # com a gaveta marcada: o Pix mesmo assim não sai dela
+        self.dialogos({"Pagar comissão": tudo})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
+        self.assertEqual(self.ctx.turnos.resumo(self.turno)["esperado"], esperado)
+        self.assertEqual(self.banco.valor("SELECT pix_cent FROM acertos_garotas"), 2500)
+        self.assertEqual(self.com.pendente(180), 0)
+
+    def test_pix_maior_que_o_total_nao_paga(self):
+        self.dar(180, 25)
+        erros = []
+
+        def passou(w):
+            entradas(w)[-1].insert(0, "30")
+            clicar(w, "Pagar")
+            w.update()
+            erros.append(self.textos(w))
+            clicar(w, "Cancelar")
+        self.dialogos({"Pagar comissão": passou})
+        self.posicao("180")
+        self.cx.pagar()
+        self.assertIn("O valor do Pix é inválido ou maior que o total a pagar.", erros[0])
+        self.assertEqual(self.com.pendente(180), 2500)

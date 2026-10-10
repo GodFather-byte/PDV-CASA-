@@ -179,6 +179,10 @@ entra na venda: a comanda da garota continua vazia e some sozinha, e a comissão
   "Acerto garota 180 NOME" (desmarcando a opção, paga fora do caixa). Sem comissão marcada dá para acertar só os shows (F12 na
   comanda vazia de uma garota cadastrada). O fechamento do turno lista os shows pagos por garota. Em Configurações > Caixa:
   *Valores do show* (padrão `50;60`, separados por ponto e vírgula) e *perguntar quantos shows ela fez* (ligado).
+- **Pix no acerto:** sem dinheiro no caixa, ou só com uma parte dele, a janela *Pagar comissão* tem o campo **Parte paga por Pix
+  (R$)** e o botão **Tudo no Pix**. A tela mostra a divisão (`Dinheiro R$ 60,00 + Pix R$ 40,00`): só a parte em dinheiro vira
+  sangria e abre a gaveta; o Pix nunca sai dela. O recibo separa *Dinheiro* e *Pix*, e o fechamento do turno traz a linha
+  *Pago às garotas por Pix* (para o dono conferir no banco).
 - **Contra erro de digitação:** havendo garotas cadastradas, um número que não está no cadastro (ou de garota inativa) pede
   confirmação, e valor acima de R$ 500,00 também.
 - **Comissões** (botão na barra do caixa): a lista geral, com o que há a pagar a cada garota e os lançamentos dela, para pagar

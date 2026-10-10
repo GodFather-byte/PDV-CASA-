@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 12
+VERSAO_ESQUEMA = 13
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -465,7 +465,8 @@ TABELAS = [
         shows_cent INTEGER NOT NULL DEFAULT 0,
         total_cent INTEGER NOT NULL,
         movimento_id INTEGER REFERENCES movimentos_caixa(id),
-        tirou_do_caixa INTEGER NOT NULL DEFAULT 0
+        tirou_do_caixa INTEGER NOT NULL DEFAULT 0,
+        pix_cent INTEGER NOT NULL DEFAULT 0
     )""",
     "CREATE INDEX IF NOT EXISTS ix_acertos_garota ON acertos_garotas(garota, criado_em)",
     "CREATE INDEX IF NOT EXISTS ix_acertos_turno ON acertos_garotas(turno_id)",
@@ -562,4 +563,8 @@ MIGRACOES = {
     # v12: acerto da garota com shows. A tabela acertos_garotas nasce em TABELAS (IF NOT EXISTS); as chaves novas de
     # configuração (show_valores, comissao_pede_shows) nascem em CONFIG_PADRAO. Nada a migrar.
     12: [],
+    # v13: parte do acerto da garota paga por Pix (a tabela acertos_garotas pode ter nascido na v12 sem a coluna).
+    13: [
+        ("coluna", "acertos_garotas", "pix_cent", "INTEGER NOT NULL DEFAULT 0"),
+    ],
 }

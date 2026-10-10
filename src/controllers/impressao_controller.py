@@ -419,8 +419,15 @@ class ImpressaoController:
                        "-" * w, _lr("TOTAL PAGO", M(pag["total_cent"]), w)]
         else:
             linhas += ["-" * w, _lr(f"TOTAL PAGO ({pag['quantidade']})", M(pag["total_cent"]), w)]
-        linhas += ["Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.",
-                   f"Operador: {operador}", "", "", "_" * w, "Assinatura da garota".center(w), "=" * w]
+        pix = pag.get("pix_cent", 0)
+        if pix:
+            dinheiro = pag["total_cent"] - pix
+            if dinheiro:
+                linhas.append(_lr("Dinheiro" + (" (saiu do caixa)" if pag.get("tirou_do_caixa") else " (fora do caixa)"), M(dinheiro), w))
+            linhas.append(_lr("Pix", M(pix), w))
+        else:
+            linhas.append("Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.")
+        linhas += [f"Operador: {operador}", "", "", "_" * w, "Assinatura da garota".center(w), "=" * w]
         return "\n".join(linhas)
 
     def leitura_x(self, turno_id: int) -> str:
