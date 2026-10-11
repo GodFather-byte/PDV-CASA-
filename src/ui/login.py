@@ -9,6 +9,8 @@ from src.core import formatacao as fmt
 from src.core import licenca
 from src.core.erros import ErroNegocio
 from src.ui import tema
+from src.ui.menu_widgets import PAL, FONTE
+from src.versao import VERSAO
 
 
 class JanelaLogin(tk.Toplevel):
@@ -17,39 +19,100 @@ class JanelaLogin(tk.Toplevel):
     def __init__(self, master, ctx, titulo_loja: str = "PDV"):
         super().__init__(master)
         self.ctx, self.operador = ctx, None
-        self.title("Entrada no sistema")
-        self.configure(bg=tema.COR["marinho"])
+        self.title("WillPDV • Entrada no sistema")
+        self.configure(bg=PAL["fundo"])
         self.resizable(False, False)
-        quadro = tk.Frame(self, bg=tema.COR["marinho"], padx=30, pady=24)
-        quadro.pack()
-        tk.Label(quadro, text=titulo_loja.upper(), bg=tema.COR["marinho"], fg="white", font=("Segoe UI", 18, "bold")).pack()
-        tk.Label(quadro, text="PDV - Ponto de Venda", bg=tema.COR["marinho"], fg="#9fb3e8").pack(pady=(0, 16))
-        for rotulo in ("Usuário", "Senha"):
-            tk.Label(quadro, text=rotulo, bg=tema.COR["marinho"], fg="white", font=tema.FONTE_B, anchor="w").pack(fill="x")
-            if rotulo == "Usuário":
-                self.var_usuario = tk.StringVar()
-                nomes = ctx.acesso.nomes_login()
-                self.ent_usuario = ttk.Combobox(quadro, textvariable=self.var_usuario, values=nomes, width=30)
-                self.ent_usuario.pack(pady=(2, 10))
-                if len(nomes) == 1:
-                    self.var_usuario.set(nomes[0])
-            else:
-                self.var_senha = tk.StringVar()
-                self.ent_senha = ttk.Entry(quadro, textvariable=self.var_senha, show="*", width=33)
-                self.ent_senha.pack(pady=(2, 6))
-        self.lbl_msg = tk.Label(quadro, text="", bg=tema.COR["marinho"], fg="#ffb4b4", font=tema.FONTE_B)
-        self.lbl_msg.pack(pady=(4, 6))
-        ttk.Button(quadro, text="Entrar", command=self.entrar).pack(fill="x")
+        self._aplicar_estilos()
+        layout = tk.Frame(self, bg=PAL["fundo"])
+        layout.pack(fill="both", expand=True)
+        layout.columnconfigure(0, minsize=300)
+        layout.columnconfigure(1, minsize=460, weight=1)
+
+        marca = tk.Frame(layout, bg=PAL["lateral"], padx=28, pady=30)
+        marca.grid(row=0, column=0, sticky="nsew")
+        tk.Label(marca, text="W", font=(FONTE, 22, "bold"), bg=PAL["verde"], fg=PAL["fundo"], width=3
+                 ).pack(anchor="w")
+        tk.Label(marca, text="WILLPDV", font=(FONTE, 11, "bold"), bg=PAL["lateral"], fg=PAL["verde"]
+                 ).pack(anchor="w", pady=(18, 0))
+        tk.Label(marca, text="Seu atendimento\ncomeça aqui.", font=(FONTE, 24, "bold"), bg=PAL["lateral"],
+                 fg=PAL["texto"], justify="left").pack(anchor="w", pady=(14, 12))
+        tk.Frame(marca, height=2, width=44, bg=PAL["verde"]).pack(anchor="w", pady=(8, 20))
+        tk.Label(marca, text=titulo_loja, font=(FONTE, 15, "bold"), bg=PAL["lateral"], fg=PAL["texto"],
+                 wraplength=240, justify="left").pack(anchor="w")
+        tk.Label(marca, text="Vendas, caixa e gestão\nem um só lugar.", font=(FONTE, 11), bg=PAL["lateral"],
+                 fg=PAL["suave"], justify="left").pack(anchor="w", pady=(10, 0))
+        tk.Label(marca, text=f"Ponto de venda  /  Versão {VERSAO}", font=(FONTE, 9), bg=PAL["lateral"],
+                 fg=PAL["mudo"]).pack(side="bottom", anchor="w")
+
+        quadro = tk.Frame(layout, bg=PAL["fundo"], padx=36, pady=28)
+        quadro.grid(row=0, column=1, sticky="nsew")
+        tk.Label(quadro, text="Bem-vindo de volta", bg=PAL["fundo"], fg=PAL["texto"], font=(FONTE, 21, "bold")
+                 ).pack(anchor="w")
+        tk.Label(quadro, text="Entre com seu usuário para acessar o PDV.", bg=PAL["fundo"], fg=PAL["suave"],
+                 font=(FONTE, 10)).pack(anchor="w", pady=(8, 24))
+        tk.Label(quadro, text="Usuário", bg=PAL["fundo"], fg=PAL["texto"], font=(FONTE, 10, "bold")
+                 ).pack(anchor="w")
+        self.var_usuario = tk.StringVar(self)
+        nomes = ctx.acesso.nomes_login()
+        self.ent_usuario = ttk.Combobox(quadro, textvariable=self.var_usuario, values=nomes, width=28,
+                                        font=(FONTE, 12), style="Login.TCombobox")
+        self.ent_usuario.pack(fill="x", pady=(8, 6))
+        if len(nomes) == 1:
+            self.var_usuario.set(nomes[0])
+        tk.Label(quadro, text="Selecione seu nome ou digite seu usuário.", bg=PAL["fundo"], fg=PAL["mudo"],
+                 font=(FONTE, 9)).pack(anchor="w", pady=(0, 18))
+        tk.Label(quadro, text="Senha", bg=PAL["fundo"], fg=PAL["texto"], font=(FONTE, 10, "bold")
+                 ).pack(anchor="w")
+        self.var_senha = tk.StringVar(self)
+        self.ent_senha = ttk.Entry(quadro, textvariable=self.var_senha, show="*", width=28, font=(FONTE, 12),
+                                   style="Login.TEntry")
+        self.ent_senha.pack(fill="x", pady=(8, 8))
+        self.var_mostrar_senha = tk.BooleanVar(self, value=False)
+        self.chk_mostrar_senha = ttk.Checkbutton(quadro, text="Mostrar senha", variable=self.var_mostrar_senha,
+                                                command=self._mostrar_senha, style="Login.TCheckbutton")
+        self.chk_mostrar_senha.pack(anchor="w")
+        self.lbl_msg = tk.Label(quadro, text="", bg=PAL["fundo"], fg=PAL["vermelho"], font=(FONTE, 10, "bold"),
+                                wraplength=360, justify="left", anchor="w")
+        self.lbl_msg.pack(fill="x", pady=(14, 12))
+        self.btn_entrar = ttk.Button(quadro, text="Entrar no PDV", command=self.entrar, style="Login.TButton")
+        self.btn_entrar.pack(fill="x")
         if licenca.exigida(ctx.banco):
-            ttk.Button(quadro, text="Código de licença...", command=self.pedir_licenca).pack(fill="x", pady=(6, 0))
-        self.ent_usuario.bind("<Return>", lambda e: self.ent_senha.focus_set())
-        self.ent_senha.bind("<Return>", lambda e: self.entrar())
+            ttk.Button(quadro, text="Código de licença...", command=self.pedir_licenca, style="Login.Secundario.TButton"
+                       ).pack(fill="x", pady=(10, 0))
+        tk.Label(quadro, text="Enter: continuar  |  Esc: sair", bg=PAL["fundo"], fg=PAL["mudo"], font=(FONTE, 9)
+                 ).pack(pady=(18, 0))
+        self.ent_usuario.bind("<<ComboboxSelected>>", lambda e: self.ent_senha.focus_set())
+        self.ent_usuario.bind("<Return>", lambda e: (self.ent_senha.focus_set(), "break")[1])
+        self.ent_senha.bind("<Return>", lambda e: (self.entrar(), "break")[1])
+        self.btn_entrar.bind("<Return>", lambda e: (self.entrar(), "break")[1])
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self.bind("<Escape>", lambda e: self.destroy())
         tema.centralizar(self)
         self.lift()
         tema.modalizar(self)
         (self.ent_senha if self.var_usuario.get() else self.ent_usuario).focus_set()
+
+    def _aplicar_estilos(self) -> None:
+        """Estilos exclusivos do login, sem alterar os demais formulários."""
+        estilo = ttk.Style(self)
+        for nome in ("Login.TEntry", "Login.TCombobox"):
+            estilo.configure(nome, padding=10, fieldbackground=PAL["cartao"], foreground=PAL["texto"],
+                             insertcolor=PAL["texto"], bordercolor=PAL["borda"], lightcolor=PAL["borda"],
+                             darkcolor=PAL["borda"], arrowcolor=PAL["texto"], background=PAL["cartao"])
+            estilo.map(nome, bordercolor=[("focus", PAL["verde"])], fieldbackground=[("readonly", PAL["cartao"])])
+        estilo.configure("Login.TCheckbutton", font=(FONTE, 10), background=PAL["fundo"], foreground=PAL["suave"])
+        estilo.map("Login.TCheckbutton", background=[("active", PAL["fundo"])], foreground=[("active", PAL["texto"])])
+        estilo.configure("Login.TButton", font=(FONTE, 12, "bold"), padding=(12, 12), background=PAL["verde"],
+                         foreground=PAL["fundo"], borderwidth=0)
+        estilo.map("Login.TButton", background=[("active", "#7deac8"), ("pressed", "#36c99b")],
+                   foreground=[("active", PAL["fundo"])])
+        estilo.configure("Login.Secundario.TButton", font=(FONTE, 10), padding=(12, 8), background=PAL["cartao"],
+                         foreground=PAL["suave"], borderwidth=0)
+        estilo.map("Login.Secundario.TButton", background=[("active", PAL["cartao_hover"])])
+
+    def _mostrar_senha(self) -> None:
+        """Alterna somente a visualização; a senha permanece no mesmo campo."""
+        self.ent_senha.configure(show="" if self.var_mostrar_senha.get() else "*")
 
     def entrar(self) -> None:
         estado = licenca.estado(self.ctx.banco)

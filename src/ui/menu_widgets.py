@@ -3,15 +3,16 @@
 Todos reagem ao mouse (hover com transição suave) e, quando têm ação, mudam o cursor e abrem a tela correspondente."""
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 
 PAL = {
-    "fundo": "#0a1022", "lateral": "#0d1530", "cabecalho": "#0d1530", "cartao": "#131c3a", "cartao_hover": "#1a2650",
-    "borda": "#233059", "borda_hover": "#3d57a8", "texto": "#eaf0ff", "suave": "#8f9dcb", "mudo": "#5d6a96",
-    "azul": "#4f8cff", "verde": "#35d49a", "ambar": "#ffc547", "vermelho": "#ff6b7a", "violeta": "#9b7bff",
+    "fundo": "#101820", "lateral": "#141f2b", "cabecalho": "#141f2b", "cartao": "#1a2735", "cartao_hover": "#233548",
+    "borda": "#2b3c4e", "borda_hover": "#5a7b9b", "texto": "#f1f5f9", "suave": "#b3c2d1", "mudo": "#94a8bd",
+    "azul": "#78abff", "verde": "#52dfb4", "ambar": "#ffd078", "vermelho": "#ff8d9b", "violeta": "#b8a1ff",
     "turquesa": "#33c4d8", "ardosia": "#7f93c9",
 }
-FONTE = "Segoe UI"
+FONTE = "Segoe UI" if sys.platform == "win32" else "Helvetica"
 
 
 def misturar(c1: str, c2: str, t: float) -> str:
@@ -87,9 +88,9 @@ class ItemNav(_Transicao, tk.Frame):
         self.hover = False
         self.barra = tk.Frame(self, width=4, bg=self.base)
         self.barra.pack(side="left", fill="y")
-        self.tile = tk.Label(self, text=icone, font=("Segoe UI Symbol", 14), fg=cor, bg=misturar(PAL["lateral"], cor, 0.22),
+        self.tile = tk.Label(self, text=icone, font=(FONTE, 14, "bold"), fg=cor, bg=misturar(PAL["lateral"], cor, 0.22),
                              width=3)
-        self.tile.pack(side="left", padx=(12, 12), pady=9, fill="y")
+        self.tile.pack(side="left", padx=(8, 8), pady=9, fill="y")
         i = rotulo.lower().find(letra.lower())
         self.nome = tk.Label(self, text=rotulo, font=(FONTE, 11, "bold" if destaque else "normal"), fg=PAL["texto"],
                              bg=self.base, anchor="w", underline=i)
@@ -114,7 +115,7 @@ class ItemNav(_Transicao, tk.Frame):
         self._ir_para(1.0 if (ligado or self.hover) else 0.0)
 
     def _pintar(self) -> None:
-        bg = misturar(self.base, "#1d2b5c", self._t)
+        bg = misturar(self.base, PAL["cartao_hover"], self._t)
         self.configure(bg=bg)
         self.nome.configure(bg=bg)
         self.badge.configure(bg=bg, fg=misturar(PAL["mudo"], self.cor, self._t))
@@ -140,7 +141,14 @@ class Cartao(_Transicao, tk.Frame):
         self.valor.pack(fill="x", padx=14)
         self.detalhe = tk.Label(self, text=detalhe, font=(FONTE, 8), fg=PAL["mudo"], bg=PAL["cartao"], anchor="w")
         self.detalhe.pack(fill="x", padx=14, pady=(0, 7))
+        self.bind("<Configure>", self._ajustar_textos)
         _ligar(self, self._entrou, self._saiu, (lambda e: self.clique()) if clique else None)
+
+    def _ajustar_textos(self, evento) -> None:
+        largura = max(60, evento.width - 30)
+        self.rotulo.configure(wraplength=largura, justify="left")
+        self.detalhe.configure(wraplength=largura, justify="left")
+        self.valor.configure(font=(FONTE, 18 if largura < 200 else 22, "bold"))
 
     def definir(self, texto: str, detalhe: str | None = None) -> None:
         """Atualiza o valor; se mudou, o número 'pisca' em branco e volta à cor (chama a atenção sem travar nada)."""
@@ -217,21 +225,67 @@ class Aviso(_Transicao, tk.Frame):
 class Atalho(_Transicao, tk.Frame):
     """Botão de ação rápida (chip) da tela principal."""
 
-    def __init__(self, pai, texto: str, cor: str, comando):
-        super().__init__(pai, bg=PAL["cartao"], highlightthickness=1, highlightbackground=PAL["borda"], cursor="hand2")
+    def __init__(self, pai, texto: str, cor: str, comando, detalhe: str = "", destaque: bool = False):
+        self.base = misturar(PAL["cartao"], cor, 0.16) if destaque else PAL["cartao"]
+        super().__init__(pai, bg=self.base, highlightthickness=1, highlightbackground=cor if destaque else PAL["borda"],
+                         cursor="hand2", takefocus=True)
         self.cor, self.comando = cor, comando
         _cancelar_ao_destruir(self, "_quadro")
-        self.ponto = tk.Label(self, text="▸", font=(FONTE, 10, "bold"), fg=cor, bg=PAL["cartao"])
-        self.ponto.pack(side="left", padx=(10, 0), pady=5)
-        self.texto = tk.Label(self, text=texto, font=(FONTE, 10), fg=PAL["texto"], bg=PAL["cartao"])
-        self.texto.pack(side="left", padx=(4, 12), pady=5)
+        self.ponto = tk.Label(self, text=">", font=(FONTE, 20 if destaque else 14, "bold"), fg=cor, bg=self.base)
+        self.ponto.pack(side="right", padx=14, pady=8)
+        self.textos = tk.Frame(self, bg=self.base)
+        self.textos.pack(side="left", fill="both", expand=True, padx=(14, 0), pady=10 if detalhe else 6)
+        self.texto = tk.Label(self.textos, text=texto, font=(FONTE, 15 if destaque else 10, "bold"),
+                              fg=PAL["texto"], bg=self.base, anchor="w")
+        self.texto.pack(fill="x")
+        self.detalhe = tk.Label(self.textos, text=detalhe, font=(FONTE, 9), fg=PAL["suave"], bg=self.base, anchor="w")
+        if detalhe:
+            self.detalhe.pack(fill="x", pady=(3, 0))
+        self.bind("<Configure>", lambda e: self.detalhe.configure(wraplength=max(60, e.width - 80), justify="left"))
+        self.bind("<Return>", lambda e: (self.comando(), "break")[1])
+        self.bind("<space>", lambda e: (self.comando(), "break")[1])
+        self.bind("<FocusIn>", lambda e: self._ir_para(1.0))
+        self.bind("<FocusOut>", lambda e: self._ir_para(0.0))
         _ligar(self, lambda e: self._ir_para(1.0), lambda e: self._ir_para(0.0), lambda e: self.comando())
 
     def _pintar(self) -> None:
-        bg = misturar(PAL["cartao"], misturar(PAL["cartao"], self.cor, 0.28), self._t)
+        bg = misturar(self.base, misturar(self.base, self.cor, 0.28), self._t)
         self.configure(bg=bg, highlightbackground=misturar(PAL["borda"], self.cor, self._t))
         self.ponto.configure(bg=bg)
         self.texto.configure(bg=bg)
+        self.textos.configure(bg=bg)
+        self.detalhe.configure(bg=bg)
+
+
+class ConteudoRolavel(tk.Frame):
+    """Mantém o painel acessível em notebooks, sem rolar a navegação lateral."""
+
+    def __init__(self, pai):
+        super().__init__(pai, bg=PAL["fundo"])
+        self.canvas = tk.Canvas(self, bg=PAL["fundo"], highlightthickness=0, yscrollincrement=24)
+        barra = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview, bg=PAL["lateral"],
+                             troughcolor=PAL["fundo"], activebackground=PAL["suave"], width=12)
+        barra.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.canvas.configure(yscrollcommand=barra.set)
+        self.corpo = tk.Frame(self.canvas, bg=PAL["fundo"], padx=24, pady=20)
+        self._janela = self.canvas.create_window(0, 0, window=self.corpo, anchor="nw")
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self._janela, width=e.width))
+        self.corpo.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+
+    def ligar_rolagem(self) -> None:
+        def rolar(evento):
+            if self.corpo.winfo_height() > self.canvas.winfo_height():
+                passo = (-1 if evento.delta > 0 else 1) if evento.num not in (4, 5) else (-1 if evento.num == 4 else 1)
+                self.canvas.yview_scroll(passo * 3, "units")
+            return "break"
+
+        def ligar(widget):
+            for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(seq, rolar, add="+")
+            for filho in widget.winfo_children():
+                ligar(filho)
+        ligar(self)
 
 
 class BarraProporcao(tk.Canvas):

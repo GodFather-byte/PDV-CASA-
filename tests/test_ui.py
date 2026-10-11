@@ -238,6 +238,48 @@ class TesteMenu(BaseUI):
         j.var_senha.set("sEGREDO1"); j.entrar()
         self.assertEqual(j.operador.nome, "ADM")
 
+    def test_menu_compacto_mantem_acoes_visiveis_e_rola_indicadores(self):
+        app = self._menu_do("adm", "adm")
+        app.mostrar_menu()
+        app.root.geometry("1000x600")
+        app.root.update()
+        canvas = app.painel_rolavel.canvas
+        for b in [app.atalho_caixa, *app.atalhos_rapidos.values()]:
+            with self.subTest(acao=b.texto.cget("text")):
+                self.assertGreaterEqual(b.winfo_rootx(), canvas.winfo_rootx())
+                self.assertLessEqual(b.winfo_rootx() + b.winfo_width(), canvas.winfo_rootx() + canvas.winfo_width())
+                self.assertLessEqual(b.winfo_rooty() + b.winfo_height(), canvas.winfo_rooty() + canvas.winfo_height())
+        self.assertLess(canvas.yview()[1], 1.0)     # indicadores abaixo da dobra têm rolagem
+        app.atalho_caixa.event_generate("<Button-5>")
+        app.root.update()
+        self.assertGreater(canvas.yview()[0], 0.0)
+        canvas.yview_moveto(1.0)
+        app.root.update()
+        self.assertLessEqual(app.lbl_barra.winfo_rooty() + app.lbl_barra.winfo_height(),
+                             canvas.winfo_rooty() + canvas.winfo_height())
+        self.assertTrue(app.botoes["Saída"].winfo_viewable())
+
+    def test_acoes_rapidas_respondem_ao_teclado_e_ao_clique_na_descricao(self):
+        from src.ui.app import App
+        with mock.patch.object(App, "abrir_caixa") as caixa, mock.patch.object(App, "abrir_cadastro") as cadastro:
+            app = self._menu_do("adm", "adm")
+            app.mostrar_menu(); app.root.update()
+            app.atalho_caixa.focus_force(); app.root.update()
+            app.atalho_caixa.event_generate("<Return>")
+            app.atalho_caixa.event_generate("<space>")
+            self.assertEqual(caixa.call_count, 2)
+            app.atalhos_rapidos["Produtos"].detalhe.event_generate("<Button-1>")
+            cadastro.assert_called_once_with("produtos")
+
+    def test_menu_sem_contas_nao_mostra_indicadores_do_modulo_desligado(self):
+        self.banco.cfg_set("usar_contas", "N")
+        app = self._menu_do("adm", "adm")
+        app.mostrar_menu(); app.root.update()
+        self.assertNotIn("contas_anteriores", app.cartoes)
+        self.assertNotIn("contas_hoje", app.cartoes)
+        self.assertIn("vendas_total", app.cartoes)
+        self.assertIn("Produtos", app.atalhos_rapidos)
+
     def test_senha_de_fabrica_obriga_a_trocar_antes_de_entrar(self):
         from src.ui.login import JanelaLogin
         respostas = iter(["adm", "Nova123", "nova123"])       # 1ª: igual ao nome (recusada na própria janela)
@@ -269,6 +311,56 @@ class TesteMenu(BaseUI):
         self.assertIn("Troque a senha", j.lbl_msg.cget("text"))
         self.ctx.acesso.autenticar("ADM", "ADM")                # a senha não mudou
         self.sem_travar()
+
+
+class TesteTelaEntrada(BaseUI):
+    def _login(self):
+        from src.ui.login import JanelaLogin
+        janela = JanelaLogin(self.root, self.ctx, "Casa de Teste")
+        self.addCleanup(lambda: janela.winfo_exists() and janela.destroy())
+        janela.update()
+        return janela
+
+    def test_mostrar_senha_preserva_valor_e_nova_entrada_volta_a_ocultar(self):
+        j = self._login()
+        j.var_senha.set("Minha123")
+        self.assertEqual(j.ent_senha.cget("show"), "*")
+        j.chk_mostrar_senha.invoke()
+        self.assertEqual(j.ent_senha.cget("show"), "")
+        self.assertEqual(j.var_senha.get(), "Minha123")
+        j.chk_mostrar_senha.invoke()
+        self.assertEqual(j.ent_senha.cget("show"), "*")
+        j.chk_mostrar_senha.invoke()
+        j.destroy()
+        nova = self._login()
+        self.assertEqual(nova.ent_senha.cget("show"), "*")
+        self.assertEqual(nova.var_senha.get(), "")
+
+    def test_enter_avanca_do_usuario_e_autentica_no_campo_de_senha(self):
+        self.ctx.acesso.trocar_senha(self.ctx.operador, "Segredo1")
+        j = self._login()
+        j.var_usuario.set("adm")
+        j.ent_usuario.focus_force(); j.update()
+        j.ent_usuario.event_generate("<Return>"); j.update()
+        self.assertEqual(j.focus_get(), j.ent_senha)
+        self.assertIsNone(j.operador)
+        j.var_senha.set("Segredo1")
+        j.ent_senha.event_generate("<Return>")
+        self.assertEqual(j.operador.nome, "ADM")
+        self.assertFalse(j.winfo_exists())
+
+    def test_selecionar_operador_avanca_para_senha_e_esc_cancela(self):
+        self.ctx.cadastros.salvar("operadores", {"nome": "Ana", "senha": "1", "nivel": "1"})
+        j = self._login()
+        self.assertEqual(j.var_usuario.get(), "")  # vários operadores: não escolhe alguém automaticamente
+        self.assertIn("ANA", [n.upper() for n in j.ent_usuario.cget("values")])
+        j.ent_usuario.focus_force(); j.update()
+        j.var_usuario.set("Ana")
+        j.ent_usuario.event_generate("<<ComboboxSelected>>"); j.update()
+        self.assertEqual(j.focus_get(), j.ent_senha)
+        j.ent_senha.event_generate("<Escape>")
+        self.assertIsNone(j.operador)
+        self.assertFalse(j.winfo_exists())
 
 
 class TesteAvisoDeVersao(BaseUI):

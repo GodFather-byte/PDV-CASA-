@@ -16,7 +16,7 @@ from src.ui import icone as icone_janela
 from src.ui import tema
 from src.ui.contexto import Contexto
 from src.ui.login import JanelaLogin
-from src.ui.menu_widgets import PAL, FONTE, Atalho, Aviso, BarraProporcao, Cartao, ItemNav
+from src.ui.menu_widgets import PAL, FONTE, Atalho, Aviso, BarraProporcao, Cartao, ConteudoRolavel, ItemNav
 from src.versao import VERSAO
 
 CADASTROS = [("unidades", "Unidades"), ("grupos", "Grupos"), ("subgrupos", "Subgrupos"), ("produtos", "Produtos"),
@@ -54,12 +54,12 @@ CONFIGURACOES = [("acessos", "Acessos", "cfg_acessos"), ("loja", "Loja", "cfg_lo
                  ("configuracoes", "Configurações", "cfg_configuracoes"), ("maquinas", "Máquinas", "cfg_maquinas"),
                  ("telegram", "Telegram (celular do dono)", "cfg_telegram")]
 
-BOTOES = [("Manutenção de Cadastros", "Cadastros", "m"), ("Caixa", "Caixa", "c"), ("Lançamentos", "Lançamentos", "l"),
+BOTOES = [("Cadastros", "Cadastros", "m"), ("Caixa", "Caixa", "c"), ("Lançamentos", "Lançamentos", "l"),
           ("Relatórios", "Relatórios", "r"), ("Utilitários", "Utilitários", "u"), ("Configurações", "Configurações", "o"),
-          ("Saída", "Saída", "s")]
-ICONES = {"Cadastros": ("✎", PAL["azul"]), "Caixa": ("$", PAL["verde"]), "Lançamentos": ("⇄", PAL["ambar"]),
-          "Relatórios": ("▥", PAL["violeta"]), "Utilitários": ("⚒", PAL["turquesa"]), "Configurações": ("⚙", PAL["ardosia"]),
-          "Saída": ("⏻", PAL["vermelho"])}
+          ("Encerrar sessão", "Saída", "s")]
+ICONES = {"Cadastros": ("C", PAL["azul"]), "Caixa": ("$", PAL["verde"]), "Lançamentos": ("+", PAL["ambar"]),
+          "Relatórios": ("R", PAL["violeta"]), "Utilitários": ("U", PAL["turquesa"]), "Configurações": ("O", PAL["ardosia"]),
+          "Saída": ("S", PAL["vermelho"])}
 DIAS_SEMANA = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 
 
@@ -188,7 +188,7 @@ class App:
         self._destruir_menu()
         r, ctx = self.root, self.ctx
         r.title(f"PDV - {ctx.config.nome_loja()}")
-        r.geometry(f"1180x{min(760, max(600, r.winfo_screenheight() - 90))}")     # cabe também em notebook de 768 px
+        r.geometry(f"{min(1280, max(1000, r.winfo_screenwidth() - 80))}x{min(800, max(600, r.winfo_screenheight() - 90))}")
         r.minsize(1000, 600)
         self._permitidos = ({m["modulo"] for g in GRUPOS_MENU for m in ctx.acesso.modulos_permitidos(ctx.operador, g)}
                             - modulos_desligados(self.banco))
@@ -224,11 +224,14 @@ class App:
         cab.pack_propagate(False)
         tk.Label(cab, text=(nome[:1] or "P").upper(), font=(FONTE, 18, "bold"), fg="white", bg=PAL["azul"], width=3
                  ).pack(side="left", padx=(20, 14), pady=14, fill="y")
-        textos = tk.Frame(cab, bg=PAL["cabecalho"])
+        textos = tk.Frame(cab, bg=PAL["cabecalho"], width=320)
         textos.pack(side="left", fill="y", pady=12)
-        tk.Label(textos, text="PRODUTO LICENCIADO E DE USO EXCLUSIVO PARA", font=(FONTE, 7, "bold"), fg=PAL["suave"],
+        textos.pack_propagate(False)
+        tk.Label(textos, text=f"WILLPDV  /  {VERSAO}", font=(FONTE, 8, "bold"), fg=PAL["suave"],
                  bg=PAL["cabecalho"]).pack(anchor="w")
-        tk.Label(textos, text=nome.upper(), font=(FONTE, 18, "bold"), fg=PAL["texto"], bg=PAL["cabecalho"]).pack(anchor="w")
+        nome_lbl = tk.Label(textos, text=nome, font=(FONTE, 16, "bold"), fg=PAL["texto"], bg=PAL["cabecalho"], anchor="w")
+        nome_lbl.pack(fill="x")
+        textos.bind("<Configure>", lambda e: nome_lbl.configure(wraplength=max(100, e.width)))
 
         chip = tk.Frame(cab, bg=PAL["cabecalho"])
         chip.pack(side="right", fill="y", padx=(10, 22), pady=14)
@@ -261,7 +264,7 @@ class App:
 
     def _montar_lateral(self, pai) -> None:
         visiveis = self.ctx.acesso.grupos_visiveis(self.ctx.operador) + ["Saída"]
-        lat = tk.Frame(pai, bg=PAL["lateral"], width=330)
+        lat = tk.Frame(pai, bg=PAL["lateral"], width=250)
         lat.pack(side="left", fill="y")
         lat.pack_propagate(False)
         tk.Frame(pai, width=1, bg=PAL["borda"]).pack(side="left", fill="y")
@@ -276,12 +279,12 @@ class App:
             self._ordem_nav.append(grupo)
             return b
 
-        tk.Label(lat, text=f"Versão {VERSAO}", font=(FONTE, 8), fg=PAL["mudo"], bg=PAL["lateral"]).pack(side="bottom", pady=(0, 12))
+        tk.Label(lat, text="Setas: navegar  |  Enter: abrir", font=(FONTE, 9), fg=PAL["suave"], bg=PAL["lateral"]).pack(side="bottom", pady=(0, 16))
         saida = [x for x in BOTOES if x[1] == "Saída"][0]
         saida_item = item(*saida)
         saida_item.pack(side="bottom", fill="x", padx=12, pady=(3, 8))
         tk.Frame(lat, height=1, bg=PAL["borda"]).pack(side="bottom", fill="x", padx=18, pady=(8, 8))
-        tk.Label(lat, text="MENU", font=(FONTE, 8, "bold"), fg=PAL["mudo"], bg=PAL["lateral"]).pack(anchor="w", padx=22, pady=(18, 8))
+        tk.Label(lat, text="NAVEGAÇÃO", font=(FONTE, 9, "bold"), fg=PAL["suave"], bg=PAL["lateral"]).pack(anchor="w", padx=22, pady=(22, 10))
         for rotulo, grupo, letra in BOTOES:
             if grupo in visiveis and grupo != "Saída":
                 item(rotulo, grupo, letra).pack(fill="x", padx=12, pady=3)
@@ -289,8 +292,9 @@ class App:
         self._ordem_nav.append("Saída")                 # a Saída é a última na ordem das setas
 
     def _montar_conteudo(self, pai) -> None:
-        cont = tk.Frame(pai, bg=PAL["fundo"], padx=28, pady=14)
-        cont.pack(side="left", fill="both", expand=True)
+        self.painel_rolavel = ConteudoRolavel(pai)
+        self.painel_rolavel.pack(side="left", fill="both", expand=True)
+        cont = self.painel_rolavel.corpo
         self.cartoes: dict[str, Cartao] = {}
         self.valores: dict[str, tk.Label] = {}
         op = self.ctx.operador
@@ -307,22 +311,34 @@ class App:
         self.lbl_atualiz.pack(anchor="w")
         Atalho(topo, "Atualizar  (F5)", PAL["azul"], self.atualizar_painel).pack(side="right", anchor="n")
 
+        # A ação principal fica visível antes dos indicadores e tarefas administrativas.
+        self.atalho_caixa = Atalho(cont, "Abrir caixa", PAL["verde"], self.abrir_caixa,
+                                   "Inicie o atendimento, lance consumos e receba pagamentos.  |  Tecla C", destaque=True)
+        self.atalho_caixa.pack(fill="x", pady=(18, 0))
+
         # avisos (backup e versão nova)
         avisos = tk.Frame(cont, bg=PAL["fundo"])
         avisos.pack(fill="x", pady=(10, 0))
-        self.aviso_backup = Aviso(avisos)
-        self.aviso_backup.pack(side="left")
+        self.aviso_backup = Aviso(avisos, wraplength=600)
+        self.aviso_backup.pack(anchor="w")
         self.lbl_backup = self.aviso_backup.texto
-        self.aviso_versao = Aviso(avisos, clique=self.abrir_aviso_versao, wraplength=560)
+        self.aviso_versao = Aviso(avisos, clique=self.abrir_aviso_versao, wraplength=500)
         self.lbl_versao = self.aviso_versao.texto
 
         # atalhos
-        atalhos = self._atalhos()
+        atalhos = self._atalhos()[1:]       # o caixa já tem seu próprio destaque acima
+        self.atalhos_rapidos = {}
         if atalhos:
-            linha = tk.Frame(cont, bg=PAL["fundo"])
-            linha.pack(fill="x", pady=(10, 0))
-            for texto, cor, acao in atalhos:
-                Atalho(linha, texto, cor, acao).pack(side="left", padx=(0, 10))
+            self._secao(cont, "ACESSO RÁPIDO")
+            linha = self._grade(cont, 2)
+            detalhes = {"Lançar estoque": "Entradas, saídas e ajustes de produtos",
+                        "Produtos": "Preços, códigos e cadastro de itens",
+                        "Vendas do período": "Consulte o movimento e os resultados",
+                        "Backup agora": "Salve uma cópia dos dados da loja"}
+            for i, (texto, cor, acao) in enumerate(atalhos):
+                b = Atalho(linha, texto, cor, acao, detalhe=detalhes[texto])
+                b.grid(row=i // 2, column=i % 2, sticky="nsew", padx=(0, 12 if i % 2 == 0 else 0), pady=(0, 8))
+                self.atalhos_rapidos[texto] = b
 
         # indicadores
         self._secao(cont, "VENDAS DE HOJE")
@@ -337,7 +353,7 @@ class App:
             self._cartao(g, 0, "contas_anteriores", "Contas anteriores não quitadas", PAL["vermelho"], "de dias anteriores", abrir)
             self._cartao(g, 1, "contas_hoje", "Contas de hoje não quitadas", PAL["ambar"], "abertas hoje", abrir)
         self._secao(cont, "ESTOQUE")
-        g = self._grade(cont, 4)
+        g = self._grade(cont, 2)
         self._cartao(g, 0, "estoque_total", "Produtos em estoque", PAL["azul"], "controlados e ativos", self._acesso_estoque("todos"))
         self._cartao(g, 1, "estoque_sem", "Sem estoque", PAL["vermelho"], "", self._acesso_estoque("sem"))
         self._cartao(g, 2, "estoque_ponto", "Em ponto de pedido", PAL["ambar"], "", self._acesso_estoque("ponto"))
@@ -349,9 +365,10 @@ class App:
         tel = self.ctx.config.loja().get("telefone") or ""
         if tel:
             tk.Label(cont, text=tel, font=(FONTE, 9), fg=PAL["mudo"], bg=PAL["fundo"]).pack(side="bottom", anchor="e")
+        self.painel_rolavel.ligar_rolagem()
 
     def _secao(self, pai, texto: str) -> None:
-        tk.Label(pai, text=texto, font=(FONTE, 8, "bold"), fg=PAL["mudo"], bg=PAL["fundo"], anchor="w").pack(fill="x", pady=(14, 5))
+        tk.Label(pai, text=texto, font=(FONTE, 9, "bold"), fg=PAL["suave"], bg=PAL["fundo"], anchor="w").pack(fill="x", pady=(20, 8))
 
     @staticmethod
     def _grade(pai, colunas: int) -> tk.Frame:
@@ -363,7 +380,8 @@ class App:
 
     def _cartao(self, grade, coluna: int, chave: str, titulo: str, cor: str, detalhe: str, clique=None) -> None:
         c = Cartao(grade, titulo, cor, detalhe, clique)
-        c.grid(row=0, column=coluna, sticky="nsew", padx=(0, 0 if coluna == grade._colunas - 1 else 12))
+        c.grid(row=coluna // grade._colunas, column=coluna % grade._colunas, sticky="nsew",
+               padx=(0, 0 if coluna % grade._colunas == grade._colunas - 1 else 12), pady=(0, 8))
         self.cartoes[chave] = c
         self.valores[chave] = c.valor
 
@@ -465,7 +483,7 @@ class App:
             self.aviso_versao.pack_forget()
             return
         self.aviso_versao.definir(atualizacao_ui.texto_faixa(aviso), PAL["vermelho"] if aviso["critica"] else PAL["ambar"])
-        self.aviso_versao.pack(side="left", before=self.aviso_backup, padx=(0, 10))
+        self.aviso_versao.pack(anchor="w", before=self.aviso_backup, pady=(0, 8))
 
     def abrir_aviso_versao(self) -> None:
         from src.sync import atualizacoes
