@@ -238,6 +238,48 @@ class TesteMenu(BaseUI):
         j.var_senha.set("sEGREDO1"); j.entrar()
         self.assertEqual(j.operador.nome, "ADM")
 
+    def test_menu_compacto_mantem_acoes_visiveis_e_rola_indicadores(self):
+        app = self._menu_do("adm", "adm")
+        app.mostrar_menu()
+        app.root.geometry("1000x600")
+        app.root.update()
+        canvas = app.painel_rolavel.canvas
+        for b in [app.atalho_caixa, *app.atalhos_rapidos.values()]:
+            with self.subTest(acao=b.texto.cget("text")):
+                self.assertGreaterEqual(b.winfo_rootx(), canvas.winfo_rootx())
+                self.assertLessEqual(b.winfo_rootx() + b.winfo_width(), canvas.winfo_rootx() + canvas.winfo_width())
+                self.assertLessEqual(b.winfo_rooty() + b.winfo_height(), canvas.winfo_rooty() + canvas.winfo_height())
+        self.assertLess(canvas.yview()[1], 1.0)     # indicadores abaixo da dobra têm rolagem
+        app.atalho_caixa.event_generate("<Button-5>")
+        app.root.update()
+        self.assertGreater(canvas.yview()[0], 0.0)
+        canvas.yview_moveto(1.0)
+        app.root.update()
+        self.assertLessEqual(app.lbl_barra.winfo_rooty() + app.lbl_barra.winfo_height(),
+                             canvas.winfo_rooty() + canvas.winfo_height())
+        self.assertTrue(app.botoes["Saída"].winfo_viewable())
+
+    def test_acoes_rapidas_respondem_ao_teclado_e_ao_clique_na_descricao(self):
+        from src.ui.app import App
+        with mock.patch.object(App, "abrir_caixa") as caixa, mock.patch.object(App, "abrir_cadastro") as cadastro:
+            app = self._menu_do("adm", "adm")
+            app.mostrar_menu(); app.root.update()
+            app.atalho_caixa.focus_force(); app.root.update()
+            app.atalho_caixa.event_generate("<Return>")
+            app.atalho_caixa.event_generate("<space>")
+            self.assertEqual(caixa.call_count, 2)
+            app.atalhos_rapidos["Produtos"].detalhe.event_generate("<Button-1>")
+            cadastro.assert_called_once_with("produtos")
+
+    def test_menu_sem_contas_nao_mostra_indicadores_do_modulo_desligado(self):
+        self.banco.cfg_set("usar_contas", "N")
+        app = self._menu_do("adm", "adm")
+        app.mostrar_menu(); app.root.update()
+        self.assertNotIn("contas_anteriores", app.cartoes)
+        self.assertNotIn("contas_hoje", app.cartoes)
+        self.assertIn("vendas_total", app.cartoes)
+        self.assertIn("Produtos", app.atalhos_rapidos)
+
     def test_senha_de_fabrica_obriga_a_trocar_antes_de_entrar(self):
         from src.ui.login import JanelaLogin
         respostas = iter(["adm", "Nova123", "nova123"])       # 1ª: igual ao nome (recusada na própria janela)
