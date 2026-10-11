@@ -13,6 +13,8 @@ em dupla (Claude Code + Codex).
   e `.ai/MAPA.md`.
 - `docs/COORDENACAO.md` virou histórico: a tabela de donos e as convenções agora ficam no
   `AGENTS.md`.
+- `AGENTS.md` ganhou a seção "Dois agentes ao mesmo tempo (em paralelo)": branch e pull
+  request por agente, e só o Claude reescreve este handoff em trabalho paralelo.
 - Nenhum arquivo de código foi alterado.
 
 ## Últimas entregas no main (2026-10-10)

@@ -68,3 +68,17 @@ Antes de criar um arquivo, confira se ele já existe. Pedido para outro dono: es
   `tools/gerar_licenca.py`): o titular escreve, o reserva só revisa o diff.
 - Revisão cruzada olha só o diff (`git diff main...HEAD`), em uma rodada.
 - Um escritor por vez no mesmo arquivo.
+
+## Dois agentes ao mesmo tempo (em paralelo)
+
+Vale quando o dono abre duas sessões no mesmo repositório, cada uma com uma tarefa.
+
+- Cada agente trabalha na **sua própria branch** e abre o **seu próprio pull request**.
+- Cada um só mexe nos arquivos que o dono indicou no pedido. Precisou de arquivo fora da
+  lista: pare e avise o dono, não edite.
+- **Só o Claude reescreve `.ai/HANDOFF.md`** em trabalho paralelo. O outro agente resume o que
+  fez na descrição do pull request e não toca no handoff (dois reescrevendo dá conflito).
+- `src/database/esquema.py` (migrações) e `src/controllers/caixa_controller.py` são tocados
+  por quase tudo: se as duas tarefas precisam deles, não é paralelo, é uma depois da outra.
+- Conflito no pull request: o dono daquele pull request traz a `main` para a sua branch
+  (merge, sem reescrever histórico) e resolve.
