@@ -313,6 +313,56 @@ class TesteMenu(BaseUI):
         self.sem_travar()
 
 
+class TesteTelaEntrada(BaseUI):
+    def _login(self):
+        from src.ui.login import JanelaLogin
+        janela = JanelaLogin(self.root, self.ctx, "Casa de Teste")
+        self.addCleanup(lambda: janela.winfo_exists() and janela.destroy())
+        janela.update()
+        return janela
+
+    def test_mostrar_senha_preserva_valor_e_nova_entrada_volta_a_ocultar(self):
+        j = self._login()
+        j.var_senha.set("Minha123")
+        self.assertEqual(j.ent_senha.cget("show"), "*")
+        j.chk_mostrar_senha.invoke()
+        self.assertEqual(j.ent_senha.cget("show"), "")
+        self.assertEqual(j.var_senha.get(), "Minha123")
+        j.chk_mostrar_senha.invoke()
+        self.assertEqual(j.ent_senha.cget("show"), "*")
+        j.chk_mostrar_senha.invoke()
+        j.destroy()
+        nova = self._login()
+        self.assertEqual(nova.ent_senha.cget("show"), "*")
+        self.assertEqual(nova.var_senha.get(), "")
+
+    def test_enter_avanca_do_usuario_e_autentica_no_campo_de_senha(self):
+        self.ctx.acesso.trocar_senha(self.ctx.operador, "Segredo1")
+        j = self._login()
+        j.var_usuario.set("adm")
+        j.ent_usuario.focus_force(); j.update()
+        j.ent_usuario.event_generate("<Return>"); j.update()
+        self.assertEqual(j.focus_get(), j.ent_senha)
+        self.assertIsNone(j.operador)
+        j.var_senha.set("Segredo1")
+        j.ent_senha.event_generate("<Return>")
+        self.assertEqual(j.operador.nome, "ADM")
+        self.assertFalse(j.winfo_exists())
+
+    def test_selecionar_operador_avanca_para_senha_e_esc_cancela(self):
+        self.ctx.cadastros.salvar("operadores", {"nome": "Ana", "senha": "1", "nivel": "1"})
+        j = self._login()
+        self.assertEqual(j.var_usuario.get(), "")  # vários operadores: não escolhe alguém automaticamente
+        self.assertIn("ANA", [n.upper() for n in j.ent_usuario.cget("values")])
+        j.ent_usuario.focus_force(); j.update()
+        j.var_usuario.set("Ana")
+        j.ent_usuario.event_generate("<<ComboboxSelected>>"); j.update()
+        self.assertEqual(j.focus_get(), j.ent_senha)
+        j.ent_senha.event_generate("<Escape>")
+        self.assertIsNone(j.operador)
+        self.assertFalse(j.winfo_exists())
+
+
 class TesteAvisoDeVersao(BaseUI):
     def _menu(self, *versoes):
         import json
