@@ -46,3 +46,6 @@ dist/
 instalador/saida/
 logs/
 logs/
+
+# Saídas de delegação entre agentes (ver AGENTS.md)
+.ai/respostas/

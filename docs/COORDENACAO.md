@@ -1,29 +1,9 @@
-# Coordenação entre agentes (Claude × Antigravity)
+# Coordenação entre agentes (histórico)
 
-Dois agentes escrevem este projeto ao mesmo tempo, sem se falar. Este arquivo é o
-único canal. **Leia antes de editar; atualize ao terminar algo que o outro dependa.**
-
-## Quem é dono de quê
-
-| Área | Dono | Observação |
-|------|------|-----------|
-| `src/core/`, `src/database/` | Claude | Esquema SQLite, formatação, segurança. Pedidos de coluna nova: escrever na seção "Pedidos" abaixo. |
-| `src/controllers/` (exceto os adaptadores marcados) | Claude | Regras de negócio. Testes em `tests/`. |
-| `src/ui/` (telas Tkinter novas: `app.py`, `caixa_ui.py`...) | Claude | Entrada nova: `python -m src.app`. |
-| `backend/` | Antigravity | API na nuvem (FastAPI). Claude não edita. |
-| `src/sync/sincronizador.py` | Antigravity | Cliente HTTP. Claude só fornece os dados (ver contrato). |
-
-Regra de ouro: **não sobrescrever arquivo inteiro de outro dono**. Edição pontual apenas.
-
-## Convenções de dados (valem para os dois lados)
-
-- **Dinheiro é inteiro em centavos** (`preco_cent = 350` é R$ 3,50). Nunca float.
-  O `backend/models.py` usa `Float` para preços: converter na borda (`valor / 100`)
-  ou, melhor, trocar para `Integer` centavos para não perder precisão.
-- **Quantidades** são float com 4 casas.
-- **Datas** em texto ISO local: `YYYY-MM-DD HH:MM:SS`.
-- **Venda é identificada por `uuid`** (v4), gerado no PDV. É a chave de idempotência da sincronização.
-- Cupom (`cupom`) só existe depois que a venda é fechada ou cancelada.
+> **Este arquivo agora é histórico.** As regras em vigor (donos por pasta, convenções de dados,
+> como rodar e testar) estão no [`AGENTS.md`](../AGENTS.md), na raiz. O estado atual do trabalho
+> fica em [`.ai/HANDOFF.md`](../.ai/HANDOFF.md) e pedidos novos entre agentes vão na seção
+> "Pendências" de lá. Não é preciso ler este arquivo ao começar uma sessão.
 
 ## Protótipos antigos (apagados em 2026-10-04)
 
