@@ -274,6 +274,104 @@ class TesteSeletorDePagamento(BasePagamento):
 
 
 class TesteTelaDoCaixa(BasePagamento):
+    def test_acoes_secundarias_ficam_em_mais_opcoes_e_continuam_funcionando(self):
+        self.assertEqual([t[0] for t in self.cx.tarefas[:3]],
+                         ["Pagar (F12)", "Lançar produto", "Escolher comanda (F4)"])
+        self.assertFalse(self.cx.opcoes.winfo_viewable())
+        self.assertTrue(all(b.winfo_viewable() for b in self.cx.botoes_tarefa[:3]))
+        self.assertTrue(all(not b.winfo_viewable() for b in self.cx.botoes_tarefa[3:-1]))
+        leitor = self.cx.leitor
+        self.cx.btn_opcoes.invoke(); self.cx.update()
+        self.assertTrue(self.cx.opcoes.winfo_viewable())
+        i = [t[0] for t in self.cx.tarefas].index("Leitor (F3)")
+        self.cx.botoes_tarefa[i].invoke(); self.cx.update()
+        self.assertEqual(self.cx.leitor, not leitor)
+        self.assertFalse(self.cx.opcoes.winfo_viewable())
+        self.assertEqual(len(self.ctx.caixa.itens(self.cx.venda_id)), 1)
+
+    def test_navegacao_por_setas_abre_opcoes_e_esc_preserva_a_venda(self):
+        venda_id = self.cx.venda_id
+        self.cx._entrar_barra()
+        for _ in range(3):
+            self.cx._barra_mover(1)
+        self.cx.update()
+        self.assertTrue(self.cx.opcoes.winfo_viewable())
+        self.cx.opcoes.event_generate("<Escape>"); self.cx.update()
+        self.assertFalse(self.cx.opcoes.winfo_viewable())
+        self.assertIsNone(self.cx.indice_barra)
+        self.assertEqual(self.cx.venda_id, venda_id)
+
+    def test_voltar_ao_codigo_fecha_opcoes_e_enter_continua_lancando_produto(self):
+        self.cx.btn_opcoes.invoke(); self.cx.update()
+        self.cx.ent_codigo.focus_force(); self.cx.update()
+        self.assertFalse(self.cx.opcoes.winfo_viewable())
+        self.assertIsNone(self.cx.indice_barra)
+        self.cx.var_cod.set("1")
+        self.cx.ent_codigo.event_generate("<Return>"); self.cx.update()
+        self.assertEqual(self.cx.produto["id"], self.skol)
+        self.assertEqual(str(self.cx.ent_qtd.cget("state")), "normal")
+
+    def test_pagamento_parcial_mostra_saldo_e_acerto_sem_fechar_comanda(self):
+        self.banco.cfg_set("posicao_padrao", "mesa")
+        vid, _ = self.ctx.caixa.abrir_mesa(3, comanda=True)
+        self.ctx.caixa.adicionar_item(vid, self.skol, 1)
+        pix = self.banco.valor("SELECT id FROM tipos_pagamento WHERE tipo = 'Pix'")
+        pid = self.ctx.caixa.adicionar_pagamento(vid, pix, 500)
+        self.cx.venda_id = vid; self.cx.recarregar(); self.cx.update()
+        tile = next(t for t in self.cx.painel_mesas.tiles() if t["chave"] == "C3")
+        self.assertEqual((tile["estado"], tile["falta"]), ("parcial", "3,80"))
+        self.assertIn("Falta receber: R$ 3,80", self.cx.lbl_recebido.cget("text"))
+        self.assertEqual(self.ctx.caixa.obter(vid)["status"], "aberta")
+        self.ctx.caixa.remover_pagamento(pid)
+        self.cx.recarregar(); self.cx.update()
+        tile = next(t for t in self.cx.painel_mesas.tiles() if t["chave"] == "C3")
+        self.assertEqual(tile["estado"], "consumindo")
+        self.ctx.caixa.adicionar_pagamento(vid, pix, 880)
+        self.cx.recarregar(); self.cx.update()
+        tile = next(t for t in self.cx.painel_mesas.tiles() if t["chave"] == "C3")
+        self.assertEqual((tile["estado"], tile["falta"]), ("acerto", "0,00"))
+        self.assertEqual(self.ctx.caixa.obter(vid)["status"], "aberta")
+
+    def test_filtro_e_busca_selecionam_a_comanda_correta(self):
+        self.banco.cfg_set("posicao_padrao", "mesa")
+        ids = {}
+        for n in (7, 8):
+            ids[n], _ = self.ctx.caixa.abrir_mesa(n, comanda=True)
+            self.ctx.caixa.adicionar_item(ids[n], self.skol, 1)
+        self.ctx.caixa.enviar_conta(ids[8])
+        self.cx.venda_id = ids[7]; self.cx.recarregar(); self.cx.update()
+        p = self.cx.painel_mesas
+        p.var_estado.set("Aguardando acerto")
+        self.assertEqual([t["chave"] for t in p.tiles()], ["C8"])
+        p.focar("C8"); p._tecla(SimpleNamespace(keysym="Return", char=""))
+        self.assertEqual(self.cx.venda_id, ids[8])
+        p.var_estado.set("Todas"); p.var_busca.set("7")
+        self.assertEqual([t["chave"] for t in p.tiles()], ["C7"])
+        p.var_busca.set("999")
+        self.assertEqual(p.tiles(), [])
+        p.var_busca.set("")
+        self.assertEqual(len(p.tiles()), 3)
+
+    def test_tela_compacta_preserva_lista_total_e_rolagem_de_comandas(self):
+        for n in range(1, 15):
+            vid, _ = self.ctx.caixa.abrir_mesa(n, comanda=True)
+            self.ctx.caixa.adicionar_item(vid, self.skol, 1)
+        self.cx.carregar_mesas()
+        self.cx.state("normal")
+        self.cx.geometry("1000x600"); self.cx.update()
+        self.assertGreater(self.cx.grade.tree.winfo_height(), 50)
+        self.assertIn("tot", self.cx.grade.tree.cget("displaycolumns"))
+        self.assertTrue(self.cx.botoes_tarefa[0].winfo_viewable())
+        p = self.cx.painel_mesas
+        self.assertLess(int(p.canvas.cget("height")), 200)
+        p.focar(); p._tecla(SimpleNamespace(keysym="End", char=""))
+        self.assertGreater(p.canvas.yview()[0], 0)
+        antes = p.canvas.yview()[0]
+        mesas = self.ctx.caixa.mesas()
+        mesas[0]["minutos_parada"] += 1
+        p.atualizar(mesas, self.ctx.caixa.balcao_aberto(), self.cx._chave_atual())
+        self.assertAlmostEqual(p.canvas.yview()[0], antes)
+
     def test_barra_de_acoes_na_ordem_da_tela_com_pagar_e_sair_em_destaque(self):
         nomes = [t[0] for t in self.cx.tarefas]
         self.assertEqual(nomes[0], "Pagar (F12)")

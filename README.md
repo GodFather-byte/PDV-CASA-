@@ -89,14 +89,18 @@ impressão RAW do Windows precisa de `pip install -r requirements.txt`.
 
 ## A tela do caixa
 
-Visual escuro, no mesmo azul-noite do menu principal. Na **direita**: o **total a pagar** em destaque (com o troco), o botão
-verde **Pagar (F12)** e as demais ações em dois grupos, *Venda* (cancelar, consultar, mesa/comanda, pré-conta, transferir,
-repique, delivery, caderneta, consulta de comanda, comissões) e *Caixa* (sangria, gaveta, impressora, balança, leitor, fechar
-turno); **Sair** fica no canto do cabeçalho, longe dos botões do dia a dia. Na **esquerda**: a comanda/mesa e a venda atual,
+Visual escuro alinhado ao menu principal. Na **direita**: o **total a pagar** em destaque (com o troco), o valor já recebido
+e o que falta receber quando há pagamentos, e três ações principais: **Pagar (F12)**, **Lançar produto** e
+**Escolher comanda (F4)**. **Mais opções** reúne pré-conta, transferências, comissões, cancelamento e as operações de caixa
+(sangria, gaveta, impressora, balança, leitor e fechamento do turno). Os atalhos F continuam funcionando, inclusive em
+Mais opções; as setas abrem esse painel quando chegam a uma ação secundária. **Sair** permanece no cabeçalho.
+Na **esquerda**: a comanda/mesa e a venda atual,
 o cartão de **entrada do item** (código, descrição, quantidade e preço, com a dica das teclas), a lista de itens (com um convite
-quando está vazia) e, embaixo, os ícones das mesas e comandas abertas. As setas e o Enter continuam percorrendo as ações como
-antes (**Enter** com o código vazio entra na barra; a ordem das setas é a que se vê na tela). Em notebook de tela estreita os
-campos encolhem sozinhos.
+quando está vazia) e, embaixo, os cartões das mesas e comandas. Cada cartão mostra o número, o total e a situação por texto
+e cor: aberta, pagamento parcial (com saldo pendente), conta enviada aguardando acerto, sem movimento ou comissão a pagar.
+Uma comanda com pagamentos suficientes permanece aberta até o operador concluir o acerto. Há busca por número e filtro
+por situação. **Enter** com código vazio entra na barra de ações. Em telas menores os campos encolhem, a tabela mantém
+quantidade e total visíveis (observações continuam pelo atalho O) e o painel de comandas usa uma linha com rolagem.
 
 **Pagamento (F12):** as formas (Dinheiro, Débito, Crédito e Pix) são linhas grandes com a **tecla** de cada uma: **1 a 4**, ou
 a inicial (**D** alterna Dinheiro e Débito, **C** é Crédito, **P** é Pix); um clique na forma já leva ao valor, e o valor sugerido é o

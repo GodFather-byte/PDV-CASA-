@@ -4,50 +4,59 @@ Atualizado por: Codex em 2026-10-11
 
 ## Objetivo atual
 
-Publicar e mesclar as melhorias do menu principal e da tela de entrada. O dono autorizou
-commit, push, criação de PR e merge. Push concluído; PR e merge aguardam acesso à API do GitHub.
+Concluídos os itens 1 e 3 pedidos pelo dono: simplificar a tela de venda e facilitar a
+identificação das comandas. Branch de publicação: `codex/simplifica-caixa-comandas`.
 
-## Estado do trabalho
+## Feito nesta sessão
 
-- Branch remota: `codex/moderniza-menu-entrada`.
-- `41bbef4`: menu principal modernizado, caixa em destaque, atalhos com descrições,
-  navegação compacta, indicadores adaptados e painel rolável.
-- `57a7ea3`: entrada modernizada, campos maiores, opção de mostrar senha e navegação por teclado.
-- Regras de autenticação, licença, permissões e banco preservadas.
-- Suíte completa no Linux: 1.113 testes, execução concluída com OK e 5 pulados
-  (87,573 segundos). Os testes de interface usaram X virtual de 24 bits.
-- Inspeção visual: menu em 1280×800 e 1000×600; login normal, erro de senha e código de licença.
-- Os commits de código estão confirmados no GitHub. O push funciona com a autenticação existente.
-- A API `api.github.com` foi negada pelo proxy (HTTP 403 ao estabelecer o túnel), antes de
-  executar operações de PR. Nenhum PR foi criado e nenhum merge foi realizado.
-- Inclusão de `api.github.com` salva no rascunho da configuração do ambiente; ainda não
-  aplicada à máquina na última verificação. Outros domínios e configurações preservados.
+- Tela principal com Pagar, Lançar produto e Escolher comanda em destaque.
+- Operações secundárias em Mais opções, organizadas em Venda e Caixa. Atalhos F preservados
+  também nessa janela; as setas a abrem ao alcançar ações secundárias e Esc volta ao atendimento.
+- Voltar ao campo de código fecha Mais opções e evita que Enter acione uma tarefa secundária.
+- Cartões de comandas com número, total e estado por texto e cor; pagamento parcial mostra
+  saldo restante. Conta enviada aguarda acerto; comissão tem acerto pendente. Pagamento suficiente
+  apenas indica Concluir acerto, sem fechar a venda automaticamente.
+- Busca por número, filtros de situação e resumo de posições/parciais/acertos.
+- Caixa mostra valores já recebidos e o que falta receber; leitura dos pagamentos é somente
+  para apresentação, sem alterar regras de negócio nem esquema.
+- Em janela compacta, campos menores, tabela com quantidade/total visíveis e uma linha de
+  comandas com rolagem. Atualização periódica preserva a posição da rolagem.
+- Fonte do caixa compatível com Windows e Linux, reutilizando a fonte do menu.
+- README atualizado na seção da tela do caixa.
+
+## Validação
+
+- Suíte completa no Linux: 1.118 testes, OK com 5 pulados, antes do último ajuste de foco.
+- Após o ajuste de foco e inclusão de mais um teste: 68 testes dos pagamentos e fluxos de
+  caixa/comandas aprovados (`test_caixa_tela_pagamento`, `TesteFluxosCaixa`, `TesteComandaPorNumeroNoCaixa`).
+- Seis testes novos cobrem Mais opções, teclado, retorno ao código, pagamentos parciais,
+  busca/filtros e layout compacto com rolagem.
+- Inspeção visual em 1280×800 e 1000×600, além da janela Mais opções.
+- Capturas locais fora do checkout: `/workspace/cloud-setup/caixa.png`, `caixa-pequeno.png`
+  e `caixa-opcoes.png`; logs em `caixa-suite.log` e `caixa-final-tests.log` na mesma pasta.
 
 ## Arquivos relevantes
 
-- `src/ui/app.py`: montagem, navegação e indicadores do menu principal.
-- `src/ui/menu_widgets.py`: paleta, fonte, atalhos e painel rolável.
-- `src/ui/login.py`: apresentação da entrada e visibilidade da senha.
-- `tests/test_ui.py`: novos testes de interação, layout e rolagem; regressões de login.
-- Fora do checkout, `/workspace/cloud-setup/pr-menu-entrada.md`: descrição preparada para o PR.
-- Fora do checkout, `/workspace/cloud-setup/pre-merge-tests.log`: resultado da suíte completa.
+- `src/ui/caixa_ui.py`: ações principais, Mais opções, layout adaptável e leitura dos recebimentos.
+- `src/ui/painel_mesas.py`: cartões, estados visuais, filtros e navegação das comandas.
+- `src/ui/caixa_tema.py`: fonte e estilos do caixa.
+- `tests/test_caixa_tela_pagamento.py`: regressões das novas interações.
 
-## Próximo passo
+## Publicação e próximo passo
 
-1. O dono deve revisar/salvar a mudança de rede nas configurações do ambiente e publicá-la.
-2. Conferir aplicação da rede e repetir a leitura da API do GitHub com a autenticação existente.
-3. Consultar PR existente da branch antes de criar um novo, anexar o PR à tarefa e verificar
-   os checks do GitHub. Mesclar quando os checks necessários passarem.
-4. Conferir o merge na `main` remota e informar o link do PR ao dono.
+- O dono já autorizou commit, push, PR e merge nesta conversa.
+- Menu principal e login anteriores já foram mesclados no PR #43.
+- A API do GitHub está acessível com a autenticação existente; bloqueio de rede anterior resolvido.
+- Conferir o estado do PR da branch `codex/simplifica-caixa-comandas` no GitHub.
+- Validar com o operador no Windows da loja, especialmente busca de comanda e uso do caixa em notebook.
 
 ## Pendências e armadilhas
 
-- Não pedir token apenas porque a API foi bloqueada: Git já funciona e GH_TOKEN está presente.
-- Salvar o rascunho não aplica a configuração nem publica o ambiente.
-- Novo visual validado no Linux; estas alterações não foram executadas no Windows.
-- Validação em loja, fiscal, TEF e balança real continuam pendentes.
-- A suíte já emitia aviso Tk de callback `destroy` pendente antes destas alterações;
-  a execução completa concluiu com OK, sem falhas.
+- Equipamentos reais, emissão fiscal, TEF e validação em loja continuam pendentes.
+- Busca e filtros apenas controlam a exibição; não fecham, cancelam ou transferem contas.
+- Em telas pequenas as observações deixam de ser uma coluna visível; continuam acessíveis pelo atalho O.
+- A suíte de UI já emitia mensagens Tk sobre callbacks após destruição de janelas antes destas alterações;
+  os testes locais concluíram sem falhas.
 
 ## Como rodar e testar
 
