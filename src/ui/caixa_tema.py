@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from tkinter import ttk
 
-from src.ui.menu_widgets import PAL, misturar
+from src.ui.menu_widgets import PAL, FONTE, misturar
 
 CX = {
     "fundo": PAL["fundo"], "cabecalho": PAL["cabecalho"], "cartao": PAL["cartao"], "cartao2": PAL["cartao_hover"],
@@ -14,7 +14,6 @@ CX = {
     "turquesa": PAL["turquesa"], "campo": "#0b1330", "linha_par": "#16204a", "selecao": "#2a4fb0",
     "botao": "#1b2756", "botao_hover": "#2a3c80",
 }
-FONTE = "Segoe UI"
 
 
 def aplicar(root) -> None:
@@ -34,6 +33,9 @@ def aplicar(root) -> None:
     s.map("Cx.TEntry", bordercolor=[("focus", c["azul"])], lightcolor=[("focus", c["azul"])],
           darkcolor=[("focus", c["azul"])], fieldbackground=[("disabled", c["fundo"])],
           foreground=[("disabled", c["mudo"])])
+    s.configure("Cx.TCombobox", padding=5, fieldbackground=c["campo"], foreground=c["texto"],
+                background=c["botao"], arrowcolor=c["texto"], bordercolor=c["borda"])
+    s.map("Cx.TCombobox", fieldbackground=[("readonly", c["campo"])], foreground=[("readonly", c["texto"])])
 
     base = dict(padding=(8, 5), borderwidth=0, focusthickness=0, font=(FONTE, 9, "bold"))
     s.configure("Cx.TButton", background=c["botao"], foreground=c["texto"], **base)
@@ -47,6 +49,8 @@ def aplicar(root) -> None:
     s.configure("Cx.Pagar.TButton", background=c["verde"], foreground="#04241a", **forte)
     s.map("Cx.Pagar.TButton", background=[("active", misturar(c["verde"], "#ffffff", 0.25)), ("disabled", c["cartao"])])
     medio = dict(base, padding=(12, 9), font=(FONTE, 11, "bold"))
+    s.configure("Cx.Principal.TButton", background=c["botao"], foreground=c["texto"], **medio)
+    s.map("Cx.Principal.TButton", background=[("active", c["botao_hover"])])
     s.configure("Cx.Ok.TButton", background=c["verde"], foreground="#04241a", **medio)
     s.map("Cx.Ok.TButton", background=[("active", misturar(c["verde"], "#ffffff", 0.25)), ("disabled", c["cartao"])],
           foreground=[("disabled", c["mudo"])])
