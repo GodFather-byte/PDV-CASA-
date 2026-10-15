@@ -379,7 +379,7 @@ class TesteCupomTermico(BaseCaixa):
 
     def test_numero_de_vias_vem_da_forma_de_pagamento(self):
         self.banco.executar("UPDATE tipos_pagamento SET vias = 2 WHERE tipo = 'Cartão Crédito'")
-        self.assertEqual(self.imp.opcoes_cupom(self.vender_e_fechar("Cartão Crédito", 800))["copias"], 2)
+        self.assertEqual(self.imp.opcoes_cupom(self.vender_e_fechar("Cartão Crédito", 1300))["copias"], 2)   # com a taxa
         self.assertEqual(self.imp.opcoes_cupom(self.vender_e_fechar("Dinheiro", 800))["copias"], 1)
         self.banco.executar("UPDATE tipos_pagamento SET vias = 9 WHERE tipo = 'Pix'")
         self.assertEqual(self.imp.opcoes_cupom(self.vender_e_fechar("Pix", 800))["copias"], 3)   # teto de segurança

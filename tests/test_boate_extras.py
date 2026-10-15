@@ -20,7 +20,8 @@ class BaseBoate(BaseCaixa):
         return vid
 
     def pagar_tudo(self, vid, forma="Dinheiro"):
-        self.caixa.adicionar_pagamento(vid, self.tipo(forma), self.caixa.obter(vid)["total_cent"])
+        tipo = self.tipo(forma)                                # com a taxa do crédito, quando a forma cobra
+        self.caixa.adicionar_pagamento(vid, tipo, self.caixa.obter(vid)["total_cent"] + self.caixa.acrescimo_da_forma(vid, tipo))
         return self.caixa.fechar(vid)
 
 
@@ -148,7 +149,8 @@ class BaseBoateNaTela(BaseUI):
     def vender_em(self, forma, numero=7, qtd=1):
         vid = self.comanda(numero, (self.skol, qtd))
         tipo = self.banco.valor("SELECT id FROM tipos_pagamento WHERE tipo = ?", (forma,))
-        self.ctx.caixa.adicionar_pagamento(vid, tipo, self.ctx.caixa.obter(vid)["total_cent"])
+        self.ctx.caixa.adicionar_pagamento(
+            vid, tipo, self.ctx.caixa.obter(vid)["total_cent"] + self.ctx.caixa.acrescimo_da_forma(vid, tipo))
         return self.ctx.caixa.fechar(vid)
 
 
