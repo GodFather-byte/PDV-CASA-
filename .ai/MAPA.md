@@ -21,7 +21,7 @@ O repositório gera dois programas Windows: **WillPDV** (o PDV do cliente) e **W
 | `src/core/` | Dinheiro e datas (`formatacao.py`), licença Ed25519 (`licenca.py`, `ed25519.py`), senhas (`seguranca.py`), erros de negócio (`erros.py`), comanda e mesa (`posicao.py`), log (`registro.py`), base dos relatórios (`relatorio.py`), instância única (`instancia.py`) |
 | `src/database/` | `esquema.py` (tabelas, `VERSAO_ESQUEMA`, `MIGRACOES`), `conexao.py`, `protecao.py` (integridade e backup), `sementes.py` (dados iniciais) |
 | `src/controllers/` | Regras de negócio, um arquivo por assunto (lista abaixo) |
-| `src/ui/` | Telas Tkinter: `app.py` (janela principal), `caixa_ui.py` (caixa), `login.py`, `tema.py` e uma tela por módulo |
+| `src/ui/` | Telas Tkinter: `app.py` (janela principal), `caixa_ui.py` (caixa), `painel_mesas.py` (cartões, busca e abas das comandas), `caixa_tema.py` (cores e estilos do caixa), `login.py`, `tema.py` e uma tela por módulo |
 | `src/hardware/` | Impressora térmica ESC/POS e gaveta, balança, logotipo no cupom, impressoras do Windows |
 | `src/sync/` | `sincronizador.py`, `licenca_nuvem.py`, `atualizacoes.py`, `telegram_api.py` |
 | `licenciador/` | `nucleo.py` (regras), `tela.py` (janela), `app.py`, `autoteste.py` |

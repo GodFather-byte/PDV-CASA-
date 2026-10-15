@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 14
+VERSAO_ESQUEMA = 15
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -315,6 +315,7 @@ TABELAS = [
         vale_cent INTEGER NOT NULL DEFAULT 0,
         troco_para_cent INTEGER NOT NULL DEFAULT 0,
         mensagem TEXT,
+        apelido TEXT,
         saida_entrega_em TEXT,
         cancelada_por INTEGER REFERENCES operadores(id),
         motivo_cancelamento TEXT,
@@ -576,5 +577,9 @@ MIGRACOES = {
         ("coluna", "vendas", "acrescimo_cent", "INTEGER NOT NULL DEFAULT 0"),
         "UPDATE tipos_pagamento SET acrescimo_cent = 500 WHERE acrescimo_cent = 0"
         " AND (lower(tipo) LIKE '%cart_o%cr_dito%' OR lower(tipo) IN ('crédito', 'credito'))",
+    ],
+    # v15: nome da comanda ou mesa ("Carlos", "Aniversário"), mostrado no cartão do painel e no título da venda.
+    15: [
+        ("coluna", "vendas", "apelido", "TEXT"),
     ],
 }

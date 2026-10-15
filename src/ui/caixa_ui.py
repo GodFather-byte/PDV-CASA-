@@ -10,7 +10,10 @@ Comanda e mesa: no campo da posição digite o número da comanda (ex.: 123) ou 
 
 Comissão das garotas, sem sair desta tela: o código 50 troca a linha de entrada para "Garota nº" e "Valor (R$)" (Enter
 confirma e imprime a via da garota; Esc cancela). Na comanda da garota, F12 paga o que está marcado e Delete cancela a
-linha selecionada. As garotas com comissão a pagar aparecem como ícones (estrela) ao lado do balcão, no rodapé.
+linha selecionada. As garotas com comissão a pagar ganham um cartão no painel de comandas, à esquerda.
+
+Três colunas: o painel de comandas (cartões, busca e abas), a venda atual e o total com as ações. PgUp/PgDn (ou ◀ ▶) passam
+pela comanda anterior/seguinte da lista do painel; Enter ou duplo clique numa linha abre as ações dela.
 """
 from __future__ import annotations
 
@@ -29,13 +32,37 @@ from src.ui.caixa_tema import CX, FONTE
 from src.ui.clientes_ui import JanelaClientes, JanelaEntregas
 from src.ui.comissao_ui import JanelaComissoes
 from src.ui.fila_impressao_ui import JanelaFilaImpressao
+from src.ui.menu_widgets import misturar
 from src.ui.painel_mesas import PainelMesas
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
 COR_COMISSAO = "#0b7a6b"        # o verde-azulado da comissão: faixa e ícone da garota
 COR_COMISSAO_TEXTO = "#3fd3bd"   # o mesmo verde, claro, para ler sobre o fundo escuro (linhas da comanda, descrição)
-LARGURA_LADO = 340              # coluna da direita: total e ações
-LARGURA_LADO_COMPACTO = 300     # idem, em tela estreita
+LARGURAS_LADO = {3: 372, 2: 350, 1: 310}     # coluna da direita (total e ações), pelo nº de colunas de cartões do painel
+LARGURA_MINIMA_CENTRO = {3: 560, 2: 540, 1: 380}   # o que a venda atual precisa para os campos não ficarem espremidos
+
+
+class _RotuloComDica(ttk.Label):
+    """Rótulo que mostra um texto-guia apagado enquanto o texto dele está vazio (o `text` real continua sendo '')."""
+
+    def __init__(self, master, dica: str, **kw):
+        super().__init__(master, **kw)
+        self._dica = tk.Label(self, text=dica, bg=CX["cartao"], fg=CX["mudo"], font=(FONTE, 12), anchor="w")
+        self._pintar_dica()
+
+    def _pintar_dica(self) -> None:
+        if str(self.cget("text")):
+            self._dica.place_forget()
+        else:
+            self._dica.place(x=0, rely=0.5, anchor="w")
+
+    def configure(self, cnf=None, **kw):
+        resultado = super().configure(cnf, **kw)
+        if "text" in kw or (isinstance(cnf, dict) and "text" in cnf):
+            self._pintar_dica()
+        return resultado
+
+    config = configure
 
 
 class JanelaCaixa(tk.Toplevel):
@@ -54,7 +81,15 @@ class JanelaCaixa(tk.Toplevel):
         self.leitor = bool(ctx.config.maquina()["leitor_optico"])
         self.title(f"Caixa - {ctx.config.nome_loja()}")
         self.configure(bg=CX["fundo"])
-        self.geometry(f"1180x{min(740, self.winfo_screenheight() - 90)}")     # cabe em tela de 768 px se o zoom falhar
+        # O painel de comandas ganha 3 colunas de cartões em tela larga, 2 em notebook e 1 em tela pequena; a coluna da direita
+        # e o tamanho inicial da janela acompanham, para tudo caber mesmo se o "maximizar" falhar.
+        tela = self.winfo_screenwidth()
+        self.compacto = tela < 1250                    # tela pequena: campos e colunas laterais mais estreitos
+        self.colunas_painel = 3 if tela >= 1500 else 2 if tela >= 1250 else 1
+        self.largura_lado = LARGURAS_LADO[self.colunas_painel]
+        largura_inicial = ((self.colunas_painel * PainelMesas.LARGURA_CARTAO + PainelMesas.RESERVA) + self.largura_lado
+                           + LARGURA_MINIMA_CENTRO[self.colunas_painel] + 64)
+        self.geometry(f"{min(max(1180, largura_inicial), tela - 16)}x{min(740, self.winfo_screenheight() - 90)}")
         self.protocol("WM_DELETE_WINDOW", self.sair)
         self.withdraw()
         if ctx.turnos.atual() is None and not caixa_dialogos.abrir_turno(self, ctx):
@@ -79,50 +114,73 @@ class JanelaCaixa(tk.Toplevel):
     def _montar(self) -> None:
         caixa_tema.aplicar(self)
         self.configure(bg=CX["fundo"])
-        self.compacto = self.winfo_screenwidth() < 1250        # notebook pequeno: campos e coluna lateral mais estreitos
         self._cabecalho()
         # o rodapé é empacotado antes do corpo: em tela pequena o corpo encolhe, a barra de estado não some
         self.status = ttk.Label(self, text="", style="Cx.Status.TLabel", padding=(16, 6))
         self.status.pack(fill="x", side="bottom")
-        corpo = tk.Frame(self, bg=CX["fundo"])
-        corpo.pack(fill="both", expand=True, padx=14, pady=(10, 6))
+        corpo = self.corpo = tk.Frame(self, bg=CX["fundo"])
+        corpo.pack(fill="both", expand=True, padx=16, pady=(12, 8))
         self._lado_direito(corpo)
-        esq = tk.Frame(corpo, bg=CX["fundo"])
+        esq = self.esq = tk.Frame(corpo, bg=CX["fundo"])
         esq.pack(side="left", fill="both", expand=True)
+        # as comandas ficam numa coluna à esquerda (mostrada por _mostrar_painel); a venda atual, no meio
+        self.painel_mesas = PainelMesas(corpo, ao_escolher=self._tile_escolhido, ao_transferir=self.transferir_varias,
+                                        ao_voltar=self._painel_voltar, ao_digitar=self._digitar_posicao,
+                                        colunas=self.colunas_painel)
 
-        # --- comanda/mesa e situação da venda
+        # --- comanda/mesa e situação da venda: o título, o selo da situação e o campo do número
         linha = tk.Frame(esq, bg=CX["fundo"])
         linha.pack(fill="x")
-        bloco = tk.Frame(linha, bg=CX["fundo"])
-        bloco.pack(side="left")
-        ttk.Label(bloco, text=rotulo_do_campo(self.ctx.caixa.padrao_posicao()), style="Cx.Rotulo.TLabel").pack(anchor="w")
-        self.var_pos = tk.StringVar(value="0")
-        self.ent_pos = ttk.Entry(bloco, textvariable=self.var_pos, width=7, font=(FONTE, 18, "bold"), justify="center", style="Cx.TEntry")
-        self.ent_pos.pack(anchor="w", pady=(2, 0))
         quem = tk.Frame(linha, bg=CX["fundo"])
-        quem.pack(side="left", padx=(18, 0), fill="y")
-        ttk.Label(quem, text="VENDA ATUAL", style="Cx.Rotulo.TLabel").pack(anchor="w")
-        self.lbl_situacao = ttk.Label(quem, text="Balcão", font=(FONTE, 20, "bold"), style="Cx.TLabel", foreground=CX["azul"])
+        quem.pack(side="left", fill="y")
+        legenda = tk.Frame(quem, bg=CX["fundo"])
+        legenda.pack(anchor="w", fill="x")
+        ttk.Label(legenda, text="VENDA ATUAL", style="Cx.Rotulo.TLabel").pack(side="left")
+        # anterior / próxima comanda da lista (PgUp / PgDn): passa pelas contas dos clientes e das garotas sem voltar ao painel
+        self.btn_proxima = ttk.Button(legenda, text="▶", width=2, style="Cx.Mini.TButton", takefocus=False,
+                                      command=lambda: self.navegar_comanda(1))
+        self.btn_proxima.pack(side="right")
+        self.btn_anterior = ttk.Button(legenda, text="◀", width=2, style="Cx.Mini.TButton", takefocus=False,
+                                       command=lambda: self.navegar_comanda(-1))
+        self.btn_anterior.pack(side="right", padx=(0, 3))
+        self.lbl_situacao = ttk.Label(quem, text="Balcão", font=(FONTE, 22, "bold"), style="Cx.TLabel", foreground=CX["azul"])
         self.lbl_situacao.pack(anchor="w")
+        self.lbl_situacao.bind("<Button-1>", self.nomear_comanda)           # clicar no título dá nome à comanda
+        self.lbl_situacao.configure(cursor="hand2")
+        bloco = tk.Frame(linha, bg=CX["fundo"])
+        bloco.pack(side="right", padx=(12, 0))
+        ttk.Label(bloco, text=rotulo_do_campo(self.ctx.caixa.padrao_posicao()), style="Cx.Rotulo.TLabel").pack(anchor="e")
+        self.var_pos = tk.StringVar(value="0")
+        self.ent_pos = ttk.Entry(bloco, textvariable=self.var_pos, width=7, font=(FONTE, 16, "bold"), justify="center", style="Cx.TEntry")
+        self.ent_pos.pack(anchor="e", pady=(2, 0))
+        self.lbl_status_venda = tk.Label(linha, text="Balcão", font=(FONTE, 11, "bold"), padx=18, pady=10,
+                                         bg=CX["cartao"], fg=CX["verde"], highlightthickness=1, highlightbackground=CX["borda"])
+        self.lbl_status_venda.pack(side="right")
         self.lbl_leitor = ttk.Label(linha, text="", style="Cx.TLabel", foreground=tema.COR["aviso"], font=(FONTE, 10, "bold"))
-        self.lbl_leitor.pack(side="right", anchor="s", pady=(0, 4))
+        self.lbl_leitor.pack(side="right", anchor="s", padx=(0, 14), pady=(0, 4))
 
-        self.faixa = tk.Label(esq, text="", font=tema.FONTE_B, fg="white", anchor="w", padx=14, pady=5)
+        self.faixa = tk.Label(esq, text="", font=tema.FONTE_B, fg="white", anchor="w", justify="left", padx=14, pady=6)
+        self.faixa.bind("<Configure>", lambda e: self.faixa.configure(wraplength=max(e.width - 30, 200)))
 
         # --- entrada do item: código, descrição, quantidade e preço
-        ent = self.cartao_entrada = tk.Frame(esq, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], padx=14, pady=10)
-        ent.pack(fill="x", pady=(10, 0))
+        ent = self.cartao_entrada = tk.Frame(esq, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], padx=16, pady=12)
+        ent.pack(fill="x", pady=(12, 0))
         self.lbl_cod_titulo = ttk.Label(ent, text="Código", style="Cx.CartaoRotulo.TLabel")
         self.lbl_cod_titulo.grid(row=0, column=0, sticky="w")
         self.var_cod = tk.StringVar()
         self.var_cod.trace_add("write", lambda *_: self._comissao_nome() if self.modo_comissao else None)
+        self.var_cod.trace_add("write", lambda *_: self._pintar_dica_codigo())
         self.ent_codigo = ttk.Entry(ent, textvariable=self.var_cod, width=10 if self.compacto else 16, font=(FONTE, 18), style="Cx.TEntry")
         self.ent_codigo.grid(row=1, column=0, sticky="w")
+        self.dica_codigo = tk.Label(self.ent_codigo, text="Código ou leitor", bg=CX["campo"], fg=CX["mudo"], font=(FONTE, 13))
+        self.dica_codigo.bind("<Button-1>", lambda e: self.ent_codigo.focus_set())
+        self._pintar_dica_codigo()
         if not self.compacto:        # em tela estreita só o botão Consultar do painel de ações (o espaço é do código e do preço)
             self.btn_consultar = ttk.Button(ent, text="Consultar", style="Cx.TButton", takefocus=False, command=self.consultar)
             self.btn_consultar.grid(row=1, column=1, padx=8)
         ttk.Label(ent, text="Descrição", style="Cx.CartaoRotulo.TLabel").grid(row=0, column=2, sticky="w", padx=(6, 0))
-        self.lbl_desc = ttk.Label(ent, text="", font=(FONTE, 16, "bold"), style="Cx.Cartao.TLabel", foreground=CX["texto"], width=10 if self.compacto else 24)
+        self.lbl_desc = _RotuloComDica(ent, "Passe o leitor ou digite o código", text="", font=(FONTE, 16, "bold"),
+                                       style="Cx.Cartao.TLabel", foreground=CX["texto"], width=10 if self.compacto else 24)
         self.lbl_desc.grid(row=1, column=2, sticky="ew", padx=(6, 10))
         ttk.Label(ent, text="Unidade", style="Cx.CartaoRotulo.TLabel").grid(row=0, column=3, sticky="w")
         self.lbl_un = ttk.Label(ent, text="", font=(FONTE, 12), style="Cx.Cartao.TLabel", width=5)
@@ -136,18 +194,16 @@ class JanelaCaixa(tk.Toplevel):
         self.lbl_preco = ttk.Label(ent, text="", font=(FONTE, 16, "bold"), style="Cx.Cartao.TLabel", foreground=CX["verde"], width=8)
         self.lbl_preco.grid(row=1, column=5, sticky="w")
         ent.columnconfigure(2, weight=1)
-        self.lbl_dica = ttk.Label(ent, text="Código + Enter lança o item   |   Enter com o campo vazio abre as ações   |   "
-                                            "F12 paga   |   Esc marca a comanda ou a mesa", font=(FONTE, 9), style="Cx.CartaoRotulo.TLabel")
-        self.lbl_dica.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
         ent.bind("<Configure>", self._ajustar_entrada)
 
-        # --- itens da venda
-        self.painel_mesas = PainelMesas(esq, ao_escolher=self._tile_escolhido, ao_transferir=self.transferir_varias,
-                                        ao_voltar=self._painel_voltar, ao_digitar=self._digitar_posicao)
+        # --- itens da venda (o código e a unidade ficam guardados, mas fora da vista: a lista é Produto, Preço, Qtd e Total)
         quadro = tk.Frame(esq, bg=CX["fundo"])
-        quadro.pack(fill="both", expand=True, pady=(10, 0))
+        quadro.pack(fill="both", expand=True, pady=(12, 0))
+        self.lbl_dica = ttk.Label(esq, text="Código + Enter lança  ·  Enter na linha: ações  ·  Delete cancela  ·  O observação  ·  T transfere  ·  PgUp/PgDn troca de comanda  ·  F12 paga",
+                                  font=(FONTE, 9), style="Cx.Rotulo.TLabel")
+        self.lbl_dica.pack(side="bottom", anchor="w", pady=(8, 0), before=quadro)
         self.grade = tema.Grade(quadro, [("cod", "Código", 150, "w"), ("prod", "Produto", 300, "w"), ("un", "Un", 50, "w"),
-                                         ("preco", "Preço", 90, "e"), ("qtd", "Quantidade", 90, "e"), ("tot", "Total", 100, "e"),
+                                         ("preco", "Preço", 90, "e"), ("qtd", "Qtd", 90, "e"), ("tot", "Total", 100, "e"),
                                          ("obs", "Observação", 200, "w")], altura=6, estilo="Cx", cor_par=CX["linha_par"])
         self.grade.pack(fill="both", expand=True)
         self.grade.tree.bind("<Configure>", self._ajustar_grade)
@@ -169,6 +225,10 @@ class JanelaCaixa(tk.Toplevel):
         t = self.grade.tree
         t.bind("<Delete>", lambda ev: self.cancelar_item_selecionado())
         t.bind("<Return>", self._enter_grade)
+        t.bind("<Double-1>", self._enter_grade)
+        t.bind("<Up>", self._cima_grade)
+        t.bind("<Prior>", lambda ev: (self.navegar_comanda(-1), "break")[1])
+        t.bind("<Next>", lambda ev: (self.navegar_comanda(1), "break")[1])
         t.bind("<Escape>", lambda ev: self._sair_modo_cancelar())
         t.bind("o", lambda ev: self.observacao_item()); t.bind("O", lambda ev: self.observacao_item())
         t.bind("t", lambda ev: self.transferir_item()); t.bind("T", lambda ev: self.transferir_item())
@@ -177,16 +237,35 @@ class JanelaCaixa(tk.Toplevel):
                           ("F10", self.transferir_mesa), ("F11", self.gaveta), ("F12", self.pagar)):
             self.bind(f"<{tecla}>", lambda ev, f=fn: (f(), "break")[1])
             self.opcoes.bind(f"<{tecla}>", lambda ev, f=fn: (self._exec_barra(f), "break")[1])
+        self.bind("<Prior>", lambda ev: (self.navegar_comanda(-1), "break")[1])
+        self.bind("<Next>", lambda ev: (self.navegar_comanda(1), "break")[1])
+        self.bind("<Configure>", self._ao_redimensionar, add="+")
         self.bind("<Left>", lambda ev: self._barra_mover(-1))
         self.bind("<Right>", lambda ev: self._barra_mover(1))
         self.bind("<FocusIn>", self._retomar_atendimento, add="+")
         if self.painel_fixo:
             self._mostrar_painel()
 
+    def _ao_redimensionar(self, evento) -> None:
+        """Com a janela menor (ou maior), o painel de comandas ganha ou perde colunas de cartões; a venda atual fica com o resto."""
+        if evento.widget is not self or evento.width <= 1:
+            return
+        espaco = evento.width - self.largura_lado - 64 - 520
+        self.painel_mesas.definir_colunas(max(1, min(3, (espaco - PainelMesas.RESERVA) // PainelMesas.LARGURA_CARTAO)))
+
+    def _pintar_dica_codigo(self) -> None:
+        """O texto-guia do campo do código some assim que se digita (ou o leitor passa) alguma coisa."""
+        if self.var_cod.get():
+            self.dica_codigo.place_forget()
+        else:
+            self.dica_codigo.place(x=8, rely=0.5, anchor="w")
+
     def _ajustar_entrada(self, evento) -> None:
         """Encolhe os campos ao redimensionar a janela, mantendo a descrição e o preço à vista."""
         estreita = evento.width < 760
-        self.ent_codigo.configure(width=8 if estreita else 16, font=(FONTE, 14 if estreita else 18))
+        self.ent_codigo.configure(width=11 if estreita else 16, font=(FONTE, 14 if estreita else 18))
+        self.dica_codigo.configure(font=(FONTE, 11 if estreita else 13))
+        self.lbl_desc._dica.configure(font=(FONTE, 11 if estreita else 12))
         self.ent_qtd.configure(width=6 if estreita else 9, font=(FONTE, 14 if estreita else 18))
         self.lbl_desc.configure(width=1, font=(FONTE, 12 if estreita else 16, "bold"))
         self.lbl_preco.configure(font=(FONTE, 12 if estreita else 16, "bold"))
@@ -199,41 +278,52 @@ class JanelaCaixa(tk.Toplevel):
         if getattr(self, "_grade_estreita", None) == estreita:
             return
         self._grade_estreita = estreita
-        self.grade.tree.configure(displaycolumns=("cod", "prod", "un", "preco", "qtd", "tot") if estreita else "#all")
-        larguras = (130, 180, 35, 65, 60, 80, 200) if estreita else (150, 300, 50, 90, 90, 100, 200)
+        self.grade.tree.configure(displaycolumns=("prod", "preco", "qtd", "tot") if estreita else ("prod", "preco", "qtd", "tot", "obs"))
+        larguras = (130, 220, 35, 80, 60, 90, 120) if estreita else (150, 380, 50, 100, 80, 110, 220)
         for coluna, largura in zip(("cod", "prod", "un", "preco", "qtd", "tot", "obs"), larguras):
             self.grade.tree.column(coluna, width=largura)
 
     def _cabecalho(self) -> None:
-        topo = tk.Frame(self, bg=CX["cabecalho"], padx=16, pady=8)
+        topo = tk.Frame(self, bg=CX["cabecalho"], padx=20, pady=10)
         topo.pack(fill="x")
         self.slot_sair = tk.Frame(topo, bg=CX["cabecalho"])
         self.slot_sair.pack(side="right", padx=(18, 0))
         nome = self.ctx.config.nome_loja().upper()
-        tk.Label(topo, text=(nome[:1] or "W"), bg=CX["azul"], fg="white", font=(FONTE, 15, "bold"), width=2).pack(side="left")
+        tk.Label(topo, text=(nome[:1] or "W"), bg=CX["azul"], fg="#0b1330", font=(FONTE, 15, "bold"), width=2).pack(side="left")
         titulos = tk.Frame(topo, bg=CX["cabecalho"])
         titulos.pack(side="left", padx=(12, 0))
         tk.Label(titulos, text="CAIXA", bg=CX["cabecalho"], fg=CX["suave"], font=(FONTE, 8, "bold")).pack(anchor="w")
         self.lbl_loja = tk.Label(titulos, text=nome, bg=CX["cabecalho"], fg=CX["texto"], font=(FONTE, 15, "bold"))
         self.lbl_loja.pack(anchor="w")
-        self.lbl_turno = tk.Label(topo, bg=CX["cabecalho"], fg=CX["suave"], font=tema.FONTE)
-        self.lbl_turno.pack(side="right")
-        self.lbl_hora = tk.Label(topo, bg=CX["cabecalho"], fg=CX["texto"], font=(FONTE, 12, "bold"))
-        self.lbl_hora.pack(side="right", padx=20)
+        # os indicadores do turno, da direita para a esquerda: turno e hora, o que está em aberto, acertos e posições abertas
+        self.lbl_turno, self.lbl_hora = self._indicador(topo, "TURNO", CX["texto"])
+        self.lbl_aberto_casa = self._indicador(topo, "EM ABERTO NA CASA", CX["verde"])[1]
+        self.lbl_acertos = self._indicador(topo, "AGUARD. ACERTO", CX["ambar"])[1]
+        self.lbl_abertas = self._indicador(topo, "ABERTAS", CX["texto"])[1]
         self.lbl_fila = tk.Label(topo, bg=CX["cabecalho"], fg="#7ee2a8", font=tema.FONTE_B, cursor="hand2")
         self.lbl_fila.pack(side="right", padx=(0, 6))
         self.lbl_fila.bind("<Button-1>", lambda e: self.abrir_fila())
         tk.Frame(self, height=1, bg=CX["borda"]).pack(fill="x")
 
+    def _indicador(self, pai, titulo: str, cor: str) -> tuple[tk.Label, tk.Label]:
+        """Um indicador do cabeçalho (título pequeno e valor em destaque). Devolve (rótulo do título, rótulo do valor)."""
+        quadro = tk.Frame(pai, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], padx=14, pady=5)
+        quadro.pack(side="right", padx=(8, 0))
+        lbl_titulo = tk.Label(quadro, text=titulo, bg=CX["cartao"], fg=CX["suave"], font=(FONTE, 8, "bold"))
+        lbl_titulo.pack(anchor="w")
+        lbl_valor = tk.Label(quadro, text="0", bg=CX["cartao"], fg=cor, font=(FONTE, 14, "bold"))
+        lbl_valor.pack(anchor="w")
+        return lbl_titulo, lbl_valor
+
     def _lado_direito(self, corpo) -> None:
-        """Coluna da direita: o total em destaque, o botão Pagar e as demais ações, agrupadas."""
-        lado = tk.Frame(corpo, bg=CX["fundo"], width=LARGURA_LADO_COMPACTO if self.compacto else LARGURA_LADO)
-        lado.pack(side="right", fill="y", padx=(14, 0))
+        """Coluna da direita: o total em destaque, o botão Pagar e as ações do dia a dia, em duas colunas."""
+        lado = tk.Frame(corpo, bg=CX["fundo"], width=self.largura_lado)
+        lado.pack(side="right", fill="y", padx=(16, 0))
         lado.pack_propagate(False)
         cartao = tk.Frame(lado, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"])
         cartao.pack(fill="x")
         tk.Frame(cartao, height=3, bg=CX["verde"]).pack(fill="x")
-        dentro = tk.Frame(cartao, bg=CX["cartao"], padx=16, pady=8)
+        dentro = tk.Frame(cartao, bg=CX["cartao"], padx=16, pady=10)
         dentro.pack(fill="x")
         tk.Label(dentro, text="TOTAL A PAGAR", bg=CX["cartao"], fg=CX["suave"], font=(FONTE, 9, "bold")).pack(anchor="w")
         linha = tk.Frame(dentro, bg=CX["cartao"])
@@ -241,31 +331,32 @@ class JanelaCaixa(tk.Toplevel):
         tk.Label(linha, text="R$", bg=CX["cartao"], fg=CX["suave"], font=(FONTE, 16, "bold")).pack(side="left", anchor="s", pady=(0, 9))
         self.lbl_total = tk.Label(linha, text="0,00", bg=CX["cartao"], fg=CX["verde"], font=(FONTE, 34, "bold"), anchor="e")
         self.lbl_total.pack(side="right")
-        tk.Frame(dentro, height=1, bg=CX["borda"]).pack(fill="x", pady=(2, 5))
-        troco = tk.Frame(dentro, bg=CX["cartao"])
-        troco.pack(fill="x")
-        tk.Label(troco, text="Troco", bg=CX["cartao"], fg=CX["suave"], font=(FONTE, 11, "bold")).pack(side="left")
-        self.lbl_troco = tk.Label(troco, text="0,00", bg=CX["cartao"], fg=CX["azul"], font=(FONTE, 16, "bold"), anchor="e")
-        self.lbl_troco.pack(side="right")
+        self.lbl_detalhe_total = tk.Label(dentro, text="", bg=CX["cartao"], fg=CX["suave"], font=(FONTE, 10), anchor="w",
+                                          justify="left", wraplength=250)
+        self.lbl_detalhe_total.pack(fill="x", pady=(4, 0))
+        self.lbl_troco = tk.Label(dentro, text="0,00")            # o troco aparece na janela de pagamento; aqui só guarda o valor
         self.lbl_recebido = tk.Label(dentro, text="", bg=CX["cartao"], fg=CX["suave"], font=(FONTE, 10),
                                      wraplength=270, justify="left", anchor="w")
         self.barra = tk.Frame(lado, bg=CX["fundo"])
-        self.barra.pack(fill="x", pady=(10, 0))
+        self.barra.pack(fill="x", pady=(12, 0))
         self._barra_tarefas()
 
     def _barra_tarefas(self) -> None:
         principais = [("Pagar (F12)", self.pagar), ("Lançar produto", self.consultar), ("Escolher comanda (F4)", self.foco_mesa)]
-        venda = [("Pré-Conta (F8)", self.pre_conta), ("Transfere (F10)", self.transferir_mesa), ("Repique (F9)", self.repique),
-                 ("Delivery (F6)", self.entrega), ("Caderneta (F5)", self.caderneta), ("Consulta Comanda", self.consultar_comanda),
-                 ("Comissões", self.comissoes), ("Cancelar", self.menu_cancelar)]
-        caixa = [("Sangria (F7)", self.sangria), ("Gaveta (F11)", self.gaveta), ("Impressora", self.impressora),
-                 ("Balança (F2)", self.balanca), ("Leitor (F3)", self.alternar_leitor), ("Fecha Turno", self.fechar_turno)]
+        diarias = [("Pré-Conta (F8)", self.pre_conta), ("Transfere (F10)", self.transferir_mesa), ("Repique (F9)", self.repique),
+                   ("Comissões", self.comissoes), ("Sangria (F7)", self.sangria), ("Gaveta (F11)", self.gaveta),
+                   ("Consulta Comanda", self.consultar_comanda), ("Cancelar", self.menu_cancelar)]
+        venda = [("Nomear comanda", self.nomear_comanda), ("Delivery (F6)", self.entrega), ("Caderneta (F5)", self.caderneta)]
+        caixa = [("Impressora", self.impressora), ("Balança (F2)", self.balanca), ("Leitor (F3)", self.alternar_leitor),
+                 ("Fecha Turno", self.fechar_turno)]
         sair = [("Sair", self.sair)]                       # fica no canto do cabeçalho, longe dos botões de uso diário
         desligados = {self.entrega: "usar_delivery", self.caderneta: "usar_caderneta"}   # módulos que a casa não usa
         venda = [(r, f) for r, f in venda if f not in desligados or self.ctx.banco.cfg_bool(desligados[f], False)]
-        self.tarefas = principais + venda + caixa + sair
+        # Os 11 primeiros ficam sempre à vista, na coluna da direita; o resto fica em "Mais opções" (janela à parte).
+        self.tarefas = principais + diarias + venda + caixa + sair
+        self._n_fixos = len(principais) + len(diarias)
         self.botoes_tarefa, self._estilos_base = [], []
-        self.barra.columnconfigure(0, weight=1)
+        self.barra.columnconfigure((0, 1), weight=1, uniform="acoes")
         self.opcoes = tk.Toplevel(self)
         self.opcoes.withdraw()
         self.opcoes.title("Mais opções do caixa")
@@ -287,26 +378,31 @@ class JanelaCaixa(tk.Toplevel):
 
         def botao(i: int, linha: int, coluna: int, largura: int = 1) -> None:
             rotulo, fn = self.tarefas[i]
-            estilo = ("Cx.Pagar.TButton" if i == 0 else "Cx.Principal.TButton" if i < 3
-                      else "Cx.Perigo.TButton" if fn in (self.menu_cancelar, self.sair) else "Cx.TButton")
-            pai = self.slot_sair if fn == self.sair else self.barra if i < 3 else extras
+            estilo = ("Cx.Pagar.TButton" if i == 0 else "Cx.Perigo.TButton" if fn == self.sair
+                      else "Cx.AcaoPerigo.TButton" if fn == self.menu_cancelar
+                      else "Cx.Acao.TButton" if i < self._n_fixos else "Cx.TButton")
+            pai = self.slot_sair if fn == self.sair else self.barra if i < self._n_fixos else extras
             b = ttk.Button(pai, text=rotulo, style=estilo, takefocus=False,
                            command=lambda f=fn: self._exec_barra(f))
             if fn == self.sair:
                 b.pack()
             else:
-                b.grid(row=linha, column=coluna, columnspan=largura, padx=2, pady=2, sticky="ew")
+                b.grid(row=linha, column=coluna, columnspan=largura, padx=3, pady=3, sticky="ew")
             self.botoes_tarefa.append(b)
             self._estilos_base.append(estilo)
 
-        for i in range(3):
-            botao(i, i, 0)
-        self.btn_opcoes = ttk.Button(self.barra, text="Mais opções", style="Cx.Principal.TButton", command=self._abrir_opcoes)
-        self.btn_opcoes.grid(row=3, column=0, sticky="ew", padx=2, pady=(18, 2))
-        tk.Label(self.barra, text="Pré-conta, sangria, comissões,\ntransferências e fechamento de turno",
-                 bg=CX["fundo"], fg=CX["suave"], font=(FONTE, 9), justify="center").grid(row=4, column=0, pady=8)
+        botao(0, 0, 0, 2)                                          # Pagar ocupa a largura toda
+        for k in range(1, self._n_fixos):                          # as ações do dia a dia, duas por linha
+            botao(k, 1 + (k - 1) // 2, (k - 1) % 2)
+        linhas = 1 + (self._n_fixos - 1 + 1) // 2
+        self.btn_opcoes = ttk.Button(self.barra, text="Mais opções", style="Cx.TButton", command=self._abrir_opcoes)
+        self.btn_opcoes.grid(row=linhas, column=0, columnspan=2, sticky="ew", padx=3, pady=(14, 3))
+        tk.Label(self.barra, text="Nomear comanda, delivery, caderneta, impressora,\nbalança, leitor e fechamento de turno",
+                 bg=CX["fundo"], fg=CX["suave"], font=(FONTE, 9), justify="center").grid(row=linhas + 1, column=0, columnspan=2, pady=6)
         linha = 0
-        for titulo, qtd, inicio in (("VENDA", len(venda), 3), ("CAIXA", len(caixa), 3 + len(venda))):
+        for titulo, qtd, inicio in (("VENDA", len(venda), self._n_fixos), ("CAIXA", len(caixa), self._n_fixos + len(venda))):
+            if not qtd:
+                continue
             tk.Label(extras, text=titulo, bg=CX["fundo"], fg=CX["suave"], font=(FONTE, 9, "bold"), anchor="w").grid(
                 row=linha, column=0, columnspan=2, sticky="w", padx=3, pady=(8, 0))
             linha += 1
@@ -322,7 +418,7 @@ class JanelaCaixa(tk.Toplevel):
         self.opcoes.focus_force()
 
     def _abrir_opcoes(self) -> None:
-        self.indice_barra = 3
+        self.indice_barra = self._n_fixos
         self._pintar_barra()
 
     def _ocultar_opcoes(self) -> None:
@@ -340,7 +436,7 @@ class JanelaCaixa(tk.Toplevel):
     # ============================================================== estado
     def _relogio(self) -> None:
         try:
-            self.lbl_hora.configure(text=fmt.agora_dt().strftime("%d/%m/%Y  %H:%M:%S"))
+            self.lbl_hora.configure(text=fmt.agora_dt().strftime("%H:%M"))
             self._atualizar_fila()
             self._id_relogio = self.after(1000, self._relogio)
         except tk.TclError:      # janela já destruída
@@ -385,7 +481,7 @@ class JanelaCaixa(tk.Toplevel):
 
     def recarregar(self) -> None:
         t = self.ctx.turnos.atual()
-        self.lbl_turno.configure(text=f"Operador: {self.ctx.operador.nome}    Turno: {t['numero'] if t else '-'}")
+        self.lbl_turno.configure(text=f"TURNO {t['numero'] if t else '-'}  ·  {self.ctx.operador.nome.upper()}")
         v = self.venda()
         self.grade.limpar()
         total = 0
@@ -406,6 +502,7 @@ class JanelaCaixa(tk.Toplevel):
             self.lbl_vazio.place(relx=0.5, rely=0.45, anchor="center")
         self.lbl_total.configure(text=fmt.fmt_num(total))
         self.lbl_troco.configure(text="0,00")
+        self._detalhe_total(v)
         recebido = sum(p["valor_cent"] for p in self.ctx.caixa.pagamentos(v["id"])) if v else 0
         if recebido:
             self.lbl_recebido.configure(text=f"Recebido: {fmt.fmt_brl(recebido)}\nFalta receber: {fmt.fmt_brl(max(0, total - recebido))}")
@@ -413,9 +510,43 @@ class JanelaCaixa(tk.Toplevel):
         else:
             self.lbl_recebido.pack_forget()
         self._situacao(v)
+        self._status_venda(v, total, recebido)
         self.lbl_leitor.configure(text="LEITOR ÓPTICO ATIVO" if self.leitor else "")
-        if self.mesas_visiveis:
-            self.carregar_mesas()
+        self.carregar_mesas()                        # os cartões e os indicadores do cabeçalho acompanham a venda
+
+    def _detalhe_total(self, v: dict | None) -> None:
+        """Sob o total: de onde vem o acréscimo (serviço, taxa, desconto), para o cliente não estranhar o valor."""
+        partes = []
+        if v:
+            if v["desconto_cent"]:
+                partes.append(f"Desconto: - {fmt.fmt_brl(v['desconto_cent'])}")
+            if v["servico_cent"]:
+                pct = "" if v["servico_manual"] else f" ({float(self.ctx.banco.cfg('servico_pct', '10') or 0):g}%)"
+                partes.append(f"Serviço{pct}: {fmt.fmt_brl(v['servico_cent'])}")
+            if v["taxa_cent"]:
+                partes.append(f"{'Compl. consumação' if v['comanda'] else 'Taxa de entrega'}: {fmt.fmt_brl(v['taxa_cent'])}")
+            if v["acrescimo_cent"]:
+                partes.append(f"Taxa do crédito: {fmt.fmt_brl(v['acrescimo_cent'])}")
+        self.lbl_detalhe_total.configure(text="\n".join(partes))
+
+    def _status_venda(self, v: dict | None, total: int, recebido: int) -> None:
+        """O selo ao lado do título da venda: Aberta, Conta enviada, Pago em parte... na mesma cor do cartão da comanda."""
+        if v is None or v["modalidade"] == "balcao":
+            texto, cor = "Balcão", CX["verde"]
+        elif v["modalidade"] == "caderneta":
+            texto, cor = "Caderneta", CX["vermelho"]
+        elif v["modalidade"] == "entrega":
+            texto, cor = "Entrega", CX["azul"]
+        elif recebido and recebido >= total > 0:
+            texto, cor = "Concluir acerto", CX["ambar"]
+        elif recebido:
+            texto, cor = "Pago em parte", CX["violeta"] if "violeta" in CX else "#b8a1ff"
+        elif v["status"] == "conta_enviada":
+            texto, cor = "Conta enviada", CX["ambar"]
+        else:
+            texto, cor = "Aberta", CX["verde"]
+        self.lbl_status_venda.configure(text=texto, fg=cor, bg=misturar(CX["cartao"], cor, 0.16),
+                                        highlightbackground=misturar(CX["borda"], cor, 0.45))
 
     def _linhas_comissao(self, v: dict, turno: dict | None) -> None:
         """Comanda de garota: o que está marcado nela (comissão a pagar e a paga neste turno) aparece na lista, em cor própria e
@@ -452,6 +583,7 @@ class JanelaCaixa(tk.Toplevel):
             garota = self.ctx.comissoes.garota(v["posicao"]) if v["comanda"] else None
             self.lbl_situacao.configure(text=nome_posicao(v["comanda"], v["posicao"])
                                         + (f" - {garota['nome']}" if garota and garota["ativo"] else "")
+                                        + (f" · {v['apelido']}" if v["apelido"] else "")
                                         + (" - CONTA ENVIADA" if v["status"] == "conta_enviada" else ""))
             self.var_pos.set(self.ctx.caixa.rotular_posicao(v["comanda"], v["posicao"]))
         else:
@@ -719,9 +851,59 @@ class JanelaCaixa(tk.Toplevel):
             self.ent_codigo.focus_set()
 
     def _enter_grade(self, _=None) -> str:
+        """Enter (ou duplo clique) na linha: no modo cancelar, cancela; fora dele, abre as ações daquela linha."""
         if self.modo_cancelar:
             self.cancelar_item_selecionado()
+        else:
+            self._menu_linha()
         return "break"
+
+    def _cima_grade(self, _=None) -> str | None:
+        """Seta para cima na primeira linha volta ao campo do código (o mesmo caminho da seta para baixo, ao contrário)."""
+        if self.grade.indice() <= 0:
+            self.ent_codigo.focus_set()
+            return "break"
+        return None
+
+    def _menu_linha(self) -> None:
+        """As ações da linha escolhida na lista: do item (observação, transferir, cancelar) ou, na comanda da garota, do
+        lançamento de comissão (pagar a garota, cancelar o lançamento)."""
+        s = self.grade.selecionado()
+        if s is None:
+            return
+        if str(s).startswith("c"):
+            self._menu_linha_comissao(str(s))
+            return
+        nome = self.grade.valores(s)[1]
+        escolha = tema.escolher(self, "Ações do item", [
+            ("obs", "Observação do item (O)"), ("transferir", "Transferir para outra comanda ou mesa (T)"),
+            ("cancelar", "Cancelar este item (Delete)")], f"{nome}\nEscolha e tecle Enter:", altura=3)
+        if escolha == "obs":
+            self.observacao_item()
+        elif escolha == "transferir":
+            self.transferir_item()
+        elif escolha == "cancelar":
+            self.cancelar_item_selecionado()
+
+    def _menu_linha_comissao(self, iid: str) -> None:
+        c = next((x for x in self.comissao_marcada if f"c{x['id']}" == iid), None)
+        if c is None:
+            return
+        if c["status"] != "pendente":
+            tema.aviso(self, "Esta comissão já foi paga neste turno.")
+            return
+        if not self._comissao_na_linha():
+            tema.aviso(self, "Para pagar ou cancelar a comissão, use o botão Comissões.")
+            return
+        total = sum(x["valor_cent"] for x in self.comissao_marcada if x["status"] == "pendente")
+        escolha = tema.escolher(self, "Ações da comissão", [
+            ("pagar", f"Pagar a comissão da garota (R$ {fmt.fmt_num(total)})"),
+            ("cancelar", f"Cancelar este lançamento (R$ {fmt.fmt_num(c['valor_cent'])})")],
+            "Escolha e tecle Enter:", altura=2)
+        if escolha == "pagar":
+            self._pagar_comissao(self.venda())
+        elif escolha == "cancelar":
+            self._cancelar_comissao(iid)
 
     def cancelar_item_selecionado(self) -> None:
         s = self.grade.selecionado()
@@ -760,7 +942,7 @@ class JanelaCaixa(tk.Toplevel):
     # ============================================================== mesas e comandas
     def _mostrar_painel(self) -> None:
         self.mesas_visiveis = True
-        self.painel_mesas.pack(fill="x", side="bottom", pady=(8, 0), after=self.cartao_entrada)
+        self.painel_mesas.pack(side="left", fill="y", padx=(0, 16), before=self.esq)
 
     def _esconder_painel(self) -> None:
         self.mesas_visiveis = False
@@ -777,8 +959,9 @@ class JanelaCaixa(tk.Toplevel):
 
     def carregar_mesas(self) -> None:
         garotas = []
-        if self.ctx.banco.cfg_bool("painel_mostra_garotas", True):          # as garotas com comissão a pagar viram ícones também
-            garotas = [{"rotulo": self.ctx.caixa.rotular_posicao(True, p["garota"]), "total_cent": p["total_cent"]}
+        if self.ctx.banco.cfg_bool("painel_mostra_garotas", True):          # as garotas com comissão a pagar viram cartões também
+            garotas = [{"rotulo": self.ctx.caixa.rotular_posicao(True, p["garota"]), "total_cent": p["total_cent"],
+                        "nome": p["nome"], "marcacoes": p["lancamentos"]}
                        for p in self.ctx.comissoes.pendentes_por_garota()]
         mesas = self.ctx.caixa.mesas()
         # Somente apresentação: lê pagamentos já registrados, sem recalcular ou fechar vendas.
@@ -788,7 +971,46 @@ class JanelaCaixa(tk.Toplevel):
                WHERE v.modalidade = 'mesa' AND v.status IN ('aberta', 'conta_enviada') GROUP BY p.venda_id""")}
         for mesa in mesas:
             mesa["recebido_cent"] = recebidos.get(mesa["id"], 0)
-        self.painel_mesas.atualizar(mesas, self.ctx.caixa.balcao_aberto(), self._chave_atual(), garotas)
+        balcao = self.ctx.caixa.balcao_aberto()
+        self.painel_mesas.atualizar(mesas, balcao, self._chave_atual(), garotas)
+        self._atualizar_indicadores(mesas, balcao)
+
+    def _atualizar_indicadores(self, mesas: list[dict], balcao: dict | None) -> None:
+        """Os indicadores do cabeçalho: posições abertas, as que esperam acerto e o que está em aberto na casa."""
+        tiles = self.painel_mesas._todos_tiles
+        self.lbl_abertas.configure(text=str(len(mesas)))
+        self.lbl_acertos.configure(text=str(sum(t["estado"] in {"conta", "acerto", "garota"} for t in tiles)))
+        aberto = sum(m["total_cent"] for m in mesas) + (balcao["total_cent"] if balcao else 0)
+        self.lbl_aberto_casa.configure(text=fmt.fmt_brl(aberto))
+
+    def nomear_comanda(self, _=None) -> None:
+        """Clique no título (ou Mais opções): dá nome à comanda ou mesa da tela, que aparece no cartão do painel."""
+        v = self.venda()
+        if v is None or v["modalidade"] != "mesa":
+            tema.aviso(self, "Escolha uma comanda ou mesa para dar nome a ela.")
+            return
+        texto = tema.pedir_texto(self, "Nome da comanda", f"Nome de {nome_posicao(v['comanda'], v['posicao']).lower()} "
+                                 "(ex.: Carlos, Aniversário). Vazio tira o nome:", v["apelido"] or "", largura=30)
+        if texto is None:
+            return
+        ok, _ = tema.tratar(self, self.ctx.caixa.definir_apelido, v["id"], texto)
+        if ok:
+            self.recarregar()
+            self.avisar("Nome da comanda gravado." if texto.strip() else "Nome da comanda removido.", tema.COR["ok"])
+        self.ent_codigo.focus_set()
+
+    def navegar_comanda(self, passo: int) -> None:
+        """PgDn/PgUp (ou ▶ e ◀): vai para a comanda, mesa ou garota seguinte (ou anterior) da lista do painel, que respeita a
+        aba e a busca escolhidas. É o jeito de passar pelas contas, dos clientes e das garotas, sem voltar ao campo da posição."""
+        self.carregar_mesas()
+        atual = self._chave_atual()
+        destino = self.painel_mesas.vizinha(atual, passo)
+        if destino is None:
+            self.avisar("Não há comandas neste filtro.")
+        elif destino == atual:
+            self.avisar("Esta é a última comanda da lista." if passo > 0 else "Esta é a primeira comanda da lista.")
+        else:
+            self._tile_escolhido(destino)
 
     def foco_mesa(self) -> None:
         """Esc ou F4: volta ao 'marcar comanda'. Os ícones aparecem e o campo da posição fica pronto para digitar."""
@@ -1491,7 +1713,7 @@ class JanelaCaixa(tk.Toplevel):
         for i, b in enumerate(self.botoes_tarefa):
             b.configure(style="Cx.Sel.TButton" if i == self.indice_barra else self._estilos_base[i])
         if self.indice_barra is not None:
-            if 3 <= self.indice_barra < len(self.tarefas) - 1:
+            if self._n_fixos <= self.indice_barra < len(self.tarefas) - 1:
                 if not self.opcoes.winfo_viewable():
                     self._mostrar_opcoes()
             elif self.opcoes.winfo_viewable():

@@ -225,6 +225,21 @@ class CaixaController:
                LEFT JOIN operadores o ON o.id = l.operador_id
                WHERE l.evento = 'saida_liberada' AND json_extract(l.detalhe, '$.turno_id') = ? ORDER BY l.id""", (turno_id,))]
 
+    APELIDO_MAXIMO = 24
+
+    def definir_apelido(self, venda_id: int, texto: str | None) -> str:
+        """Dá um nome à mesa ou comanda aberta ("Carlos", "Aniversário"), para achá-la no painel sem decorar o número. Texto vazio
+        tira o nome. Só mesas e comandas têm nome: o balcão, a caderneta e a entrega já se identificam sozinhos."""
+        v = self._aberta(venda_id)
+        if v["modalidade"] != "mesa":
+            raise ErroNegocio("Só mesas e comandas podem ter nome.")
+        apelido = " ".join((texto or "").split())
+        if len(apelido) > self.APELIDO_MAXIMO:
+            raise ErroNegocio(f"O nome vai até {self.APELIDO_MAXIMO} letras.")
+        self.banco.executar("UPDATE vendas SET apelido = ? WHERE id = ?", (apelido or None, venda_id))
+        self.banco.log("apelido", f"venda {venda_id}: {apelido or '(sem nome)'}", self.operador_id)
+        return apelido
+
     def definir_pessoas(self, venda_id: int, pessoas: int) -> None:
         self._aberta(venda_id)
         self.banco.executar("UPDATE vendas SET pessoas = ? WHERE id = ?", (max(int(pessoas), 0), venda_id))

@@ -243,14 +243,14 @@ class ComissaoController:
                 raise ErroNegocio(f"O Pix ({fmt.fmt_brl(pix_cent)}) não pode ser maior que o total a pagar ({fmt.fmt_brl(total)}).")
             dinheiro = total - pix_cent
             nome = self.nome(n)
-            movimento = None
+            movimento, descricao = None, ""
             if tirar_do_caixa and dinheiro > 0:
                 if turno_id is None:
                     raise ErroNegocio("Abra o turno do caixa para pagar com o dinheiro do caixa.")
                 rotulo = "Acerto" if shows else "Comissão"
                 parte_pix = f" (resto no Pix: {fmt.fmt_brl(pix_cent)})" if pix_cent else ""
-                movimento = TurnoController(self.banco).movimentar(
-                    turno_id, operador_id, "saida", dinheiro, f"{rotulo} garota {n}{' ' + nome if nome else ''}{parte_pix}")
+                descricao = f"{rotulo} garota {n}{' ' + nome if nome else ''}{parte_pix}"
+                movimento = TurnoController(self.banco).movimentar(turno_id, operador_id, "saida", dinheiro, descricao)
             tirou = movimento is not None
             agora = fmt.agora()
             self.banco.executar(
@@ -266,8 +266,8 @@ class ComissaoController:
                            + ("" if tirar_do_caixa or dinheiro == 0 else " fora do caixa"), operador_id)
         return {"garota": n, "nome": nome, "total_cent": total, "comissao_cent": comissao, "quantidade": len(itens),
                 "shows": shows, "valor_show_cent": valor_show_cent, "shows_cent": shows_cent, "acerto_id": acerto,
-                "pix_cent": pix_cent, "dinheiro_cent": dinheiro, "movimento_id": movimento, "lancamentos": itens, "pago_em": agora,
-                "tirou_do_caixa": tirou}
+                "pix_cent": pix_cent, "dinheiro_cent": dinheiro, "movimento_id": movimento, "movimento_descricao": descricao,
+                "lancamentos": itens, "pago_em": agora, "tirou_do_caixa": tirou}
 
     def pix_do_turno(self, turno_id: int) -> int:
         """Quanto das contas das garotas foi pago por Pix neste turno (não passa pela gaveta; aparece no fechamento)."""
