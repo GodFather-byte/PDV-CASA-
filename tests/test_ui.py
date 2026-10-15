@@ -2170,7 +2170,7 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         self.dar(180, 25); self.dar(180, 30)
         esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
         recibos = []
-        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
         self.dialogos({"Pagar comissão": "Pagar"})
         j = self.abrir_comissoes()
         j.grade.selecionar(180); j._mostrar_itens()
@@ -2179,9 +2179,12 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         m = self.banco.um("SELECT tipo, valor_cent, descricao FROM movimentos_caixa")
         self.assertEqual((m["tipo"], m["valor_cent"], m["descricao"]), ("saida", 5500, "Comissão garota 180 MARIA"))
         self.assertEqual(self.ctx.turnos.resumo(self.turno)["esperado"], esperado - 5500)
+        self.assertEqual(len(recibos), 2)                                    # o recibo e o comprovante da saída do caixa
         self.assertIn("RECIBO DE COMISSÃO", recibos[0])
         self.assertIn("Garota: 180 MARIA", recibos[0])
         self.assertIn("55,00", recibos[0])
+        self.assertIn("SANGRIA", recibos[1])
+        self.assertIn("Motivo: Comissão garota 180 MARIA", recibos[1])
         self.assertEqual(j.grade.total(), 0)
         self.assertIn("paga à garota 180", j.status.cget("text"))
         j.destroy()
@@ -2246,7 +2249,7 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         def senha(w):
             pedidas.append(w.title())
             entradas(w)[0].insert(0, "ADM"); clicar(w, "OK")
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.dialogos({"Autorização": senha, "Pagar comissão": "Pagar"})
         j = self.abrir_comissoes()
         j.grade.selecionar(180); j._mostrar_itens()
@@ -2517,7 +2520,7 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
     def test_pagar_pela_janela_atualiza_a_comanda_que_esta_na_tela(self):
         self.dar(180, 25)
         self.posicao("180")
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)       # recibo e comprovante da saída
         self.dialogos({"Pagar comissão": "Pagar"})
         j = self.abrir_comissoes()
         j.grade.selecionar(180); j._mostrar_itens()

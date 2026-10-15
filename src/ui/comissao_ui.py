@@ -291,6 +291,13 @@ def pagar_garota(master, ctx, numero: int) -> dict | None:
     enviar_ou_mostrar(master, ctx, "Recibo de acerto" if pag["shows"] else "Recibo de comissão",
                       ctx.impressao.recibo_comissao(pag, ctx.operador.nome),
                       f"recibo_comissao_{numero}", tipo="comprovante", abrir_gaveta=pag["tirou_do_caixa"])
+    if pag["tirou_do_caixa"]:
+        # O dinheiro saiu da gaveta: sai também o comprovante da saída financeira (o mesmo da sangria), só com o que saiu do
+        # caixa (o Pix não passa por ela). A gaveta já foi aberta pelo recibo.
+        enviar_ou_mostrar(master, ctx, "Comprovante de saída",
+                          ctx.impressao.comprovante_movimento("saida", pag["dinheiro_cent"], pag["movimento_descricao"],
+                                                              ctx.operador.nome),
+                          f"saida_comissao_{numero}", tipo="comprovante")
     return pag
 
 

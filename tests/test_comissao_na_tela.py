@@ -408,7 +408,7 @@ class TestePagarECancelarNaComandaDaGarota(BaseNaTela):
         self.dar(180, 25); self.dar(180, 30)
         esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
         recibos = []
-        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
         self.dialogos({"Pagar comissão": "Pagar"})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -425,6 +425,23 @@ class TestePagarECancelarNaComandaDaGarota(BaseNaTela):
         self.assertNotIn("F12", faixa)                                               # nada mais a pagar
         self.sem_travar()
 
+    def test_dinheiro_que_sai_do_caixa_tambem_imprime_o_comprovante_da_saida(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 25); self.dar(180, 30)
+        docs = []
+        self.robo.quando("Visualizador", lambda w: (docs.append(w.texto), w.destroy()), vezes=5)
+        self.dialogos({"Pagar comissão": "Pagar"})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(len(docs), 2)
+        self.assertIn("RECIBO DE COMISSÃO", docs[0])
+        saida = docs[1]                                                           # o mesmo comprovante da sangria
+        self.assertIn("SANGRIA", saida)
+        self.assertRegex(saida, r"Valor +R\$ 55,00")
+        self.assertIn("Motivo: Comissão garota 180 MARIA", saida)
+        self.assertIn("Assinatura", saida)
+        self.sem_travar()
+
     def test_f12_desistindo_nao_paga_nada(self):
         self.dar(180, 25)
         self.dialogos({"Pagar comissão": "Cancelar"})
@@ -437,7 +454,8 @@ class TestePagarECancelarNaComandaDaGarota(BaseNaTela):
 
     def test_f12_pagando_fora_do_caixa_nao_registra_sangria(self):
         self.dar(180, 25)
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        docs = []
+        self.robo.quando("Visualizador", lambda w: (docs.append(w.texto), w.destroy()), vezes=5)
 
         def pagar_fora(w):
             [c for c in w.winfo_children()[0].winfo_children() if isinstance(c, ttk.Checkbutton)][0].invoke()
@@ -447,6 +465,8 @@ class TestePagarECancelarNaComandaDaGarota(BaseNaTela):
         self.cx.pagar()
         self.assertEqual(self.com.pendente(180), 0)
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
+        self.assertEqual(len(docs), 1)                                   # só o recibo: nada saiu da gaveta, nada de saída
+        self.assertNotIn("SANGRIA", docs[0])
         self.sem_travar()
 
     def test_f12_pede_senha_de_supervisor_do_operador_so_caixa(self):
@@ -458,7 +478,7 @@ class TestePagarECancelarNaComandaDaGarota(BaseNaTela):
         def senha(w):
             pedidas.append(w.title())
             entradas(w)[0].insert(0, "ADM"); clicar(w, "OK")
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.dialogos({"Autorização": senha, "Pagar comissão": "Pagar"})
         self.posicao("180")
         self.cx.pagar()
@@ -475,7 +495,7 @@ class TestePagarECancelarNaComandaDaGarota(BaseNaTela):
         def escolhendo(master, titulo, itens, *args, **kwargs):
             perguntas.append([texto for _, texto in itens])
             return "comissao"
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.dialogos({"Pagar comissão": "Pagar"})
         with mock.patch("src.ui.caixa_ui.tema.escolher", side_effect=escolhendo):
             self.cx.pagar()
@@ -656,7 +676,7 @@ class TesteGarotasNoRodape(BaseNaTela):
 
     def test_pagando_a_comissao_o_icone_some(self):
         self.dar(180, 25)
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.dialogos({"Pagar comissão": "Pagar"})
         self.posicao("180")
         self.cx.pagar()
@@ -739,7 +759,7 @@ class TesteComissaoEmPontosNaTela(BaseNaTela):
         self.banco.cfg_set("comissao_em_pontos", "S")
 
     def test_0_3_na_linha_do_caixa_vira_15_reais(self):
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.posicao("180")
         self.digitar_codigo("50")
         self.assertEqual(self.cx.lbl_qtd_titulo.cget("text"), "Pontos (1 = 0,1 = R$ 5,00)")
@@ -748,7 +768,7 @@ class TesteComissaoEmPontosNaTela(BaseNaTela):
         self.sem_travar()
 
     def test_digitar_2_na_linha_do_caixa_marca_0_2(self):
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.posicao("180")
         self.digitar_codigo("50")
         self.valor("2")
@@ -772,7 +792,7 @@ class TesteComissaoPagaSoComoRegistro(BaseNaTela):
         self.dar(180, 25)
         esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
         recibos = []
-        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
         self.dialogos({"Pagar comissão": "Pagar"})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -812,7 +832,7 @@ class TesteAcertoComShowsNaTela(BaseNaTela):
         self.cadastrar(180, "MARIA")
         self.dar(180, 25)                                                            # 5 pontos = R$ 25,00
         recibos, textos = [], []
-        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
         self.dialogos({"Pagar comissão": self.acertar_com(10, "R$ 50,00", textos)})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -853,7 +873,7 @@ class TesteAcertoComShowsNaTela(BaseNaTela):
             avisos.append(self.textos(w))
             _radio(w, "R$ 50,00").invoke()
             clicar(w, "Pagar")
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.dialogos({"Pagar comissão": sem_valor})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -863,7 +883,7 @@ class TesteAcertoComShowsNaTela(BaseNaTela):
     def test_sem_digitar_shows_paga_so_a_comissao_como_sempre(self):
         self.dar(180, 25)
         recibos = []
-        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
         self.dialogos({"Pagar comissão": "Pagar"})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -874,7 +894,7 @@ class TesteAcertoComShowsNaTela(BaseNaTela):
     def test_garota_cadastrada_sem_comissao_acerta_so_os_shows_no_f12(self):
         self.cadastrar(180, "MARIA")
         recibos = []
-        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
         self.dialogos({"Pagar comissão": self.acertar_com(4, "R$ 60,00")})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -908,7 +928,7 @@ class TesteAcertoComShowsNaTela(BaseNaTela):
         self.banco.cfg_set("comissao_pede_shows", "N")
         self.dar(180, 25)
         vistos = []
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
         self.dialogos({"Pagar comissão": lambda w: (vistos.append(self.textos(w)), clicar(w, "Pagar"))})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -936,7 +956,7 @@ class TestePixNoAcertoDaGarotaNaTela(BaseNaTela):
         self.dar(180, 100)
         esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
         recibos, textos = [], []
-        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()))
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
         self.dialogos({"Pagar comissão": self.com_pix("40", textos=textos)})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
@@ -949,10 +969,24 @@ class TestePixNoAcertoDaGarotaNaTela(BaseNaTela):
             self.assertIn(trecho, recibos[0])
         self.sem_travar()
 
+    def test_comprovante_da_saida_traz_so_o_dinheiro_e_nao_o_pix(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 100)
+        docs = []
+        self.robo.quando("Visualizador", lambda w: (docs.append(w.texto), w.destroy()), vezes=5)
+        self.dialogos({"Pagar comissão": self.com_pix("40")})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(len(docs), 2)
+        self.assertRegex(docs[1], r"Valor +R\$ 60,00")
+        self.assertNotIn("100,00", docs[1])
+        self.assertIn("resto no Pix", docs[1])
+        self.sem_travar()
+
     def test_tudo_no_pix_nao_mexe_na_gaveta(self):
         self.dar(180, 25)
         esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
-        self.robo.quando("Visualizador", lambda w: w.destroy())
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
 
         def tudo(w):
             [b for b in __import__("tests.ui_robo", fromlist=["botoes"]).botoes(w) if str(b.cget("text")) == "Tudo no Pix"][0].invoke()
