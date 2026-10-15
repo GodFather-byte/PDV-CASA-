@@ -50,6 +50,10 @@ class JanelaImportarProdutos(tk.Toplevel):
         self.lbl_arquivo.pack(side="left", padx=10)
         ttk.Button(topo, text="Baixar planilha modelo...", command=self.salvar_modelo).pack(side="right")
         ttk.Button(topo, text="Exportar produtos atuais...", command=self.exportar).pack(side="right", padx=6)
+        self.btn_excluir_todos = ttk.Button(topo, text="Excluir todos os produtos...", command=self.excluir_todos)
+        self.btn_excluir_todos.pack(side="right")
+        if not ctx.acesso.pode(ctx.operador, "util_excluir_produtos"):       # só quem tem nível para os Utilitários de risco
+            self.btn_excluir_todos.state(["disabled"])
 
         opcoes = ttk.LabelFrame(corpo, text="2. Como importar", padding=8)
         opcoes.pack(side="top", fill="x", pady=(10, 6))
@@ -107,6 +111,16 @@ class JanelaImportarProdutos(tk.Toplevel):
         self.tabela = tabela
         self.lbl_arquivo.configure(text=f"{Path(caminho).name}  ({len(tabela)} linhas)", foreground=tema.COR["texto"])
         self.analisar()
+
+    def excluir_todos(self) -> None:
+        """Apaga os produtos de uma vez para importar a planilha como cadastro novo (a regra e os avisos: utilitarios_ui)."""
+        from src.ui import utilitarios_ui
+        if not utilitarios_ui.excluir_produtos(self, self.ctx):
+            return
+        self.v_inicio.set(str(self.imp.numero_inicial_sugerido()))
+        self.analisar()                                  # a prévia de uma planilha já escolhida muda: agora tudo é novo
+        if self.ao_importar:
+            self.ao_importar()
 
     def analisar(self) -> None:
         if self.tabela is None:

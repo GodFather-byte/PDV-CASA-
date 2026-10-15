@@ -46,7 +46,9 @@ RELATORIOS = [
                  ("form_contagem", "Formulário de contagem", "rel_estoque"), ("form_pedidos", "Formulário de pedidos", "rel_estoque")]),
 ]
 
-UTILITARIOS = [("limpeza", "Limpeza do movimento", "util_limpeza"), ("comunicacao", "Programa de comunicação", "util_comunicacao"),
+UTILITARIOS = [("limpeza", "Limpeza do movimento", "util_limpeza"),
+               ("excluir_produtos", "Excluir todos os produtos", "util_excluir_produtos"),
+               ("comunicacao", "Programa de comunicação", "util_comunicacao"),
                ("backup", "Backup de dados", "util_backup"), ("restaurar", "Restaurar backup", "util_backup"),
                ("suporte", "Pacote de suporte (log de erros)", "util_backup"),
                ("fila_impressao", "Fila de impressão", "util_fila_impressao")]

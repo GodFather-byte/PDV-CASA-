@@ -160,6 +160,7 @@ class LinhaPrevia:
     codigo_barras: str = ""
     atalho: str = ""
     produto_id: int | None = None   # produto existente (atualizar)
+    liberar_id: int | None = None   # produto guardado (inativo) que ocupa o código da linha e passa para um código de arquivo
     motivo: str = ""                # por que foi recusado, ou aviso
     avisos: list[str] = field(default_factory=list)
 
@@ -233,7 +234,8 @@ class ImportacaoProdutos:
         `usar_codigo_da_planilha`: respeita a coluna Código; sem ela (ou com False), numera tudo em sequência a partir de
         `sequencia_a_partir_de` (padrão: depois do maior código que já existe)."""
         reservados = self.reservados()
-        existentes_cod = {r["codigo"]: dict(r) for r in self.banco.todos("SELECT id, codigo, nome FROM produtos")}
+        existentes_cod = {r["codigo"]: dict(r) for r in self.banco.todos("SELECT id, codigo, nome, ativo FROM produtos")}
+        inativos = {r["id"] for r in existentes_cod.values() if not r["ativo"]}
         existentes_nome = {r["nome"].casefold(): dict(r) for r in existentes_cod.values()}
         grupos = {self._k(r["nome"]) for r in self.banco.todos("SELECT nome FROM subgrupos")} | \
                  {self._k(r["nome"]) for r in self.banco.todos("SELECT nome FROM grupos")}
@@ -271,7 +273,18 @@ class ImportacaoProdutos:
                     p.acao, p.motivo = "recusar", f"O código {int(p.codigo)} é reservado do caixa (comissão ou saída da comanda)."
                     continue
                 dono = existentes_cod.get(p.codigo)
-                if dono is not None:
+                if dono is not None and dono["id"] in inativos and (nome_existente is None or nome_existente["id"] != dono["id"]):
+                    # O código está com um produto guardado (inativo, já vendido): o código vai para a planilha e o guardado
+                    # passa para um código de arquivo, sem mudar o nome dele (o histórico das vendas continua certo).
+                    p.liberar_id = dono["id"]
+                    p.avisos.append(f"O código {int(p.codigo)} estava com '{dono['nome']}' (guardado, inativo); ele passa a ter outro código.")
+                    dono = None
+                if nome_existente is not None and nome_existente["codigo"] != p.codigo and nome_existente["id"] in inativos \
+                        and dono is None:
+                    # o produto da planilha estava guardado com outro código: volta com o código da planilha
+                    p.acao, p.produto_id = "atualizar", nome_existente["id"]
+                    p.avisos.append(f"O código muda de {int(nome_existente['codigo'])} para {int(p.codigo)}.")
+                elif dono is not None:
                     if dono["nome"].casefold() == p.nome.casefold() or not nome_existente:
                         p.acao, p.produto_id = "atualizar", dono["id"]
                         if dono["nome"].casefold() != p.nome.casefold():
@@ -296,6 +309,8 @@ class ImportacaoProdutos:
             if p.acao == "atualizar" and not atualizar_existentes:
                 p.acao, p.motivo = "recusar", "Já existe e a opção 'atualizar produtos existentes' está desligada."
                 continue
+            if p.acao == "atualizar" and p.produto_id in inativos:
+                p.avisos.append("Estava inativo (guardado por já ter sido vendido) e volta a ficar ativo.")
             if p.codigo in vistos_cod:
                 p.acao, p.motivo = "recusar", f"O código {int(p.codigo)} aparece de novo na linha {vistos_cod[p.codigo]} da planilha."
                 continue
@@ -375,6 +390,9 @@ class ImportacaoProdutos:
         criados = atualizados = 0
         com_estoque: list[tuple[int, LinhaPrevia]] = []
         with self.banco.transacao():
+            for p in itens:                                  # primeiro os códigos que os guardados cedem à planilha
+                if p.liberar_id:
+                    self._arquivar_codigo(p.liberar_id)
             for p in itens:
                 valores = {"nome": p.nome, "preco_cent": f"{p.preco_cent / 100:.2f}".replace(".", ","),
                            "unidade_id": self.banco.valor("SELECT id FROM unidades WHERE abreviatura = ?", (p.unidade,)),
@@ -387,6 +405,8 @@ class ImportacaoProdutos:
                     valores["atalho"] = p.atalho
                 try:
                     if p.acao == "atualizar":
+                        valores["ativo"] = "S"                  # o produto que a planilha traz volta a valer (ver excluir_todos_produtos)
+                        valores["codigo"] = p.codigo            # e fica com o código da planilha (igual ao que já tinha, em geral)
                         self.cad.salvar("produtos", valores, p.produto_id)
                         pid = p.produto_id
                         atualizados += 1
@@ -408,6 +428,14 @@ class ImportacaoProdutos:
                         self.estoque.definir_minimo(pid, p.estoque_minimo or 0)
             self.banco.log("importacao_produtos", f"{criados} criados, {atualizados} atualizados, {len(com_estoque)} com estoque")
         return {"criados": criados, "atualizados": atualizados, "estoque": len(com_estoque)}
+
+    def _arquivar_codigo(self, produto_id: int) -> None:
+        """Dá a um produto guardado (inativo) um código de arquivo (10.000.000 em diante, que a numeração em sequência ignora),
+        para o código dele ficar livre para a planilha."""
+        n = 10_000_000 + produto_id
+        while self.banco.valor("SELECT 1 FROM produtos WHERE codigo = ?", (_cod13(str(n)),)):
+            n += 1
+        self.banco.executar("UPDATE produtos SET codigo = ? WHERE id = ?", (_cod13(str(n)), produto_id))
 
     # ----------------------------------------------------- modelo e exportação
     @staticmethod

@@ -21,6 +21,8 @@ def executar(master, ctx, chave: str) -> None:
         tema.tratar(master, ctx.utilitarios.abrir_programa_comunicacao)
     elif chave == "limpeza":
         limpeza(master, ctx)
+    elif chave == "excluir_produtos":
+        excluir_produtos(master, ctx)
     elif chave == "fila_impressao":
         from src.ui.fila_impressao_ui import JanelaFilaImpressao
         JanelaFilaImpressao(master, ctx)
@@ -54,6 +56,40 @@ def limpeza(master, ctx) -> None:
                               f"Movimentos de estoque: {res['movimentos_estoque']}\nComissões pagas ou canceladas: {res.get('comissoes', 0)}\n"
                               f"Backup anterior à limpeza:\n{res['backup']}",
                       "Limpeza do movimento")
+
+
+def excluir_produtos(master, ctx) -> bool:
+    """Exclui todos os produtos de uma vez (para importar a tabela de novo). Mostra o que vai acontecer, pede para digitar
+    APAGAR e só então executa, com backup antes. Devolve True se excluiu."""
+    r = ctx.utilitarios.resumo_exclusao_produtos()
+    if not r["total"]:
+        tema.aviso(master, "Não há produtos cadastrados.")
+        return False
+    if r["vendas_abertas"]:
+        tema.aviso(master, f"Há {r['vendas_abertas']} venda(s), mesa(s) ou comanda(s) abertas com itens.\n"
+                           "Feche ou cancele antes de excluir os produtos.", "Excluir todos os produtos")
+        return False
+    texto = (f"Isto exclui TODOS os produtos de uma vez, para você cadastrar a tabela de novo\n"
+             f"(Cadastros > Produtos > Importar planilha).\n\nProdutos cadastrados: {r['total']}\n"
+             f"Serão excluídos: {r['excluidos']}\n")
+    if r["guardados"]:
+        texto += (f"Já foram vendidos: {r['guardados']}. Esses NÃO podem ser apagados (o histórico das vendas depende deles):\n"
+                  "ficam guardados como inativos, fora do caixa e das listas, e voltam a valer quando a planilha trouxer "
+                  "o mesmo código.\n")
+    texto += ("\nUm backup é feito antes. Não dá para desfazer, a não ser restaurando o backup.\n\n"
+              "Digite APAGAR para confirmar:")
+    conf = tema.pedir_texto(master, "Excluir todos os produtos", texto, largura=16)
+    if (conf or "").strip().upper() != "APAGAR":
+        return False
+    ok, res = tema.tratar(master, ctx.utilitarios.excluir_todos_produtos)
+    if not ok:
+        return False
+    msg = f"Produtos excluídos: {res['excluidos']}\n"
+    if res["guardados"]:
+        msg += f"Guardados como inativos (já vendidos): {res['guardados']}\n"
+    tema.mensagem(master, msg + f"\nBackup anterior à exclusão:\n{res['backup']}\n\nAgora é só importar a planilha.",
+                  "Excluir todos os produtos")
+    return True
 
 
 def restaurar(master, ctx) -> None:
