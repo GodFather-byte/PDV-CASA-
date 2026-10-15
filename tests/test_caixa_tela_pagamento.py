@@ -123,20 +123,21 @@ class TesteSeletorDePagamento(BasePagamento):
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM vendas WHERE status = 'fechada'"), 1)
 
     def test_cartao_e_pix_nao_aceitam_mais_do_que_falta(self):
-        for forma in ("Cartão Débito", "Cartão Crédito", "Pix"):
+        # o crédito sugere e limita com a taxa de R$ 5,00 (8,00 + 5,00); a falta mostrada continua sem ela até lançar
+        for forma, limite in (("Cartão Débito", "8,00"), ("Cartão Crédito", "13,00"), ("Pix", "8,00")):
             with self.subTest(forma=forma):
                 self.dialogos.clear()
 
                 def passos(j):
                     self.forma(j, forma)
                     j.var_valor.set("100,00"); j._lancar_valor()
-                    self.assertEqual(j.var_valor.get(), "8,00")              # volta a sugerir o que falta
+                    self.assertEqual(j.var_valor.get(), limite)              # volta a sugerir o que falta
                     self.assertEqual(j.lbl_troco.cget("text"), "8,00")
                 self.pagar(passos)
                 self.assertEqual(self.pagamentos(), [])                       # nada ficou gravado: a conta não encalha
                 self.assertEqual(self.dialogos[0][0], "Atenção")
                 self.assertIn("não dá troco", self.dialogos[0][1])
-                self.assertIn("8,00", self.dialogos[0][1])
+                self.assertIn(limite, self.dialogos[0][1])
 
     def test_pagamento_misto_dinheiro_e_cartao(self):
         def passos(j):

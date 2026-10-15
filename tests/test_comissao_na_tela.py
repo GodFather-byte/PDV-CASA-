@@ -346,20 +346,22 @@ class TesteViaDaGarota(BaseNaTela):
         dados = saida.read_bytes()
         self.assertEqual(dados.count("VIA DA GAROTA".encode("cp850")), 2)           # uma via por lançamento
         self.assertIn("Garota: 180 MARIA".encode("cp850"), dados)
-        self.assertIn("TOTAL A RECEBER (2)".encode("cp850"), dados)                 # a segunda já traz o acumulado
+        self.assertNotIn("TOTAL A RECEBER".encode("cp850"), dados)                  # cada via é só do seu lançamento
         self.assertIn("Via da garota enviada para a impressora.", self.status())
         self.assertNotIn(b"\x1bp", dados)                                           # via não abre a gaveta
         self.sem_travar()
 
-    def test_a_via_traz_o_valor_do_lancamento_e_o_que_ela_tem_a_receber(self):
+    def test_a_via_traz_so_o_valor_do_lancamento_que_acabou_de_ser_marcado(self):
         saida = self.configurar_termica()
-        self.lancar_pela_linha(180, "25,00")
         self.lancar_pela_linha(180, "30,00")
+        self.lancar_pela_linha(180, "5,00")
         self.ctx.impressao.fila.processar()
         texto = saida.read_bytes().decode("cp850", "replace")
         segunda = texto.split("COMISS")[2]                                          # o texto da 2ª via
-        for trecho in ("Valor desta comiss", "30,00", "25,00", "55,00"):
+        for trecho in ("Valor desta comiss", "5,00"):
             self.assertIn(trecho, segunda)
+        for trecho in ("30,00", "35,00"):                                           # nada do que já estava marcado
+            self.assertNotIn(trecho, segunda)
 
     def test_sem_impressora_a_via_fica_no_historico_e_o_status_avisa(self):
         self.lancar_pela_linha(180, "25,00")                                        # modo tela (padrão dos testes)

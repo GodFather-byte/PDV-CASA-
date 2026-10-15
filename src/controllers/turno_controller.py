@@ -212,6 +212,7 @@ class TurnoController:
             "desconto": soma("desconto_cent"),
             "servico": soma("servico_cent"),
             "taxa": soma("taxa_cent"),
+            "acrescimo": soma("acrescimo_cent"),          # taxa do cartão de crédito cobrada do cliente
             "repique": b.valor("SELECT COALESCE(SUM(valor_cent),0) FROM repiques WHERE turno_id = ?", (turno_id,), 0),
             "entregas_pendentes": b.valor(
                 "SELECT COUNT(*) FROM vendas WHERE modalidade = 'entrega' AND status IN ('aberta','conta_enviada')", (), 0),

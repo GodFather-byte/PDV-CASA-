@@ -98,10 +98,11 @@ UNIDADES = [("Unidade", "UN"), ("Quilo", "KG"), ("Litro", "LT"), ("Dose", "DS"),
 ALIQUOTAS = [("ISENTO", 0, "II"), ("SUBSTITUIÇÃO TRIBUTÁRIA", 0, "FF"),
              ("7%", 7, "0700"), ("12%", 12, "1200"), ("18%", 18, "1800")]
 
-# (tipo, ordem, permite_troco, emite_vale, na_gaveta). Dinheiro sempre na primeira posição.
+# (tipo, ordem, permite_troco, emite_vale, na_gaveta, acréscimo em centavos). Dinheiro sempre na primeira posição.
 # Cartão e Pix não ficam na gaveta: o operador confere na maquininha, não contando dinheiro.
-TIPOS_PAGAMENTO = [("Dinheiro", 1, 1, 0, 1), ("Cartão Débito", 2, 0, 0, 0),
-                   ("Cartão Crédito", 3, 0, 0, 0), ("Pix", 4, 0, 0, 0)]
+# O crédito acrescenta R$ 5,00 de taxa à venda (uma vez por venda; o dono muda em Tipos de Pagamento).
+TIPOS_PAGAMENTO = [("Dinheiro", 1, 1, 0, 1, 0), ("Cartão Débito", 2, 0, 0, 0, 0),
+                   ("Cartão Crédito", 3, 0, 0, 0, 500), ("Pix", 4, 0, 0, 0, 0)]
 
 # Formas que existiam nos modelos antigos e saíram das opções (a boate só recebe dinheiro, débito, crédito e Pix). Em bancos
 # que já têm vendas elas não podem ser apagadas (histórico): ficam INATIVAS, uma única vez, e o dono pode reativar.
@@ -161,10 +162,10 @@ def aplicar(banco) -> None:
         for desc, aliq, formato in ALIQUOTAS:
             banco.executar("INSERT OR IGNORE INTO aliquotas(descricao, aliquota, formato) VALUES (?,?,?)",
                            (desc, aliq, formato))
-        for tipo, ordem, troco, vale, gaveta in TIPOS_PAGAMENTO:
+        for tipo, ordem, troco, vale, gaveta, acrescimo in TIPOS_PAGAMENTO:
             banco.executar(
-                "INSERT OR IGNORE INTO tipos_pagamento(tipo, ordem, permite_troco, emite_vale, na_gaveta) VALUES (?,?,?,?,?)",
-                (tipo, ordem, troco, vale, gaveta))
+                "INSERT OR IGNORE INTO tipos_pagamento(tipo, ordem, permite_troco, emite_vale, na_gaveta, acrescimo_cent) "
+                "VALUES (?,?,?,?,?,?)", (tipo, ordem, troco, vale, gaveta, acrescimo))
         for ordem, (nome, codigo, debito, resultado, subs) in enumerate(PLANOS, start=1):
             banco.executar(
                 "INSERT OR IGNORE INTO planos_contas(nome, codigo, debito, resultado, ordem) VALUES (?,?,?,?,?)",

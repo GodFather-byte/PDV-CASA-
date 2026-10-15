@@ -12,7 +12,7 @@ from unittest import mock
 
 from src.controllers.cadastro_controller import CadastroController
 from src.controllers.comissao_controller import ComissaoController
-from src.controllers.impressao_controller import LIMITE_MOVIMENTOS, LIMITE_VIA_COMISSAO, _ESTILOS, ImpressaoController
+from src.controllers.impressao_controller import LIMITE_MOVIMENTOS, _ESTILOS, ImpressaoController
 from src.hardware.impressora_termica import TAMANHO_ALTO, TAMANHO_NORMAL, texto_para_escpos
 from tests.test_caixa import BaseCaixa
 from tests.test_fechamento_turno import rotulos
@@ -190,44 +190,25 @@ class TesteViaDaGarotaNoTexto(BaseFechamento):
     def lancar(self, garota, reais):
         return self.com.lancar(garota, round(reais * 100), self.turno, self.adm)
 
-    def via(self, lancamento_id, garota=180, nome="MARIA"):
-        return self.imp.via_comissao(self.com.lancamento(lancamento_id), self.com.lancamentos(garota, "pendente"), nome, "ADM")
+    def via(self, lancamento_id, nome="MARIA"):
+        return self.imp.via_comissao(self.com.lancamento(lancamento_id), nome, "ADM")
 
-    def test_traz_a_garota_o_valor_desta_comissao_e_o_total_a_receber(self):
-        self.lancar(180, 25)
-        segunda = self.lancar(180, 30)
+    def test_traz_a_garota_e_so_o_valor_desta_comissao(self):
+        self.lancar(180, 30)
+        segunda = self.lancar(180, 5)
         texto = self.via(segunda)
-        for trecho in ("COMISSÃO LANÇADA", "VIA DA GAROTA", "Garota: 180 MARIA", "Lançamento nº 2", "Operador: ADM",
-                       "SALDO A RECEBER"):
+        for trecho in ("COMISSÃO LANÇADA", "VIA DA GAROTA", "Garota: 180 MARIA", "Lançamento nº 2", "Operador: ADM"):
             self.assertIn(trecho, texto)
-        self.assertRegex(texto, r"Valor desta comissão +30,00")
-        self.assertRegex(texto, r"nº 1 +25,00")
-        self.assertRegex(texto, r"nº 2 +30,00")
-        self.assertRegex(texto, r"TOTAL A RECEBER \(2\) +55,00")
-
-    def test_so_as_pendentes_entram_na_lista(self):
-        pago = self.lancar(180, 10)
-        cancelado = self.lancar(180, 20)
-        self.com.cancelar(cancelado, self.adm, "digitado errado")
-        self.com.pagar(180, self.turno, self.adm, False)
-        novo = self.lancar(180, 30)
-        texto = self.via(novo)
-        self.assertRegex(texto, r"TOTAL A RECEBER \(1\) +30,00")
-        self.assertNotIn(f"nº {pago} ", texto)
-        self.assertNotIn(f"nº {cancelado} ", texto)
+        self.assertRegex(texto, r"Valor desta comissão +5,00")
+        # o que já estava marcado (30,00) não entra nem é somado: a via é só do lançamento que acabou de ser marcado
+        self.assertNotIn("30,00", texto)
+        self.assertNotIn("35,00", texto)
+        self.assertNotIn("TOTAL A RECEBER", texto)
 
     def test_so_a_garota_dela_entra(self):
         self.lancar(7, 99)
         texto = self.via(self.lancar(180, 25))
         self.assertNotIn("99,00", texto)
-
-    def test_lista_longa_mostra_so_as_mais_recentes_mas_o_total_e_de_todas(self):
-        for i in range(LIMITE_VIA_COMISSAO + 4):
-            ultimo = self.lancar(180, 10)
-        texto = self.via(ultimo)
-        self.assertIn("(+ 4 lançamentos anteriores)", texto)
-        self.assertRegex(texto, rf"TOTAL A RECEBER \({LIMITE_VIA_COMISSAO + 4}\) +{(LIMITE_VIA_COMISSAO + 4) * 10},00")
-        self.assertEqual(sum(1 for l in texto.splitlines() if re.match(r"^  \d\d/\d\d \d\d:\d\d  nº \d+", l)), LIMITE_VIA_COMISSAO)
 
     def test_garota_sem_cadastro_sai_so_com_o_numero(self):
         texto = self.via(self.lancar(180, 25), nome="")
@@ -236,16 +217,14 @@ class TesteViaDaGarotaNoTexto(BaseFechamento):
     def test_cabe_na_coluna(self):
         for colunas in (40, 48):
             self.imp.largura = lambda c=colunas: c
-            for i in range(20):
-                ultimo = self.lancar(180, 1234.56)
+            ultimo = self.lancar(180, 1234.56)
             linhas = self.via(ultimo, nome="MARIA DAS GRACAS COM NOME MUITO COMPRIDO").splitlines()
             self.assertTrue(all(len(l) <= colunas for l in linhas), [l for l in linhas if len(l) > colunas])
 
-    def test_valor_e_total_saem_em_letra_grande_na_termica(self):
+    def test_valor_sai_em_letra_grande_na_termica(self):
         texto = self.via(self.lancar(180, 25))
         dados = texto_para_escpos(texto, **_ESTILOS["via_comissao"])
-        for frase in (b"Valor desta", b"TOTAL A RECEBER"):
-            self.assertIn(TAMANHO_ALTO, dados[:dados.index(frase)][-12:])
+        self.assertIn(TAMANHO_ALTO, dados[:dados.index(b"Valor desta")][-12:])
 
     def test_lancamento_inexistente(self):
         self.assertIsNone(self.com.lancamento(999))

@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 13
+VERSAO_ESQUEMA = 14
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -193,6 +193,7 @@ TABELAS = [
         aciona_tef INTEGER NOT NULL DEFAULT 0,
         cheque_tef INTEGER NOT NULL DEFAULT 0,
         mais_info INTEGER NOT NULL DEFAULT 0,
+        acrescimo_cent INTEGER NOT NULL DEFAULT 0,
         ativo INTEGER NOT NULL DEFAULT 1
     )""",
     """CREATE TABLE IF NOT EXISTS planos_contas (
@@ -307,6 +308,7 @@ TABELAS = [
         servico_cent INTEGER NOT NULL DEFAULT 0,
         servico_manual INTEGER NOT NULL DEFAULT 0,
         taxa_cent INTEGER NOT NULL DEFAULT 0,
+        acrescimo_cent INTEGER NOT NULL DEFAULT 0,
         total_cent INTEGER NOT NULL DEFAULT 0,
         pago_cent INTEGER NOT NULL DEFAULT 0,
         troco_cent INTEGER NOT NULL DEFAULT 0,
@@ -566,5 +568,13 @@ MIGRACOES = {
     # v13: parte do acerto da garota paga por Pix (a tabela acertos_garotas pode ter nascido na v12 sem a coluna).
     13: [
         ("coluna", "acertos_garotas", "pix_cent", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    # v14: acréscimo por forma de pagamento (taxa do cartão de crédito, R$ 5,00 por venda). A forma guarda o valor do
+    # acréscimo e a venda guarda o que foi cobrado. As formas de crédito que já existem passam a cobrar R$ 5,00.
+    14: [
+        ("coluna", "tipos_pagamento", "acrescimo_cent", "INTEGER NOT NULL DEFAULT 0"),
+        ("coluna", "vendas", "acrescimo_cent", "INTEGER NOT NULL DEFAULT 0"),
+        "UPDATE tipos_pagamento SET acrescimo_cent = 500 WHERE acrescimo_cent = 0"
+        " AND (lower(tipo) LIKE '%cart_o%cr_dito%' OR lower(tipo) IN ('crédito', 'credito'))",
     ],
 }

@@ -625,7 +625,7 @@ class TesteComissaoEmPontos(BaseComissao):
         from src.controllers.impressao_controller import ImpressaoController
         cid = self.com.lancar(180, self.com.para_centavos("0,3"), self.turno, self.adm)
         lanc = self.com.lancamento(cid)
-        via = ImpressaoController(self.banco).via_comissao(lanc, [lanc], "Bia", "ADM")
+        via = ImpressaoController(self.banco).via_comissao(lanc, "Bia", "ADM")
         self.assertIn("Pontos desta comissão", via)
         self.assertIn("0,3 (R$ 15,00)", via)
 

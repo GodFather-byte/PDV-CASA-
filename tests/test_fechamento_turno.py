@@ -249,7 +249,7 @@ class TesteConferenciaDaMaquininhaNaTela(BaseUI):
         self.abrir_turno()
         self.vender_em("Cartão Débito", 800)
         self.vender_em("Cartão Débito", 800)
-        self.vender_em("Cartão Crédito", 800)
+        self.vender_em("Cartão Crédito", 1300)                     # 8,00 + R$ 5,00 da taxa do crédito
         ordem, tela = [], []
 
         def trocar(w):
@@ -264,7 +264,7 @@ class TesteConferenciaDaMaquininhaNaTela(BaseUI):
         self.robo.quando("PainelFechamento", lambda w: w.destroy())
         self.assertTrue(caixa_dialogos.trocar_turno(self.root, self.ctx))
         self.assertEqual(ordem, ["maquininha", "gaveta", "confirma"])
-        for trecho in ("Cartão Débito", "Cartão Crédito", "16,00", "8,00", "24,00"):
+        for trecho in ("Cartão Débito", "Cartão Crédito", "16,00", "13,00", "29,00"):
             self.assertIn(trecho, tela[0])
         self.assertNotIn("esperado", tela[0].lower())                      # a contagem da gaveta continua às cegas
         self.sem_travar()
