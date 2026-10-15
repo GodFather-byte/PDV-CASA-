@@ -34,6 +34,7 @@ class Contexto:
         self.caderneta = CadernetaController(banco)
         self.comissoes = ComissaoController(banco)
         self.telegram = TelegramController(banco)
+        self.ao_mudar_tema = None          # a janela principal põe aqui o que refaz o visual quando o operador troca claro/escuro
 
     @property
     def operador_id(self) -> int | None:

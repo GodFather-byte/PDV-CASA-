@@ -6,13 +6,9 @@ from tkinter import ttk
 
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
+from src.ui import paleta
 
-COR = {
-    "fundo": "#eef1f8", "painel": "#ffffff", "texto": "#1c2438", "suave": "#5b6785",
-    "marinho": "#14234d", "marinho2": "#1f3a8a", "borda": "#c9d1e6",
-    "ok": "#1f9d63", "perigo": "#c93a3a", "aviso": "#d9981e", "total": "#9b1c1c", "troco": "#1f3a8a",
-    "linha_par": "#f6f8fd", "selecao": "#cfe0ff",
-}
+COR = dict(paleta.COR[paleta.PADRAO])        # o conteúdo troca com o modo (claro/escuro): ver paleta.aplicar
 FONTE = ("Segoe UI", 10)
 FONTE_B = ("Segoe UI", 10, "bold")
 FONTE_G = ("Segoe UI", 14, "bold")
@@ -20,40 +16,72 @@ FONTE_MONO = ("Consolas", 10)
 
 
 def aplicar_tema(root: tk.Misc) -> None:
+    """Estilos das telas de cadastro, relatórios e janelas, com as cores do modo em uso (claro ou escuro). Pode ser chamada de novo
+    depois de trocar o modo: os widgets ttk já abertos mudam na hora."""
     s = ttk.Style(root)
     try:
         s.theme_use("clam")
     except tk.TclError:
         pass
-    root.configure(bg=COR["fundo"])
-    s.configure(".", font=FONTE, background=COR["fundo"], foreground=COR["texto"])
-    s.configure("TFrame", background=COR["fundo"])
-    s.configure("Painel.TFrame", background=COR["painel"], relief="solid", borderwidth=1)
-    s.configure("TLabel", background=COR["fundo"], foreground=COR["texto"])
-    s.configure("Painel.TLabel", background=COR["painel"])
-    s.configure("Rotulo.TLabel", font=("Segoe UI", 9, "bold"), foreground=COR["marinho2"])
-    s.configure("Titulo.TLabel", font=FONTE_G, foreground=COR["marinho"])
-    s.configure("TButton", padding=(10, 5), background=COR["marinho2"], foreground="white", borderwidth=0)
-    s.map("TButton", background=[("active", "#2c52c4"), ("disabled", "#9aa6c6")],
-          foreground=[("disabled", "#e5e9f5")])
-    s.configure("Perigo.TButton", background=COR["perigo"])
-    s.map("Perigo.TButton", background=[("active", "#a82d2d")])
-    s.configure("Ok.TButton", background=COR["ok"])
-    s.map("Ok.TButton", background=[("active", "#17784b")])
-    s.configure("Barra.TButton", padding=(8, 6), background=COR["marinho"], foreground="white", font=("Segoe UI", 9))
-    s.map("Barra.TButton", background=[("active", COR["marinho2"])])
-    s.configure("Sel.TButton", background=COR["aviso"], foreground="black")
-    s.configure("TEntry", padding=4, fieldbackground="white")
-    s.configure("TCombobox", padding=4, fieldbackground="white")
-    s.configure("Treeview", rowheight=24, font=FONTE, background="white", fieldbackground="white", bordercolor=COR["borda"])
-    s.configure("Treeview.Heading", font=FONTE_B, background=COR["marinho"], foreground="white", padding=5)
-    s.map("Treeview.Heading", background=[("active", COR["marinho2"])])
-    s.map("Treeview", background=[("selected", COR["selecao"])], foreground=[("selected", COR["texto"])])
-    s.configure("TNotebook", background=COR["fundo"])
-    s.configure("TNotebook.Tab", padding=(12, 5), font=FONTE_B)
-    s.configure("TLabelframe", background=COR["fundo"], bordercolor=COR["borda"])
-    s.configure("TLabelframe.Label", background=COR["fundo"], font=FONTE_B, foreground=COR["marinho2"])
-    s.configure("TCheckbutton", background=COR["fundo"])
+    c = COR
+    root.configure(bg=c["fundo"])
+    s.configure(".", font=FONTE, background=c["fundo"], foreground=c["texto"], bordercolor=c["borda"],
+                lightcolor=c["borda"], darkcolor=c["borda"], troughcolor=c["campo"], focuscolor=c["fundo"])
+    s.configure("TFrame", background=c["fundo"])
+    s.configure("Painel.TFrame", background=c["painel"], relief="solid", borderwidth=1)
+    s.configure("TLabel", background=c["fundo"], foreground=c["texto"])
+    s.configure("Painel.TLabel", background=c["painel"])
+    s.configure("Rotulo.TLabel", font=("Segoe UI", 9, "bold"), foreground=c["rotulo"])
+    s.configure("Titulo.TLabel", font=FONTE_G, foreground=c["titulo"])
+    s.configure("TButton", padding=(10, 5), background=c["marinho2"], foreground=c["sobre"], borderwidth=0)
+    s.map("TButton", background=[("active", c["btn_hover"]), ("disabled", c["btn_off"])],
+          foreground=[("disabled", c["btn_off_texto"])])
+    s.configure("Perigo.TButton", background=c["perigo_fundo"])
+    s.map("Perigo.TButton", background=[("active", c["perigo_hover"])])
+    s.configure("Ok.TButton", background=c["ok_fundo"])
+    s.map("Ok.TButton", background=[("active", c["ok_hover"])])
+    s.configure("Barra.TButton", padding=(8, 6), background=c["marinho"], foreground=c["sobre"], font=("Segoe UI", 9))
+    s.map("Barra.TButton", background=[("active", c["marinho2"])])
+    s.configure("Sel.TButton", background=c["aviso_fundo"], foreground="black")
+    for campo in ("TEntry", "TCombobox", "TSpinbox"):
+        s.configure(campo, padding=4, fieldbackground=c["campo"], foreground=c["texto"], insertcolor=c["texto"],
+                    background=c["painel"], arrowcolor=c["texto"], bordercolor=c["borda"], lightcolor=c["borda"],
+                    darkcolor=c["borda"])
+        s.map(campo, fieldbackground=[("readonly", c["campo"]), ("disabled", c["fundo"])],
+              foreground=[("disabled", c["suave"])], selectbackground=[("readonly", c["campo"])],
+              selectforeground=[("readonly", c["texto"])], bordercolor=[("focus", c["marinho2"])])
+    root.option_add("*TCombobox*Listbox.background", c["campo"])           # a lista que abre no combo
+    root.option_add("*TCombobox*Listbox.foreground", c["texto"])
+    root.option_add("*TCombobox*Listbox.selectBackground", c["selecao"])
+    root.option_add("*TCombobox*Listbox.selectForeground", c["selecao_texto"])
+    root.option_add("*Menu.background", c["painel"])                       # menus de contexto
+    root.option_add("*Menu.foreground", c["texto"])
+    root.option_add("*Menu.activeBackground", c["selecao"])
+    root.option_add("*Menu.activeForeground", c["selecao_texto"])
+    s.configure("Treeview", rowheight=24, font=FONTE, background=c["campo"], fieldbackground=c["campo"], foreground=c["texto"],
+                bordercolor=c["borda"])
+    s.configure("Treeview.Heading", font=FONTE_B, background=c["marinho"], foreground=c["sobre"], padding=5)
+    s.map("Treeview.Heading", background=[("active", c["marinho2"])])
+    s.map("Treeview", background=[("selected", c["selecao"])], foreground=[("selected", c["selecao_texto"])])
+    s.configure("TNotebook", background=c["fundo"], bordercolor=c["borda"])
+    s.configure("TNotebook.Tab", padding=(12, 5), font=FONTE_B, background=c["painel"], foreground=c["suave"])
+    s.map("TNotebook.Tab", background=[("selected", c["campo"]), ("active", c["selecao"])],
+          foreground=[("selected", c["texto"]), ("active", c["selecao_texto"])])
+    s.configure("TLabelframe", background=c["fundo"], bordercolor=c["borda"])
+    s.configure("TLabelframe.Label", background=c["fundo"], font=FONTE_B, foreground=c["rotulo"])
+    for nome in ("TCheckbutton", "TRadiobutton"):
+        s.configure(nome, background=c["fundo"], foreground=c["texto"], indicatorbackground=c["campo"],
+                    indicatorforeground=c["texto"], indicatorcolor=c["campo"])
+        s.map(nome, background=[("active", c["fundo"])], indicatorcolor=[("selected", c["marinho2"])],
+              foreground=[("disabled", c["suave"])])
+    for eixo in ("Vertical", "Horizontal"):
+        s.configure(f"{eixo}.TScrollbar", background=c["borda"], troughcolor=c["fundo"], bordercolor=c["fundo"],
+                    arrowcolor=c["suave"], lightcolor=c["borda"], darkcolor=c["borda"])
+        s.map(f"{eixo}.TScrollbar", background=[("active", c["suave"])])
+    s.configure("TSeparator", background=c["borda"])
+    s.configure("TProgressbar", background=c["marinho2"], troughcolor=c["campo"], bordercolor=c["borda"])
+    s.configure("TMenubutton", background=c["painel"], foreground=c["texto"])
+    s.configure("TPanedwindow", background=c["fundo"])
 
 
 def centralizar(janela: tk.Toplevel, pai: tk.Misc | None = None) -> None:

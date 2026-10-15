@@ -178,11 +178,11 @@ class PainelFechamento(tk.Toplevel):
             ttk.Label(dir_, text=rotulo, font=tema.FONTE_B if chave == "esperado" else tema.FONTE).grid(row=i, column=0, sticky="w")
             ttk.Label(dir_, text=str(v), font=tema.FONTE_B).grid(row=i, column=1, sticky="e", padx=(30, 0))
         resultado = res["resultado"]
-        cor = tema.COR["ok"] if resultado >= 0 else tema.COR["perigo"]
+        cor = tema.COR["ok_fundo"] if resultado >= 0 else tema.COR["perigo_fundo"]
         rotulo = "SOBRA" if resultado > 0 else ("FALTA" if resultado < 0 else "CAIXA CONFERIDO")
         faixa = tk.Frame(corpo, bg=cor, padx=10, pady=8)
         faixa.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(12, 8))
-        tk.Label(faixa, text=f"Resultado: {fmt.fmt_brl(resultado)}  -  {rotulo}", bg=cor, fg="white", font=("Segoe UI", 20, "bold")).pack()
+        tk.Label(faixa, text=f"Resultado: {fmt.fmt_brl(resultado)}  -  {rotulo}", bg=cor, fg=tema.COR["sobre"], font=("Segoe UI", 20, "bold")).pack()
         barra = ttk.Frame(corpo)
         barra.grid(row=2, column=0, columnspan=2, sticky="ew")
         ttk.Button(barra, text="Imprimir Fechamento", command=self.imprimir).pack(side="left")

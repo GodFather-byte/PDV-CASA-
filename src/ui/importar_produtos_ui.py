@@ -83,7 +83,7 @@ class JanelaImportarProdutos(tk.Toplevel):
                                         ("grupo", "Grupo", 160, "w"), ("qtd", "Estoque", 70, "e"), ("obs", "Observação", 300, "w")], altura=14)
         self.grade.pack(side="top", fill="both", expand=True)
         self.grade.tag("criar", foreground=tema.COR["ok"])
-        self.grade.tag("atualizar", foreground=tema.COR["marinho2"])
+        self.grade.tag("atualizar", foreground=tema.COR["rotulo"])
         self.grade.tag("recusar", foreground=tema.COR["perigo"])
         self.bind("<Escape>", lambda e: self.destroy())
         # transient ANTES de centralizar: centralizar força o mapeamento da janela, e mapeá-la antes de ligá-la a uma janela-mãe

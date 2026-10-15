@@ -1,19 +1,16 @@
-"""Visual escuro do caixa (o mesmo azul-noite do menu principal): cores e estilos ttk próprios, prefixo "Cx".
+"""Visual do caixa (no escuro, o azul-noite do menu principal; no claro, branco e azul-claro): cores e estilos ttk próprios,
+prefixo "Cx".
 
-Os estilos só valem para quem os pede pelo nome (`style="Cx.TButton"`...); as outras telas continuam com o tema claro."""
+Os estilos só valem para quem os pede pelo nome (`style="Cx.TButton"`...); as outras telas usam os estilos de `tema.aplicar_tema`."""
 from __future__ import annotations
 
 from tkinter import ttk
 
+from src.ui import paleta
 from src.ui.menu_widgets import PAL, FONTE, misturar
 
-CX = {      # o azul-noite do caixa: mais saturado que o do menu, para os cartões de comanda se destacarem
-    "fundo": "#0a1029", "cabecalho": "#0c1432", "cartao": "#111a40", "cartao2": "#1a2656",
-    "borda": "#25336e", "texto": PAL["texto"], "suave": PAL["suave"], "mudo": PAL["mudo"],
-    "azul": PAL["azul"], "verde": PAL["verde"], "ambar": PAL["ambar"], "vermelho": PAL["vermelho"],
-    "turquesa": PAL["turquesa"], "campo": "#0a1030", "linha_par": "#141e4a", "selecao": "#2a4fb0",
-    "botao": "#17224f", "botao_hover": "#26367c",
-}
+CX = dict(paleta.CX[paleta.PADRAO])          # o conteúdo troca com o modo (claro/escuro): ver paleta.aplicar
+CX.update({k: PAL[k] for k in paleta.CX_DO_PAL})
 
 
 def aplicar(root) -> None:
@@ -41,26 +38,26 @@ def aplicar(root) -> None:
     s.configure("Cx.TButton", background=c["botao"], foreground=c["texto"], **base)
     s.map("Cx.TButton", background=[("active", c["botao_hover"]), ("disabled", c["cartao"])],
           foreground=[("disabled", c["mudo"])])
-    s.configure("Cx.Sel.TButton", background=c["ambar"], foreground="#10131f", **base)       # escolhido pelo teclado (setas)
-    s.map("Cx.Sel.TButton", background=[("active", misturar(c["ambar"], "#ffffff", 0.2))])
-    s.configure("Cx.Perigo.TButton", background=misturar(c["fundo"], c["vermelho"], 0.2), foreground="#ffb3bb", **base)
+    s.configure("Cx.Sel.TButton", background=c["ambar"], foreground=c["sobre"], **base)       # escolhido pelo teclado (setas)
+    s.map("Cx.Sel.TButton", background=[("active", misturar(c["ambar"], PAL["brilho"], 0.2))])
+    s.configure("Cx.Perigo.TButton", background=misturar(c["fundo"], c["vermelho"], 0.2), foreground=c["perigo_texto"], **base)
     s.map("Cx.Perigo.TButton", background=[("active", misturar(c["fundo"], c["vermelho"], 0.4))])
     s.configure("Cx.Mini.TButton", background=c["botao"], foreground=c["texto"], **dict(base, padding=(4, 1), font=(FONTE, 8, "bold")))
     s.map("Cx.Mini.TButton", background=[("active", c["botao_hover"]), ("disabled", c["cartao"])])
     forte = dict(base, padding=(12, 10), font=(FONTE, 15, "bold"))
-    s.configure("Cx.Pagar.TButton", background=c["verde"], foreground="#04241a", **forte)
-    s.map("Cx.Pagar.TButton", background=[("active", misturar(c["verde"], "#ffffff", 0.25)), ("disabled", c["cartao"])])
+    s.configure("Cx.Pagar.TButton", background=c["verde"], foreground=c["sobre"], **forte)
+    s.map("Cx.Pagar.TButton", background=[("active", misturar(c["verde"], PAL["brilho"], 0.25)), ("disabled", c["cartao"])])
     acao = dict(base, padding=(6, 11), font=(FONTE, 10, "bold"))              # as ações do dia a dia, na coluna da direita
     s.configure("Cx.Acao.TButton", background=c["botao"], foreground=c["texto"], **acao)
     s.map("Cx.Acao.TButton", background=[("active", c["botao_hover"]), ("disabled", c["cartao"])],
           foreground=[("disabled", c["mudo"])])
-    s.configure("Cx.AcaoPerigo.TButton", background=misturar(c["fundo"], c["vermelho"], 0.2), foreground="#ffb3bb", **acao)
+    s.configure("Cx.AcaoPerigo.TButton", background=misturar(c["fundo"], c["vermelho"], 0.2), foreground=c["perigo_texto"], **acao)
     s.map("Cx.AcaoPerigo.TButton", background=[("active", misturar(c["fundo"], c["vermelho"], 0.4))])
     medio = dict(base, padding=(12, 9), font=(FONTE, 11, "bold"))
     s.configure("Cx.Principal.TButton", background=c["botao"], foreground=c["texto"], **medio)
     s.map("Cx.Principal.TButton", background=[("active", c["botao_hover"])])
-    s.configure("Cx.Ok.TButton", background=c["verde"], foreground="#04241a", **medio)
-    s.map("Cx.Ok.TButton", background=[("active", misturar(c["verde"], "#ffffff", 0.25)), ("disabled", c["cartao"])],
+    s.configure("Cx.Ok.TButton", background=c["verde"], foreground=c["sobre"], **medio)
+    s.map("Cx.Ok.TButton", background=[("active", misturar(c["verde"], PAL["brilho"], 0.25)), ("disabled", c["cartao"])],
           foreground=[("disabled", c["mudo"])])
 
     for nome, altura, fonte in (("Cx", 30, 12), ("CxForma", 46, 15)):        # CxForma: linhas altas, fáceis de tocar
@@ -70,7 +67,7 @@ def aplicar(root) -> None:
         s.configure(f"{nome}.Treeview.Heading", font=(FONTE, 9, "bold"), background=c["cabecalho"], foreground=c["suave"],
                     padding=7, relief="flat", borderwidth=0)
         s.map(f"{nome}.Treeview.Heading", background=[("active", c["cabecalho"])])
-        s.map(f"{nome}.Treeview", background=[("selected", c["selecao"])], foreground=[("selected", "#ffffff")])
+        s.map(f"{nome}.Treeview", background=[("selected", c["selecao"])], foreground=[("selected", c["selecao_texto"])])
         for eixo in ("Vertical", "Horizontal"):
             s.configure(f"{nome}.{eixo}.TScrollbar", background=c["botao"], troughcolor=c["fundo"], bordercolor=c["fundo"],
                         arrowcolor=c["suave"], lightcolor=c["botao"], darkcolor=c["botao"], relief="flat")

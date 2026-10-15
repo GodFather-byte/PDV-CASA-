@@ -155,7 +155,7 @@ class JanelaCadastro(tk.Toplevel):
         quadro.pack(fill="both", expand=True)
         self.grade = tema.Grade(quadro, colunas, altura=9)
         self.grade.pack(fill="both", expand=True)
-        self.grade.tag("inativo", foreground="#8a93ab")
+        self.grade.tag("inativo", foreground=tema.COR["inativo"])
         self.grade.tree.bind("<<TreeviewSelect>>", self._ao_selecionar)
         self.grade.tree.bind("<Delete>", lambda e: self.excluir())
 

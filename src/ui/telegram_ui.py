@@ -84,7 +84,7 @@ class JanelaTelegram(tk.Toplevel):
         self.btn_abrir_bot = ttk.Button(linha2, text="Abrir meu bot", command=self.abrir_bot)
         self.btn_abrir_bot.pack(side="left", padx=6)
         self.quadro_codigo = ttk.Frame(p2)                 # só aparece com um código gerado (senão sobraria um buraco)
-        self.lbl_codigo = ttk.Label(self.quadro_codigo, text="", font=FONTE_CODIGO, foreground=COR["marinho2"])
+        self.lbl_codigo = ttk.Label(self.quadro_codigo, text="", font=FONTE_CODIGO, foreground=COR["rotulo"])
         self.lbl_codigo.pack(anchor="w", pady=(6, 0))
         self.lbl_instrucao = ttk.Label(self.quadro_codigo, text="", wraplength=680, justify="left")
         self.lbl_instrucao.pack(anchor="w")

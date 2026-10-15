@@ -48,7 +48,7 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
     numero = tk.StringVar(value=str(sugerida or ""))
     en = ttk.Entry(linha, textvariable=numero, width=9, font=("Segoe UI", 18, "bold"), justify="center")
     en.pack(side="left")
-    lbl_nome = ttk.Label(linha, text="", font=("Segoe UI", 14, "bold"), foreground=tema.COR["marinho2"])
+    lbl_nome = ttk.Label(linha, text="", font=("Segoe UI", 14, "bold"), foreground=tema.COR["rotulo"])
     lbl_nome.pack(side="left", padx=12)
     ttk.Label(dlg.corpo, text=f"Comissão: {ctx.comissoes.rotulo_valor()}", style="Rotulo.TLabel").pack(anchor="w", pady=(12, 0))
     valor = tk.StringVar()
@@ -66,7 +66,7 @@ def dialogo_comissao(master, ctx, sugerida: str = "") -> tuple[int, int] | None:
         g = ctx.comissoes.garota(n) if n is not None else None
         if g is not None:
             lbl_nome.configure(text=g["nome"] + ("" if g["ativo"] else " (inativa)"),
-                               foreground=tema.COR["marinho2"] if g["ativo"] else tema.COR["aviso"])
+                               foreground=tema.COR["rotulo"] if g["ativo"] else tema.COR["aviso"])
         elif n is not None and not ctx.comissoes.cadastro_vazio():
             lbl_nome.configure(text="não cadastrada", foreground=tema.COR["aviso"])
         else:
@@ -366,7 +366,7 @@ class JanelaComissoes(tk.Toplevel):
                              [p["garota"] for p in pend])
         total = sum(p["total_cent"] for p in pend)
         self.lbl.configure(text=f"Total a pagar às garotas: {fmt.fmt_brl(total)}" if pend else "Nenhuma comissão a pagar.",
-                           foreground=tema.COR["marinho"] if pend else tema.COR["suave"])
+                           foreground=tema.COR["titulo"] if pend else tema.COR["suave"])
         if pend:
             self.grade.selecionar(atual if atual and self.grade.tree.exists(atual) else pend[0]["garota"])
         self._mostrar_itens()

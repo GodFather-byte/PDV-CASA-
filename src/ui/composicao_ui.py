@@ -42,7 +42,7 @@ class JanelaComposicao(tk.Toplevel):
         botoes.grid(row=3, column=0, columnspan=3, sticky="w", pady=10)
         ttk.Button(botoes, text="Incluir mais uma composição (Enter)", command=self.incluir).pack(side="left")
         ttk.Button(botoes, text="Excluir selecionada", style="Perigo.TButton", command=self.excluir).pack(side="left", padx=8)
-        self.lbl_custo = ttk.Label(botoes, text="", font=tema.FONTE_B, foreground=tema.COR["marinho2"])
+        self.lbl_custo = ttk.Label(botoes, text="", font=tema.FONTE_B, foreground=tema.COR["rotulo"])
         self.lbl_custo.pack(side="left", padx=20)
 
         self.grade = tema.Grade(corpo, [("cod", "Código", 110, "w"), ("nome", "Composição", 300, "w"),

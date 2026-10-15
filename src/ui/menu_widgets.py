@@ -6,12 +6,9 @@ from __future__ import annotations
 import sys
 import tkinter as tk
 
-PAL = {
-    "fundo": "#101820", "lateral": "#141f2b", "cabecalho": "#141f2b", "cartao": "#1a2735", "cartao_hover": "#233548",
-    "borda": "#2b3c4e", "borda_hover": "#5a7b9b", "texto": "#f1f5f9", "suave": "#b3c2d1", "mudo": "#94a8bd",
-    "azul": "#78abff", "verde": "#52dfb4", "ambar": "#ffd078", "vermelho": "#ff8d9b", "violeta": "#b8a1ff",
-    "turquesa": "#33c4d8", "ardosia": "#7f93c9",
-}
+from src.ui import paleta
+
+PAL = dict(paleta.PAL[paleta.PADRAO])      # o conteúdo troca com o modo (claro/escuro): ver paleta.aplicar
 FONTE = "Segoe UI" if sys.platform == "win32" else "Helvetica"
 
 
@@ -167,7 +164,7 @@ class Cartao(_Transicao, tk.Frame):
         try:
             if not self.winfo_exists():
                 return
-            self.valor.configure(fg=misturar(self.cor, "#ffffff", self._flash))
+            self.valor.configure(fg=misturar(self.cor, PAL["brilho"], self._flash))
             self._flash = max(0.0, self._flash - 0.1)
             if self._flash > 0:
                 self._id_flash = self.after(40, self._piscar)

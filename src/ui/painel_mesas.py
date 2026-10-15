@@ -16,7 +16,7 @@ from tkinter import ttk
 from typing import Callable
 
 from src.core import formatacao as fmt
-from src.ui import tema
+from src.ui import paleta, tema
 from src.ui.caixa_tema import CX, FONTE
 from src.ui.menu_widgets import misturar
 
@@ -25,15 +25,7 @@ RESERVA_BARRA = 14                      # espaço da barra de rolagem (sobrepost
 LARGURA_PADRAO = 640                    # antes de a janela ser mostrada o Tk ainda não sabe a largura real
 COLUNAS_PADRAO = 3
 
-ESTADOS = {          # cores para o fundo escuro do caixa
-    "consumindo": {"fundo": "#121b45", "borda": "#34479a", "texto": "#9ab9ff"},
-    "parada": {"fundo": "#34182b", "borda": "#a24a6b", "texto": "#ff8fa6"},
-    "conta": {"fundo": "#33280f", "borda": "#a8832b", "texto": "#ffcf6e"},
-    "balcao": {"fundo": "#0f2c2a", "borda": "#2e8f6c", "texto": "#5fe0b0"},
-    "garota": {"fundo": "#0d3036", "borda": "#2a9d92", "texto": "#4fd8c6"},
-    "parcial": {"fundo": "#211c4a", "borda": "#7d63d6", "texto": "#c4b1ff"},
-    "acerto": {"fundo": "#33280f", "borda": "#a8832b", "texto": "#ffcf6e"},
-}
+ESTADOS = {k: dict(v) for k, v in paleta.ESTADOS[paleta.PADRAO].items()}     # troca com o modo (claro/escuro): ver paleta.aplicar
 ROTULOS_ESTADO = {"consumindo": "Aberta", "parada": "Sem movimento", "conta": "Aguard. acerto",
                   "balcao": "Venda de balcão", "garota": "Acerto pendente", "parcial": "Pago em parte",
                   "acerto": "Concluir acerto"}
@@ -266,7 +258,7 @@ class PainelMesas(ttk.Frame):
         ativa = self.var_estado.get()
         for valor, aba in self._abas.items():
             if valor == ativa:
-                aba.configure(bg=CX["azul"], fg="#0b1330")
+                aba.configure(bg=CX["azul"], fg=CX["sobre_marca"])
             else:
                 aba.configure(bg=CX["cartao2"] if valor == passando else CX["cartao"], fg=CX["texto"])
 
