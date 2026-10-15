@@ -1296,7 +1296,7 @@ class TesteImpressaoTermicaNoCaixa(BaseUI):
     def test_cartao_de_duas_vias_imprime_duas_vezes_e_nao_abre_a_gaveta(self):
         self.banco.executar("UPDATE tipos_pagamento SET vias = 2 WHERE tipo = 'Cartão Crédito'")
         self.lancar("1", 1)
-        self.pagar("Cartão Crédito", "8,00")
+        self.pagar("Cartão Crédito", "13,00")                               # 8,00 + R$ 5,00 da taxa do crédito
         dados = self.impresso()
         self.assertEqual(dados.count(b"\x1dV"), 2)
         self.assertNotIn(b"\x1bp", dados)

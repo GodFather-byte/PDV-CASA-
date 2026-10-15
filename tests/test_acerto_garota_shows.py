@@ -175,12 +175,12 @@ class TesteConferenciaDaMaquininha(BaseComissao):
     def test_debito_e_credito_vem_separados_com_quantidade_e_valor(self):
         self.vender_em("Cartão Débito", 800)
         self.vender_em("Cartão Débito", 800)
-        self.vender_em("Cartão Crédito", 800)
+        self.vender_em("Cartão Crédito", 1300)                               # 8,00 + R$ 5,00 da taxa do crédito
         self.vender_em("Dinheiro", 800)                                      # dinheiro não é maquininha
         maq = self.turnos.maquininha(self.turno)
         por_tipo = {l["tipo"]: (l["qtd"], l["valor"]) for l in maq["linhas"]}
-        self.assertEqual(por_tipo, {"Cartão Débito": (2, 1600), "Cartão Crédito": (1, 800), "Pix": (0, 0)})
-        self.assertEqual((maq["qtd"], maq["total"]), (3, 2400))
+        self.assertEqual(por_tipo, {"Cartão Débito": (2, 1600), "Cartão Crédito": (1, 1300), "Pix": (0, 0)})
+        self.assertEqual((maq["qtd"], maq["total"]), (3, 2900))
         self.assertEqual(self.turnos.resumo(self.turno)["maquininha"], maq)
 
     def test_debito_e_credito_aparecem_mesmo_sem_movimento(self):
@@ -195,11 +195,11 @@ class TesteConferenciaDaMaquininha(BaseComissao):
 
     def test_fita_do_fechamento_traz_o_bloco_da_maquininha(self):
         self.vender_em("Cartão Débito", 800)
-        self.vender_em("Cartão Crédito", 800)
-        self.vender_em("Cartão Crédito", 800)
+        self.vender_em("Cartão Crédito", 1300)                               # com a taxa do crédito
+        self.vender_em("Cartão Crédito", 1300)
         fita = ImpressaoController(self.banco).fechamento(self.turnos.fechar(self.turno, self.adm, 10000))
         self.assertIn("CONFERIR NA MAQUININHA", fita)
-        for trecho in ("Cartão Débito (1)", "Cartão Crédito (2)", "TOTAL (3)", "24,00"):
+        for trecho in ("Cartão Débito (1)", "Cartão Crédito (2)", "TOTAL (3)", "34,00"):
             self.assertIn(trecho, fita)
         self.assertTrue(all(len(l) <= 40 for l in fita.splitlines()), fita)
 

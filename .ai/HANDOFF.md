@@ -27,7 +27,7 @@ Dois pedidos do dono, concluídos na branch `claude/great-clarke-s4any5`:
 
 ## Validação
 
-- Testes novos: `tests/test_taxa_credito.py`; vias ajustadas em `test_fechamento_assinado`,
+- Suíte completa (Linux, Python 3.12 + xvfb): 1.127 testes OK, 24 pulados. Testes novos em `tests/test_taxa_credito.py`.
   `test_comissao_na_tela`, `test_comissao_garotas`; testes de tela que pagavam crédito sem taxa ajustados.
 
 ## Pendências e armadilhas
