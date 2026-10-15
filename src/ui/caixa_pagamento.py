@@ -52,6 +52,7 @@ class JanelaPagamento(tk.Toplevel):
         self.caixa = ctx.caixa
         self.fechou = False
         self._fechando = False
+        self._falta = 0
         try:
             self._abrir(master, venda_id)
         except Exception:
@@ -168,6 +169,7 @@ class JanelaPagamento(tk.Toplevel):
         t.bind("<Up>", self._acima_da_lista)
         t.bind("<Key>", self._tecla_forma)
         t.bind("<ButtonRelease-1>", lambda e: self.after_idle(self._clique_na_forma))
+        t.bind("<<TreeviewSelect>>", lambda e: self._sugerir_valor(self._falta))     # crédito: o valor sugerido já vem com a taxa
         self.e_valor.bind("<Return>", self._lancar_valor)
         self.e_valor.bind("<Escape>", lambda e: (self.grade_formas.tree.focus_set(), "break")[1])
         self.grade_pag.tree.bind("<Delete>", self._remover_pagamento)
@@ -203,6 +205,8 @@ class JanelaPagamento(tk.Toplevel):
         linhas = [f"Desc.    : {fmt.fmt_num(v['desconto_cent']):>10}", f"Serviço  : {fmt.fmt_num(v['servico_cent']):>10}",
                   f"{'Compl.' if v.get('comanda') else 'Taxa'}    : {fmt.fmt_num(v['taxa_cent']):>10}", f"Produtos : {fmt.fmt_num(v['subtotal_cent']):>10}",
                   f"Pago     : {fmt.fmt_num(pago):>10}"]
+        if v["acrescimo_cent"]:
+            linhas.insert(3, f"Tx créd. : {fmt.fmt_num(v['acrescimo_cent']):>10}")
         self.lbl_resumo.configure(text="\n".join(linhas))
         self.lbl_msg.configure(text="")
         if self.eh_credito:
@@ -229,7 +233,16 @@ class JanelaPagamento(tk.Toplevel):
         self._sugerir_valor(liq["falta"])
 
     def _sugerir_valor(self, falta: int) -> None:
-        self.var_valor.set(fmt.fmt_num(falta) if falta > 0 else "")
+        """O que falta receber; se a forma escolhida tem acréscimo (crédito: R$ 5,00) e a venda ainda não o cobra, já vem somado,
+        para o cartão passar com a taxa e a conta fechar."""
+        self._falta = falta
+        forma = self.grade_formas.selecionado() if hasattr(self, "grade_formas") else None
+        acrescimo = self.caixa.acrescimo_da_forma(self.venda_id, int(forma)) if forma is not None and falta > 0 else 0
+        self.var_valor.set(fmt.fmt_num(falta + acrescimo) if falta > 0 else "")
+        if acrescimo:
+            self._aviso(f"Crédito: taxa de {fmt.fmt_brl(acrescimo)} acrescentada ao total.", CX["ambar"])
+        elif forma is not None and self.lbl_msg.cget("text").startswith("Crédito: taxa"):
+            self.lbl_msg.configure(text="")
 
     def _aviso(self, texto: str, cor: str | None = None) -> None:
         self.lbl_msg.configure(text=texto, foreground=cor or CX["vermelho"])
@@ -277,11 +290,11 @@ class JanelaPagamento(tk.Toplevel):
     def _receber(self, forma_id: int, cent: int) -> tuple[int, dict]:
         """Grava o pagamento e confere o fechamento da conta; se a forma não pode ficar com a sobra (troco), desfaz tudo."""
         pago_antes = sum(p["valor_cent"] for p in self.caixa.pagamentos(self.venda_id))
-        total = self.caixa.obter(self.venda_id)["total_cent"]
         with self.ctx.banco.transacao():
             pid = self.caixa.adicionar_pagamento(self.venda_id, forma_id, cent)
             if self.eh_credito:
                 return pid, {"troco": 0}
+            total = self.caixa.obter(self.venda_id)["total_cent"]       # já com a taxa do crédito, se esta forma a cobra
             try:
                 return pid, self.caixa.liquidar(self.venda_id, total)
             except ErroNegocio:

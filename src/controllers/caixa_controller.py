@@ -62,7 +62,7 @@ class CaixaController:
 
     def pagamentos(self, venda_id: int) -> list[dict]:
         return [dict(r) for r in self.banco.todos(
-            """SELECT p.*, t.tipo, t.permite_troco, t.emite_vale, t.na_gaveta FROM pagamentos_venda p
+            """SELECT p.*, t.tipo, t.permite_troco, t.emite_vale, t.na_gaveta, t.acrescimo_cent FROM pagamentos_venda p
                JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id WHERE p.venda_id = ? ORDER BY p.id""",
             (venda_id,))]
 
@@ -326,8 +326,27 @@ class CaixaController:
         taxa = v["taxa_cent"]
         if v["modalidade"] == "mesa" and v.get("comanda"):
             taxa = self.complemento_consumacao(v["posicao"], subtotal - desconto)      # comanda não tem taxa de entrega
-        return {"subtotal": subtotal, "desconto": desconto, "servico": servico, "taxa": taxa,
-                "total": subtotal - desconto + servico + taxa}
+        acrescimo = self.acrescimo_pagamento(v)
+        return {"subtotal": subtotal, "desconto": desconto, "servico": servico, "taxa": taxa, "acrescimo": acrescimo,
+                "total": subtotal - desconto + servico + taxa + acrescimo}
+
+    def acrescimo_pagamento(self, v: dict) -> int:
+        """Acréscimo das formas de pagamento lançadas na venda (taxa do crédito, R$ 5,00): cobrado UMA vez por venda, o maior
+        entre as formas usadas, e some se o pagamento for removido. A caderneta não paga na hora, então não tem acréscimo."""
+        if v["modalidade"] == "caderneta":
+            return 0
+        return self.banco.valor(
+            """SELECT COALESCE(MAX(t.acrescimo_cent), 0) FROM pagamentos_venda p
+               JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id WHERE p.venda_id = ?""", (v["id"],), 0)
+
+    def acrescimo_da_forma(self, venda_id: int, tipo_pagamento_id: int) -> int:
+        """Quanto a venda passa a custar a mais se receber esta forma agora (0 se a forma não tem acréscimo ou se a venda já
+        cobra um igual ou maior). A tela soma isso ao valor sugerido, para o cartão já passar com a taxa."""
+        v = self.obter(venda_id)
+        if v["modalidade"] == "caderneta":
+            return 0
+        forma = self.banco.valor("SELECT acrescimo_cent FROM tipos_pagamento WHERE id = ?", (tipo_pagamento_id,), 0) or 0
+        return max(forma - self.acrescimo_pagamento(v), 0)
 
     def complemento_consumacao(self, numero_comanda: int, consumo_cent: int) -> int:
         """Consumação mínima: quanto falta para a comanda chegar ao mínimo (Configurações > Mesas e serviço). É cobrado como
@@ -345,8 +364,9 @@ class CaixaController:
         v = self.obter(venda_id)
         c = self.calcular(v)
         self.banco.executar(
-            "UPDATE vendas SET subtotal_cent = ?, desconto_cent = ?, servico_cent = ?, taxa_cent = ?, total_cent = ? WHERE id = ?",
-            (c["subtotal"], c["desconto"], c["servico"], c["taxa"], c["total"], venda_id))
+            "UPDATE vendas SET subtotal_cent = ?, desconto_cent = ?, servico_cent = ?, taxa_cent = ?, acrescimo_cent = ?, "
+            "total_cent = ? WHERE id = ?",
+            (c["subtotal"], c["desconto"], c["servico"], c["taxa"], c["acrescimo"], c["total"], venda_id))
         return c
 
     def definir_desconto(self, venda_id: int, pct: float | None = None, valor_cent: int | None = None) -> dict:
@@ -391,9 +411,13 @@ class CaixaController:
         if v["modalidade"] == "caderneta" and self.itens(venda_id):
             raise ErroNegocio("Venda em caderneta não recebe pagamento: o valor fica na conta do cliente.")
         turno = self.turnos.exigir_aberto()
-        return self.banco.inserir("pagamentos_venda", {
-            "venda_id": venda_id, "tipo_pagamento_id": tipo_pagamento_id,
-            "valor_cent": valor_cent, "criado_em": fmt.agora(), "turno_id": turno["id"]})
+        with self.banco.transacao():
+            pid = self.banco.inserir("pagamentos_venda", {
+                "venda_id": venda_id, "tipo_pagamento_id": tipo_pagamento_id,
+                "valor_cent": valor_cent, "criado_em": fmt.agora(), "turno_id": turno["id"]})
+            if forma["acrescimo_cent"]:
+                self.recalcular(venda_id)              # o crédito acrescenta a taxa ao total da venda
+        return pid
 
     def remover_pagamento(self, pagamento_id: int) -> None:
         p = self.banco.um("SELECT venda_id, turno_id FROM pagamentos_venda WHERE id = ?", (pagamento_id,))
@@ -403,7 +427,9 @@ class CaixaController:
         if self._de_outro_turno(p["turno_id"], self.turnos.atual()):
             raise ErroNegocio("Este pagamento foi recebido em um turno que já foi fechado e conferido; ele não pode "
                               "ser removido. Se for preciso devolver o valor, cancele a conta.")
-        self.banco.executar("DELETE FROM pagamentos_venda WHERE id = ?", (pagamento_id,))
+        with self.banco.transacao():
+            self.banco.executar("DELETE FROM pagamentos_venda WHERE id = ?", (pagamento_id,))
+            self.recalcular(p["venda_id"])             # sem o crédito, a taxa sai do total
 
     @staticmethod
     def _de_outro_turno(turno_id: int | None, atual: dict | None) -> bool:

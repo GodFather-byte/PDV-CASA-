@@ -166,11 +166,12 @@ class PainelFechamento(tk.Toplevel):
         ttk.Separator(dir_).grid(row=i, column=0, columnspan=2, sticky="ew", pady=6)
         for rotulo, chave in (("Troco", "troco"), ("C. Vale emitido (+)", "vale_emitido"), ("Venda (+)", "venda"),
                               ("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa (+)", "taxa"),
-                              ("Repique", "repique"), ("Entregas pend.", "entregas_pendentes"), ("Venda caderneta", "venda_caderneta"),
+                              ("Taxa do crédito (+)", "acrescimo"), ("Repique", "repique"), ("Entregas pend.", "entregas_pendentes"), ("Venda caderneta", "venda_caderneta"),
                               ("Pagtos caderneta (+)", "pagtos_caderneta"), ("Entradas financ. (+)", "entradas"),
                               ("Saídas financ. (-)", "saidas"), ("Fora da gaveta (cartão/Pix)", "fora_da_gaveta"),
                               ("Valor esperado", "esperado")):
-            if not res[chave] and chave in _LINHAS_OPCIONAIS and not ctx.banco.cfg_bool(_LINHAS_OPCIONAIS[chave], False):
+            if not res[chave] and (chave == "acrescimo" or (
+                    chave in _LINHAS_OPCIONAIS and not ctx.banco.cfg_bool(_LINHAS_OPCIONAIS[chave], False))):
                 continue
             i += 1
             v = res[chave] if chave == "entregas_pendentes" else M(res[chave])

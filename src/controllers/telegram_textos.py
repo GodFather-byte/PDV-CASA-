@@ -470,7 +470,7 @@ def turno_fechado(banco, turno_id: int) -> str:
     """Fechamento: o que vendeu e se o caixa bateu. O operador não vê o 'esperado' na conferência cega; o dono vê."""
     t = banco.um("SELECT * FROM turnos WHERE id = ?", (turno_id,))
     res = TurnoController(banco).resumo(turno_id)
-    vendido = res["venda"] + res["servico"] + res["taxa"] - res["desconto"]
+    vendido = res["venda"] + res["servico"] + res["taxa"] + res["acrescimo"] - res["desconto"]
     linhas = [f"🔴 Caixa fechado — turno {t['numero']}", f"Operador: {_operador(banco, t['operador_id'])}",
               f"{fmt.fmt_datahora(t['aberto_em'])[:16]} → {fmt.fmt_datahora(t['fechado_em'])[:16]}", "",
               f"💰 Vendido: {_brl(vendido)} em {res['tc']} vendas",

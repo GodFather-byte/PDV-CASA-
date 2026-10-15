@@ -37,11 +37,10 @@ _ESTILOS = {
     "comprovante": {"negrito_linhas": 1, "grande_prefixos": ("Valor",)},
     # Ticket de saída (1002): título e nome da casa em negrito; aviso, data/hora e a comanda liberada em letra alta.
     "saida": {"negrito_linhas": 6, "grande_prefixos": ("FAVOR ENTREGAR", "TICKET NA SAIDA", "DATA:", "CARTAO:", "MESA:")},
-    "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "Pontos desta", "TOTAL A RECEBER")},
+    "via_comissao": {"negrito_linhas": 1, "grande_prefixos": ("Valor desta", "Pontos desta")},
     "relatorio": {"negrito_linhas": 1},
 }
 
-LIMITE_VIA_COMISSAO = 15      # lançamentos que a via da garota lista (os mais recentes); o total sempre inclui todos
 LIMITE_MOVIMENTOS = 40        # sangrias/suprimentos listados no fechamento
 
 M, Q = fmt.fmt_num, fmt.fmt_qtd
@@ -118,6 +117,8 @@ class ImpressaoController:
             out.append(_lr("Serviço (+)", M(v["servico_cent"]), w))
         if v["taxa_cent"]:
             out.append(_lr("Compl. consumação mín. (+)" if v.get("comanda") else "Taxa de entrega (+)", M(v["taxa_cent"]), w))
+        if v.get("acrescimo_cent"):
+            out.append(_lr("Taxa do crédito (+)", M(v["acrescimo_cent"]), w))
         out.append(_lr("TOTAL", f"R$ {M(v['total_cent'])}", w))
         return out
 
@@ -271,6 +272,7 @@ class ImpressaoController:
         linhas += ["", faixa("VENDAS", w), _lr("Produtos", M(resumo["venda"]), w)]
         liga = {"desconto": "usar_desconto", "venda_caderneta": "usar_caderneta", "pagtos_caderneta": "usar_caderneta"}
         for rotulo, chave in (("Desconto (-)", "desconto"), ("Serviço (+)", "servico"), ("Taxa de entrega / compl. consumação (+)", "taxa"),
+                              ("Taxa do crédito (+)", "acrescimo"),
                               ("Repique (caixinha)", "repique"), ("Troco devolvido", "troco"), ("Contra-vale emitido", "vale_emitido"),
                               ("Venda caderneta", "venda_caderneta"), ("Pagtos caderneta (+)", "pagtos_caderneta")):
             if resumo[chave] or (chave in liga and self.banco.cfg_bool(liga[chave], False)) or chave == "servico":
@@ -366,9 +368,9 @@ class ImpressaoController:
                 "quando": v["fechada_em"], "comanda": bool(v["comanda"]), "numero": v["posicao"], "cupom": v["cupom"]}
         return self.comprovante_saida(info, operador)
 
-    def via_comissao(self, lancamento: dict, pendentes: list[dict], nome: str, operador: str) -> str:
-        """A via que a garota leva a cada comissão marcada para ela: o valor desta, o que ela tem a receber (todos os lançamentos
-        pendentes, os mais recentes) e o total, para acompanhar o próprio acerto (não fiscal)."""
+    def via_comissao(self, lancamento: dict, nome: str, operador: str) -> str:
+        """A via que a garota leva a cada comissão marcada para ela: só o valor DESTE lançamento (não fiscal). O que já estava
+        marcado antes saiu na via de cada lançamento anterior; o total a receber aparece no acerto."""
         from src.controllers.comissao_controller import ComissaoController
         comissoes = ComissaoController(self.banco)
         w = self.largura()
@@ -377,15 +379,8 @@ class ImpressaoController:
         linhas = self.cabecalho(w) + _titulo("COMISSÃO LANÇADA", w) + ["VIA DA GAROTA".center(w), f"Garota: {quem}"[:w],
             _lr(f"Lançamento nº {lancamento['id']}", fmt.fmt_datahora(lancamento["criado_em"])[:16], w),
             "-" * w, _lr(rotulo, comissoes.em_pontos_texto(lancamento["valor_cent"]) if comissoes.em_pontos()
-                         else M(lancamento["valor_cent"]), w), "", faixa("SALDO A RECEBER", w)]
-        recentes = pendentes[-LIMITE_VIA_COMISSAO:]
-        if len(pendentes) > len(recentes):
-            linhas.append(f"  (+ {len(pendentes) - len(recentes)} lançamentos anteriores)")
-        for i in recentes:
-            d = fmt.fmt_datahora(i["criado_em"])
-            linhas.append(_lr(f"  {d[:5]} {d[11:16]}  nº {i['id']}", M(i["valor_cent"]), w))
-        linhas += ["-" * w, _lr(f"TOTAL A RECEBER ({len(pendentes)})", M(sum(i["valor_cent"] for i in pendentes)), w),
-                   "-" * w, f"Operador: {operador}", "Guarde esta via para conferir o acerto.".center(w), "=" * w]
+                         else M(lancamento["valor_cent"]), w),
+            "-" * w, f"Operador: {operador}", "Guarde esta via para conferir o acerto.".center(w), "=" * w]
         return "\n".join(linhas)
 
     def imprimir_via_comissao(self, lancamento_id: int, operador: str) -> str | None:
@@ -398,7 +393,7 @@ class ImpressaoController:
         lanc = comissoes.lancamento(lancamento_id)
         if lanc is None:
             return None
-        texto = self.via_comissao(lanc, comissoes.lancamentos(lanc["garota"], "pendente"), comissoes.nome(lanc["garota"]), operador)
+        texto = self.via_comissao(lanc, comissoes.nome(lanc["garota"]), operador)
         return self.enviar(texto, f"via_comissao_{lanc['garota']}_{lancamento_id}", tipo="via_comissao")
 
     def recibo_comissao(self, pag: dict, operador: str) -> str:

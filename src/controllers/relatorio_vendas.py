@@ -126,6 +126,7 @@ class RelatoriosVendas:
         r = self.banco.um(
             f"""SELECT COUNT(*) AS tc, COALESCE(SUM(v.subtotal_cent),0) AS venda, COALESCE(SUM(v.desconto_cent),0) AS desconto,
                        COALESCE(SUM(v.servico_cent),0) AS servico, COALESCE(SUM(v.taxa_cent),0) AS taxa,
+                       COALESCE(SUM(v.acrescimo_cent),0) AS acrescimo,
                        COALESCE(SUM(v.total_cent),0) AS total, COALESCE(SUM(v.troco_cent),0) AS troco,
                        COALESCE(SUM(v.vale_cent),0) AS vale, COALESCE(SUM(v.pessoas),0) AS pessoas,
                        MIN(v.cupom) AS cupom_ini, MAX(v.cupom) AS cupom_fim
@@ -154,6 +155,8 @@ class RelatoriosVendas:
         rel.add("TC (cupons)", t["tc"]); rel.add("TM (ticket médio)", M(t["tm"]))
         rel.add("Total dos produtos", M(t["venda"])); rel.add("Desconto (-)", M(t["desconto"]))
         rel.add("Serviço (+)", M(t["servico"])); rel.add("Taxa (+)", M(t["taxa"]))
+        if t["acrescimo"]:
+            rel.add("Taxa do crédito (+)", M(t["acrescimo"]))
         rel.add("TOTAL", M(t["total"]), estilo="total")
         if t["formas"]:
             rel.add("Recebimentos", "", estilo="secao")
@@ -184,6 +187,7 @@ class RelatoriosVendas:
         rel.rodape = [("Venda total", M(t["venda"])), ("  Mesa/Comanda/Balcão", M(t["mesa"] + t["balcao"])),
                       ("  Caderneta", M(t["caderneta"])), ("  Entrega", M(t["entrega"])),
                       ("Desconto (-)", M(t["desconto"])), ("Serviço (+)", M(t["servico"])), ("Taxa (+)", M(t["taxa"])),
+                      ("Taxa do crédito (+)", M(t["acrescimo"])),
                       ("Total apurado", M(t["total"]))]
         rel.rodape += [(f"Recebido em {x['tipo']}", M(x["valor"])) for x in t["formas"]]
         rel.rodape += [("Cupons (TC)", str(t["tc"])), ("Ticket médio (TM)", M(t["tm"])),

@@ -311,6 +311,7 @@ _ENTIDADES = [
         Campo("permite_troco", "Permite troco", "sn", padrao=0, largura=9),
         Campo("na_gaveta", "Fica na gaveta (dinheiro, cheque, ticket)", "sn", padrao=1, largura=9),
         Campo("saldo_inicial_cent", "Saldo inicial", "dinheiro", padrao=0, largura=12),
+        Campo("acrescimo_cent", "Acréscimo cobrado do cliente por venda (ex.: taxa do crédito)", "dinheiro", padrao=0, largura=12),
         Campo("taxa_pct", "Taxa % (banco/operadora)", "decimal", padrao=0, na_grade=False),
         Campo("desc_cartao_pct", "Desc. cartão %", "decimal", padrao=0, na_grade=False),
         Campo("vias", "Nº de vias", "int", padrao=1, na_grade=False),
