@@ -4,40 +4,35 @@ Atualizado por: Claude em 2026-10-15
 
 ## Objetivo atual
 
-Pedido do dono (com a imagem de referência): refazer a tela do caixa mais moderna, poder navegar dentro das comandas das
-garotas e dos clientes, e imprimir o comprovante de saída financeira quando o dinheiro sai do caixa para pagar a garota.
-Tudo na branch `claude/great-clarke-s4any5`.
+Pedido do dono: um modo de excluir todos os produtos cadastrados de uma vez, para cadastrar a tabela de novo (importação).
+Branch `claude/great-clarke-s4any5` (o PR #47, da tela do caixa, já foi mesclado).
 
 ## Feito nesta sessão
 
-- **Comprovante de saída ao pagar a garota** (`comissao_ui.pagar_garota`): além do recibo, sai o comprovante de saída
-  (`comprovante_movimento`, o mesmo da sangria) com o valor que saiu do caixa (`dinheiro_cent`, sem o Pix) e o motivo
-  `Comissão/Acerto garota N NOME`. Pagando fora do caixa não há saída. `ComissaoController.pagar` devolve
-  `movimento_descricao`.
-- **Tela do caixa em três colunas** (`caixa_ui.py`, `painel_mesas.py`, `caixa_tema.py`): cabeçalho com indicadores
-  (abertas, aguardando acerto, em aberto na casa, turno e hora); painel de comandas à esquerda como cartões grandes com busca
-  (texto-guia), abas de filtro e colunas (3/2/1) que acompanham a largura da janela (`definir_colunas`, `_dispor`); venda
-  atual no centro com selo da situação e texto-guia nos campos; total com o detalhe do acréscimo e as ações do dia a dia em
-  duas colunas na direita (`_n_fixos` = quantas ficam à vista; o resto, em Mais opções). Paleta azul-noite só no `CX`.
-- **Navegação**: PgUp/PgDn e botões ◀ ▶ (`navegar_comanda`, `PainelMesas.vizinha`) passam pela comanda anterior/seguinte
-  da lista do painel (respeita aba e busca; clientes e garotas); seta para cima na 1ª linha volta ao código; Enter ou duplo
-  clique numa linha abre as ações (`_menu_linha`): item (observação, transferir, cancelar) e comissão (pagar, cancelar).
-- **Nome da comanda** (esquema v15, `vendas.apelido`, `CaixaController.definir_apelido`): clique no título ou Mais opções >
-  Nomear comanda; aparece no cartão, no título (`Comanda 12 · Carlos`) e a busca do painel acha por ele.
-- Cartão da garota mostra o nome e "N drinks marcados" (`pendentes_por_garota` já trazia nome e lançamentos).
-- README (seções "A tela do caixa", "Mesas e comandas" e "Comissão das garotas") e MAPA atualizados.
+- `UtilitarioController.resumo_exclusao_produtos` / `excluir_todos_produtos`: backup antes; recusa com venda aberta com itens;
+  apaga os produtos SEM venda (com composições, itens e movimentos de estoque, e lançamentos de estoque que ficaram vazios) e
+  deixa INATIVOS os que já saíram em venda (`itens_venda`/`itens_venda_partes`), porque o histórico depende deles.
+- Importação (`importacao_produtos.py`): produto achado por código/nome que estava inativo volta a ficar ativo ao ser
+  atualizado, e a prévia avisa ("estava inativo"). Isso vale também fora da exclusão em massa.
+- Telas: `utilitarios_ui.excluir_produtos` (mostra os números, exige digitar APAGAR); item novo em Utilitários
+  (`util_excluir_produtos`, nível 4) e botão "Excluir todos os produtos..." na janela de importar (desligado sem nível).
+- `docs/IMPORTAR_PRODUTOS.md` com a seção "Começar do zero".
+- **Códigos exatos da planilha**: produto guardado (inativo) não prende código — se a planilha traz o nome dele com outro código,
+  ele assume o código novo (`atualizar`); se a planilha quer o código que ele ocupa para outro produto, ele cede (`liberar_id`,
+  `_arquivar_codigo`: código de arquivo ≥ 10.000.000, nome intacto). Código repetido na planilha continua recusado (o código é único).
+- **`docs/produtos_da_casa.csv`**: os 31 produtos da folha de preços do dono (fotografada) com os códigos da folha; os 3 "6", 2 "25" e
+  2 "20" repetidos ganharam 7, 8, 22 e 21. Leitura da folha (preços corrigidos à mão, Cerveja 15, Vodka 45, Campari 45/15, Suco código 3,
+  Combo 10 latas código 23 por 120) a confirmar com o dono.
 
 ## Validação
 
-- Testes novos: `tests/test_tela_caixa_cartoes.py` (35) e os do comprovante em `test_comissao_na_tela`/`test_ui`.
-- Capturas de tela conferidas em 1664×900 e 1366×768 (scripts no scratchpad da sessão, fora do repositório).
+- `tests/test_excluir_produtos.py` (28): regra, histórico, estoque, reimportação, códigos exatos (CSV da casa) e telas.
 
 ## Pendências e armadilhas
 
-- Validar com o operador no Windows da loja: leitura da nova tela (fontes Segoe UI), PgUp/PgDn e o comprovante de saída.
-- "Drinks marcados" conta os lançamentos de comissão pendentes (um por marcação), não pontos.
-- A janela de pagamento (F12) e as demais telas seguem como estavam; só o caixa foi refeito.
-- Telas pequenas (<1250 px): painel em 1 coluna; abaixo de ~1000 px a venda atual fica estreita.
+- Quem quiser apagar também o histórico de vendas usa a Limpeza do movimento antes; só então os produtos vendidos deixam de ficar
+  guardados? Não: a limpeza apaga vendas ANTERIORES a uma data e as ligações somem, então uma nova exclusão total as apaga de vez.
+- Validar com o dono: exclusão total + importação da planilha no Windows da loja.
 - Equipamentos reais, emissão fiscal, TEF e validação em loja continuam pendentes.
 
 ## Como rodar e testar

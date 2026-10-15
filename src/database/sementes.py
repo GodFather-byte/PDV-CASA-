@@ -48,6 +48,7 @@ ACESSOS = [
     ("rel_estoque", "Estoque atual e Movimento de estoque", "Relatórios", 2),
     ("rel_informativos", "Informativo, Horas, Cancelados, Custo médio", "Relatórios", 2),
     ("util_limpeza", "Limpeza do movimento", "Utilitários", 4),
+    ("util_excluir_produtos", "Excluir todos os produtos", "Utilitários", 4),
     ("util_comunicacao", "Programa de comunicação", "Utilitários", 2),
     ("util_backup", "Backup de dados", "Utilitários", 2),
     ("util_fila_impressao", "Fila de impressão", "Utilitários", 2),
