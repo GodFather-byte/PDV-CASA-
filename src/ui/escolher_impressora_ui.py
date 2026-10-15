@@ -41,7 +41,7 @@ class JanelaEscolherImpressora(tk.Toplevel):
                                         ("situacao", "Situação", 200, "w")], altura=10)
         self.grade.pack(fill="both", expand=True)
         self.grade.tag("termica", foreground=tema.COR["ok"])
-        self.grade.tag("virtual", foreground="#9aa3b8")
+        self.grade.tag("virtual", foreground=tema.COR["virtual"])
         self.grade.tag("problema", foreground=tema.COR["perigo"])
         self.grade.tree.bind("<Double-1>", lambda e: self.usar())
         self.grade.tree.bind("<Return>", lambda e: self.usar())
@@ -89,7 +89,7 @@ class JanelaEscolherImpressora(tk.Toplevel):
             achadas = sum(1 for c in ids if c.startswith("imp:"))
             self.lbl.configure(text=f"{achadas} impressora(s) neste computador. Escolha a do "
                                     f"{'caixa' if self.alvo == 'termica' else 'bar ou cozinha'} e clique em Usar esta.",
-                               foreground=tema.COR["marinho"])
+                               foreground=tema.COR["titulo"])
         else:
             self.lbl.configure(text="Nenhuma impressora encontrada neste computador.", foreground=tema.COR["perigo"])
 

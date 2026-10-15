@@ -121,6 +121,14 @@ do que falta** (só o dinheiro dá troco) e um **troco acima de R$ 500** pede co
 absurdo. **Remover (Delete)** tira o pagamento selecionado (sem seleção, o último). F10 duas vezes seguidas grava uma venda só, e
 se o cupom não puder ser preparado a venda continua gravada e a tela avisa para reimprimir pelo botão Impressora.
 
+## Modo claro e modo escuro
+
+Em **Configurações > Aparência** (a primeira aba) escolha **Modo escuro** (o padrão) ou **Modo claro**. Vale para tudo: entrada,
+menu, caixa e as telas de cadastro, relatórios, estoque e configurações. Ao gravar, o visual muda na hora: o menu é refeito e as
+telas que estavam abertas são fechadas (cada uma guarda as cores de quando abriu), então termine o que estiver editando antes de
+trocar. A escolha fica gravada e o programa já abre no modo escolhido. As cores dos dois modos estão em `src/ui/paleta.py`, com
+teste de contraste para o texto continuar legível em ambos.
+
 ## Mesas e comandas
 
 No caixa, o campo **Comanda** (tecla **F4**) recebe só o número: digite `123` e Enter para abrir a comanda 123 (vai até

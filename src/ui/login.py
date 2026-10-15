@@ -9,7 +9,7 @@ from src.core import formatacao as fmt
 from src.core import licenca
 from src.core.erros import ErroNegocio
 from src.ui import tema
-from src.ui.menu_widgets import PAL, FONTE
+from src.ui.menu_widgets import PAL, FONTE, misturar
 from src.versao import VERSAO
 
 
@@ -104,7 +104,8 @@ class JanelaLogin(tk.Toplevel):
         estilo.map("Login.TCheckbutton", background=[("active", PAL["fundo"])], foreground=[("active", PAL["texto"])])
         estilo.configure("Login.TButton", font=(FONTE, 12, "bold"), padding=(12, 12), background=PAL["verde"],
                          foreground=PAL["fundo"], borderwidth=0)
-        estilo.map("Login.TButton", background=[("active", "#7deac8"), ("pressed", "#36c99b")],
+        estilo.map("Login.TButton", background=[("active", misturar(PAL["verde"], PAL["brilho"], 0.25)),
+                                               ("pressed", misturar(PAL["verde"], PAL["fundo"], 0.2))],
                    foreground=[("active", PAL["fundo"])])
         estilo.configure("Login.Secundario.TButton", font=(FONTE, 10), padding=(12, 8), background=PAL["cartao"],
                          foreground=PAL["suave"], borderwidth=0)
@@ -130,12 +131,12 @@ class JanelaLogin(tk.Toplevel):
         try:
             operador = self.ctx.acesso.autenticar(self.var_usuario.get(), senha)
         except ErroNegocio as e:
-            self.lbl_msg.configure(text=str(e), fg="#ffb4b4")
+            self.lbl_msg.configure(text=str(e), fg=PAL["vermelho"])
             self.var_senha.set("")
             self.ent_senha.focus_set()
             return
         if self.ctx.acesso.precisa_trocar_senha(operador, senha) and not self.trocar_senha(operador):
-            self.lbl_msg.configure(text="Troque a senha para entrar no sistema.", fg="#ffb4b4")
+            self.lbl_msg.configure(text="Troque a senha para entrar no sistema.", fg=PAL["vermelho"])
             self.var_senha.set("")
             self.ent_senha.focus_set()
             return
@@ -172,7 +173,7 @@ class JanelaLogin(tk.Toplevel):
     def _renovar_pela_nuvem(self) -> bool:
         """Licença bloqueada: antes de pedir o código, tenta a renovação pela nuvem (a loja pode já ter pago)."""
         from src.sync import licenca_nuvem
-        self.lbl_msg.configure(text="Verificando a licença na nuvem...", fg="white")
+        self.lbl_msg.configure(text="Verificando a licença na nuvem...", fg=PAL["texto"])
         self.update_idletasks()
         renovou = licenca_nuvem.renovar(self.ctx.banco, forcar=True, timeout=(3, 5))
         self.lbl_msg.configure(text="")
@@ -187,7 +188,7 @@ class JanelaLogin(tk.Toplevel):
         try:
             lic = licenca.ativar(self.ctx.banco, codigo)
         except ErroNegocio as e:
-            self.lbl_msg.configure(text=str(e), fg="#ffb4b4")
+            self.lbl_msg.configure(text=str(e), fg=PAL["vermelho"])
             return False
-        self.lbl_msg.configure(text=f"Licença ativada até {fmt.fmt_data(lic['expira_em'].isoformat())}.", fg="#5be39a")
+        self.lbl_msg.configure(text=f"Licença ativada até {fmt.fmt_data(lic['expira_em'].isoformat())}.", fg=PAL["verde"])
         return not licenca.estado(self.ctx.banco).bloqueia

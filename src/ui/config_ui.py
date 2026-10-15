@@ -6,7 +6,7 @@ from tkinter import ttk
 
 from src.controllers.config_controller import CAMPOS_CONFIG, CAMPOS_LOJA, CAMPOS_MAQUINA
 from src.core.erros import ErroNegocio
-from src.ui import tema
+from src.ui import paleta, tema
 from src.ui.escolher_impressora_ui import JanelaEscolherImpressora
 from src.ui.visualizador import Visualizador
 
@@ -46,7 +46,24 @@ def abrir(master, ctx, chave: str):
                                 botoes_campo={"impressora_termica_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "termica")),
                                               "impressora_remota_endereco": ("Escolher da lista...", lambda j: escolher_impressora(j, ctx, "remota"))})
     return JanelaFormulario(master, ctx, "Configurações", [(c[0], c[1], c[2], c[3], c[4] if len(c) > 4 else None) for c in CAMPOS_CONFIG],
-                            ctx.config.todas, ctx.config.salvar_config)
+                            ctx.config.todas, ctx.config.salvar_config,
+                            depois_de_gravar=lambda janela: aplicar_visual(janela, ctx))
+
+
+def aplicar_visual(janela, ctx) -> None:
+    """Depois de gravar as configurações: se o operador trocou o modo claro/escuro, aplica na hora. A janela principal (via
+    `ctx.ao_mudar_tema`) refaz o menu e fecha as telas abertas, que guardam as cores de quando abriram; sem ela (testes) só
+    troca a paleta e os estilos."""
+    novo = paleta.validar(ctx.banco.cfg(paleta.CHAVE, paleta.PADRAO))
+    if novo == paleta.modo():
+        return
+    tema.mensagem(janela, f"Modo {paleta.MODOS[novo].lower()} escolhido. O visual muda agora: o menu é refeito e as telas "
+                          "abertas são fechadas para adotar as cores novas.", "Aparência")
+    if ctx.ao_mudar_tema is not None:
+        ctx.ao_mudar_tema(novo)
+    else:
+        paleta.aplicar(novo)
+        tema.aplicar_tema(janela.winfo_toplevel())
 
 
 def abrir_assistente(janela, ctx):
@@ -90,9 +107,11 @@ class JanelaFormulario(tk.Toplevel):
     `botoes_campo`: {chave: (texto, função(janela))} põe um botão ao lado do campo (ex.: escolher da lista)."""
 
     def __init__(self, master, ctx, titulo, campos, carregar, salvar, aviso: str | None = None,
-                 imprimivel: bool = False, somente_leitura: tuple = (), acoes=None, botoes_campo: dict | None = None):
+                 imprimivel: bool = False, somente_leitura: tuple = (), acoes=None, botoes_campo: dict | None = None,
+                 depois_de_gravar=None):
         super().__init__(master)
         self.ctx, self.campos, self.carregar, self.salvar = ctx, campos, carregar, salvar
+        self.depois_de_gravar = depois_de_gravar            # função(janela) chamada depois de gravar com sucesso
         self.botoes: dict[str, ttk.Button] = {}
         self.somente_leitura = somente_leitura
         self.title(titulo)
@@ -190,6 +209,8 @@ class JanelaFormulario(tk.Toplevel):
         ok, _ = tema.tratar(self, self.salvar, self._coletar())
         if ok:
             tema.mensagem(self, "Configurações gravadas.", "Gravar")
+            if self.depois_de_gravar is not None:
+                self.depois_de_gravar(self)
 
     def imprimir(self) -> None:
         l = self.ctx.config.loja()

@@ -34,7 +34,7 @@ class JanelaFilaImpressao(tk.Toplevel):
         self.grade.tag("pendente", foreground=tema.COR["aviso"])
         self.grade.tag("erro", foreground=tema.COR["perigo"])
         self.grade.tag("enviado", foreground=tema.COR["suave"])
-        self.grade.tag("cancelado", foreground="#9aa3b8")
+        self.grade.tag("cancelado", foreground=tema.COR["virtual"])
         barra = ttk.Frame(corpo)
         barra.pack(fill="x", pady=(10, 0))
         ttk.Button(barra, text="Reenviar selecionado", command=self.reenviar).pack(side="left")

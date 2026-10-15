@@ -48,7 +48,7 @@ def _estilos(root: tk.Misc) -> None:
                 rowheight=28, borderwidth=0, font=(FONTE, 10))
     s.configure("Estoque.Treeview.Heading", background=PAL["lateral"], foreground=PAL["suave"], relief="flat",
                 font=(FONTE, 9, "bold"), padding=(6, 7))
-    s.map("Estoque.Treeview", background=[("selected", "#27407f")], foreground=[("selected", "#ffffff")])
+    s.map("Estoque.Treeview", background=[("selected", PAL["selecao"])], foreground=[("selected", PAL["selecao_texto"])])
     s.map("Estoque.Treeview.Heading", background=[("active", PAL["cartao_hover"])])
     s.configure("Estoque.TCombobox", fieldbackground=PAL["cartao"], background=PAL["cartao"], foreground=PAL["texto"],
                 arrowcolor=PAL["suave"], bordercolor=PAL["borda"], lightcolor=PAL["cartao"], darkcolor=PAL["cartao"], padding=4)
@@ -56,7 +56,7 @@ def _estilos(root: tk.Misc) -> None:
           selectbackground=[("readonly", PAL["cartao"])], selectforeground=[("readonly", PAL["texto"])])
     root.option_add("*TCombobox*Listbox.background", PAL["cartao"])
     root.option_add("*TCombobox*Listbox.foreground", PAL["texto"])
-    root.option_add("*TCombobox*Listbox.selectBackground", "#27407f")
+    root.option_add("*TCombobox*Listbox.selectBackground", PAL["selecao"])
     s.configure("Estoque.Vertical.TScrollbar", background=PAL["borda"], troughcolor=PAL["fundo"], bordercolor=PAL["fundo"],
                 arrowcolor=PAL["suave"])
 
@@ -73,7 +73,7 @@ class Chip(tk.Label):
     def marcar(self, ligado: bool) -> None:
         self.ligado = ligado
         if ligado:
-            self.configure(bg=self.cor, fg="#0a1022")
+            self.configure(bg=self.cor, fg=PAL["sobre"])
         else:
             self.configure(bg=PAL["cartao"], fg=PAL["suave"])
 
@@ -383,14 +383,14 @@ class PainelEstoque(tk.Toplevel):
         """Diálogo com a quantidade e uma prévia de quanto o produto vai ficar (evita erro de digitação no estoque)."""
         p = self.produto
         dlg = tema.Dialogo(self, titulo)
-        ttk.Label(dlg.corpo, text=p["nome"], font=tema.FONTE_G, foreground=tema.COR["marinho"]).pack(anchor="w")
+        ttk.Label(dlg.corpo, text=p["nome"], font=tema.FONTE_G, foreground=tema.COR["titulo"]).pack(anchor="w")
         hoje = "Ainda não controla estoque (vai passar a controlar)" if p["situacao"] == "livre" else f"Hoje há {curta(p['qt_atual'])} {p['unidade']}"
         ttk.Label(dlg.corpo, text=hoje, foreground=tema.COR["suave"]).pack(anchor="w", pady=(0, 10))
         ttk.Label(dlg.corpo, text=pergunta, style="Rotulo.TLabel").pack(anchor="w")
         v = tk.StringVar()
         ent = ttk.Entry(dlg.corpo, textvariable=v, width=18, font=("Segoe UI", 14))
         ent.pack(anchor="w", pady=(4, 0))
-        previa = ttk.Label(dlg.corpo, text="", foreground=tema.COR["marinho2"], font=tema.FONTE_B)
+        previa = ttk.Label(dlg.corpo, text="", foreground=tema.COR["rotulo"], font=tema.FONTE_B)
         previa.pack(anchor="w", pady=(8, 0))
         msg = ttk.Label(dlg.corpo, text="", foreground=tema.COR["perigo"])
         msg.pack(anchor="w")

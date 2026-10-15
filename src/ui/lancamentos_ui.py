@@ -317,7 +317,7 @@ class JanelaEstoque(tk.Toplevel):
         self.e_valor = _campo(cab, "Valor da nota", lambda p: ttk.Entry(p, textvariable=self.v_valor, width=14), 1, 0)
         _campo(cab, "Documento", lambda p: ttk.Entry(p, textvariable=self.v_doc, width=20), 1, 1)
         _campo(cab, "Nota fiscal", lambda p: ttk.Entry(p, textvariable=self.v_nf, width=14), 1, 2)
-        self.lbl_total = ttk.Label(cab, text="", font=tema.FONTE_B, foreground=tema.COR["marinho2"])
+        self.lbl_total = ttk.Label(cab, text="", font=tema.FONTE_B, foreground=tema.COR["rotulo"])
         self.lbl_total.grid(row=0, column=3, rowspan=2, padx=20)
         self.btn_lancar = ttk.Button(cab, text="Lançar itens (Enter)", style="Ok.TButton", command=self.iniciar)
         self.btn_lancar.grid(row=0, column=4, padx=6)

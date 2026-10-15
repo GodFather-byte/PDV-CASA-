@@ -13,7 +13,7 @@ from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
 from src.ui import icone as icone_janela
-from src.ui import tema
+from src.ui import caixa_tema, paleta, tema
 from src.ui.contexto import Contexto
 from src.ui.login import JanelaLogin
 from src.ui.menu_widgets import PAL, FONTE, Atalho, Aviso, BarraProporcao, Cartao, ConteudoRolavel, ItemNav
@@ -59,9 +59,11 @@ CONFIGURACOES = [("acessos", "Acessos", "cfg_acessos"), ("loja", "Loja", "cfg_lo
 BOTOES = [("Cadastros", "Cadastros", "m"), ("Caixa", "Caixa", "c"), ("Lançamentos", "Lançamentos", "l"),
           ("Relatórios", "Relatórios", "r"), ("Utilitários", "Utilitários", "u"), ("Configurações", "Configurações", "o"),
           ("Encerrar sessão", "Saída", "s")]
-ICONES = {"Cadastros": ("C", PAL["azul"]), "Caixa": ("$", PAL["verde"]), "Lançamentos": ("+", PAL["ambar"]),
-          "Relatórios": ("R", PAL["violeta"]), "Utilitários": ("U", PAL["turquesa"]), "Configurações": ("O", PAL["ardosia"]),
-          "Saída": ("S", PAL["vermelho"])}
+def icones() -> dict:
+    """A letra e a cor de cada botão do menu (as cores acompanham o modo claro/escuro em uso)."""
+    return {"Cadastros": ("C", PAL["azul"]), "Caixa": ("$", PAL["verde"]), "Lançamentos": ("+", PAL["ambar"]),
+            "Relatórios": ("R", PAL["violeta"]), "Utilitários": ("U", PAL["turquesa"]), "Configurações": ("O", PAL["ardosia"]),
+            "Saída": ("S", PAL["vermelho"])}
 DIAS_SEMANA = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 
 
@@ -70,9 +72,11 @@ class App:
         self.banco = banco or BancoDados()
         self.root = tk.Tk()
         self.root.withdraw()
+        paleta.aplicar_da_configuracao(self.banco)               # modo claro ou escuro (Configurações > Aparência)
         tema.aplicar_tema(self.root)
         icone_janela.aplicar(self.root)
         self.ctx = Contexto(self.banco)
+        self.ctx.ao_mudar_tema = self.aplicar_visual
         self.janelas: dict[str, tk.Toplevel] = {}
         self.servico_impressao: ServicoFilaImpressao | None = None
         self.servico_telegram: ServicoTelegram | None = None
@@ -87,6 +91,23 @@ class App:
         self._consulta_versao: dict | None = None      # {"pronta": bool, "dados": ...}: a thread da rede escreve aqui
 
     # ---------------------------------------------------------------- fluxo
+    def aplicar_visual(self, modo: str) -> None:
+        """Troca o modo claro/escuro em uso: novas cores, estilos refeitos, menu refeito e telas abertas fechadas (cada uma guarda as
+        cores de quando foi aberta; fechar evita uma tela meio clara e meio escura)."""
+        paleta.aplicar(modo)
+        tema.aplicar_tema(self.root)
+        caixa_tema.aplicar(self.root)
+        for j in list(self.janelas.values()):
+            try:
+                j.destroy()
+            except tk.TclError:
+                pass
+        self.janelas.clear()
+        self.root.configure(bg=PAL["fundo"])
+        if self.menu is not None:
+            self.mostrar_menu()
+        self.banco.log("tema_visual", modo, self.ctx.operador_id)
+
     def _erro_na_tela(self, tipo, valor, tb) -> None:
         """Exceção que escapou de um evento da tela (clique, tecla, temporizador). Fica no log com o traceback completo; o
         operador vê uma mensagem clara (a mesma falha repetida em sequência só avisa uma vez)."""
@@ -224,7 +245,7 @@ class App:
         cab = tk.Frame(pai, bg=PAL["cabecalho"], height=72)
         cab.pack(fill="x")
         cab.pack_propagate(False)
-        tk.Label(cab, text=(nome[:1] or "P").upper(), font=(FONTE, 18, "bold"), fg="white", bg=PAL["azul"], width=3
+        tk.Label(cab, text=(nome[:1] or "P").upper(), font=(FONTE, 18, "bold"), fg=PAL["sobre"], bg=PAL["azul"], width=3
                  ).pack(side="left", padx=(20, 14), pady=14, fill="y")
         textos = tk.Frame(cab, bg=PAL["cabecalho"], width=320)
         textos.pack(side="left", fill="y", pady=12)
@@ -237,7 +258,7 @@ class App:
 
         chip = tk.Frame(cab, bg=PAL["cabecalho"])
         chip.pack(side="right", fill="y", padx=(10, 22), pady=14)
-        tk.Label(chip, text=(op.nome[:1] or "?").upper(), font=(FONTE, 13, "bold"), fg="white", bg=PAL["violeta"], width=3
+        tk.Label(chip, text=(op.nome[:1] or "?").upper(), font=(FONTE, 13, "bold"), fg=PAL["sobre"], bg=PAL["violeta"], width=3
                  ).pack(side="left", fill="y")
         quem = tk.Frame(chip, bg=PAL["cabecalho"])
         quem.pack(side="left", padx=(10, 0), fill="y")
@@ -275,7 +296,7 @@ class App:
         self._nav_sel = -1
 
         def item(rotulo, grupo, letra):
-            icone, cor = ICONES[grupo]
+            icone, cor = icones()[grupo]
             b = ItemNav(lat, rotulo, icone, cor, letra, lambda g=grupo: self.acionar(g), destaque=grupo == "Caixa")
             self.botoes[grupo] = b
             self._ordem_nav.append(grupo)
@@ -534,7 +555,7 @@ class App:
             return self.abrir_caixa()
         ctx = self.ctx
         estilo = dict(tearoff=0, font=(FONTE, 11), bg=PAL["cartao"], fg=PAL["texto"], activebackground=PAL["azul"],
-                      activeforeground="white", bd=0, relief="flat")
+                      activeforeground=PAL["sobre"], bd=0, relief="flat")
         m = tk.Menu(self.root, **estilo)
         permitidos = {x["modulo"] for x in ctx.acesso.modulos_permitidos(ctx.operador, grupo)} - modulos_desligados(self.banco)
         if grupo == "Cadastros":

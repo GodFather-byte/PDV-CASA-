@@ -29,7 +29,7 @@ class Visualizador(tk.Toplevel):
         corpo = ttk.Frame(self, padding=(10, 0, 10, 10))
         corpo.pack(fill="both", expand=True)
         self.caixa = tk.Text(corpo, font=tema.FONTE_MONO, width=min(colunas + 1, 130), height=linhas, wrap="none",
-                             bg="white", relief="solid", borderwidth=1, padx=8, pady=6)
+                             bg=tema.COR["papel"], fg=tema.COR["texto"], insertbackground=tema.COR["texto"], relief="solid", borderwidth=1, padx=8, pady=6)
         sy = ttk.Scrollbar(corpo, orient="vertical", command=self.caixa.yview)
         sx = ttk.Scrollbar(corpo, orient="horizontal", command=self.caixa.xview)
         self.caixa.configure(yscrollcommand=sy.set, xscrollcommand=sx.set)

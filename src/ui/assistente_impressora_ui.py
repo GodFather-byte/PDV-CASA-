@@ -46,7 +46,7 @@ class JanelaAssistenteImpressora(tk.Toplevel):
                                         ("situacao", "Situação", 190, "w"), ("fila", "Na fila", 70, "e")], altura=8)
         self.grade.pack(side="top", fill="both", expand=True)
         self.grade.tag("termica", foreground=tema.COR["ok"])
-        self.grade.tag("virtual", foreground="#9aa3b8")
+        self.grade.tag("virtual", foreground=tema.COR["virtual"])
         self.grade.tag("problema", foreground=tema.COR["perigo"])
         self.grade.tree.bind("<Double-1>", lambda e: self.configurar_e_testar())
         linha1, linha2 = ttk.Frame(barra), ttk.Frame(barra)

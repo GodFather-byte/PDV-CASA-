@@ -18,7 +18,7 @@ from src.controllers.entidades import ENTIDADES
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 from src.database.conexao import BancoDados
-from src.ui import tema
+from src.ui import paleta, tema
 from src.ui.contexto import Contexto
 from tests.ui_robo import Robo, clicar, entradas
 
@@ -36,6 +36,7 @@ def _tk_disponivel() -> bool:
 class BaseUI(unittest.TestCase):
     def setUp(self):
         fmt.definir_relogio(None)
+        paleta.aplicar(paleta.PADRAO)         # um teste que troca o modo claro/escuro não pode vazar para os outros
         self.banco = BancoDados(":memory:")
         self.ctx = Contexto(self.banco)
         self.banco.cfg_set("comissao_em_pontos", "N")     # os testes de tela da comissão digitam reais; pontos têm teste próprio

@@ -36,8 +36,6 @@ from src.ui.menu_widgets import misturar
 from src.ui.painel_mesas import PainelMesas
 from src.ui.visualizador import Visualizador, enviar_ou_mostrar
 
-COR_COMISSAO = "#0b7a6b"        # o verde-azulado da comissão: faixa e ícone da garota
-COR_COMISSAO_TEXTO = "#3fd3bd"   # o mesmo verde, claro, para ler sobre o fundo escuro (linhas da comanda, descrição)
 LARGURAS_LADO = {3: 372, 2: 350, 1: 310}     # coluna da direita (total e ações), pelo nº de colunas de cartões do painel
 LARGURA_MINIMA_CENTRO = {3: 560, 2: 540, 1: 380}   # o que a venda atual precisa para os campos não ficarem espremidos
 
@@ -154,7 +152,7 @@ class JanelaCaixa(tk.Toplevel):
         self.ent_pos = ttk.Entry(bloco, textvariable=self.var_pos, width=7, font=(FONTE, 16, "bold"), justify="center", style="Cx.TEntry")
         self.ent_pos.pack(anchor="e", pady=(2, 0))
         self.lbl_status_venda = tk.Label(linha, text="Balcão", font=(FONTE, 11, "bold"), padx=18, pady=10,
-                                         bg=CX["cartao"], fg=CX["verde"], highlightthickness=1, highlightbackground=CX["borda"])
+                                         bg=CX["cartao"], fg=CX["verde"], highlightthickness=1, highlightbackground=CX["borda"], highlightcolor=CX["borda"])
         self.lbl_status_venda.pack(side="right")
         self.lbl_leitor = ttk.Label(linha, text="", style="Cx.TLabel", foreground=tema.COR["aviso"], font=(FONTE, 10, "bold"))
         self.lbl_leitor.pack(side="right", anchor="s", padx=(0, 14), pady=(0, 4))
@@ -163,7 +161,7 @@ class JanelaCaixa(tk.Toplevel):
         self.faixa.bind("<Configure>", lambda e: self.faixa.configure(wraplength=max(e.width - 30, 200)))
 
         # --- entrada do item: código, descrição, quantidade e preço
-        ent = self.cartao_entrada = tk.Frame(esq, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], padx=16, pady=12)
+        ent = self.cartao_entrada = tk.Frame(esq, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], highlightcolor=CX["borda"], padx=16, pady=12)
         ent.pack(fill="x", pady=(12, 0))
         self.lbl_cod_titulo = ttk.Label(ent, text="Código", style="Cx.CartaoRotulo.TLabel")
         self.lbl_cod_titulo.grid(row=0, column=0, sticky="w")
@@ -207,8 +205,8 @@ class JanelaCaixa(tk.Toplevel):
                                          ("obs", "Observação", 200, "w")], altura=6, estilo="Cx", cor_par=CX["linha_par"])
         self.grade.pack(fill="both", expand=True)
         self.grade.tree.bind("<Configure>", self._ajustar_grade)
-        self.grade.tag("comissao", foreground=COR_COMISSAO_TEXTO)       # comissão marcada na comanda da garota: só leitura
-        self.grade.tag("comissao_paga", foreground="#8a94a6")
+        self.grade.tag("comissao", foreground=CX["comissao_texto"])       # comissão marcada na comanda da garota: só leitura
+        self.grade.tag("comissao_paga", foreground=CX["comissao_paga"])
         self.lbl_vazio = tk.Label(self.grade.tree, text="Nenhum item lançado\nPasse o leitor ou digite o código do produto e tecle Enter",
                                   bg=CX["cartao"], fg=CX["mudo"], font=(FONTE, 13), justify="center")
 
@@ -289,7 +287,7 @@ class JanelaCaixa(tk.Toplevel):
         self.slot_sair = tk.Frame(topo, bg=CX["cabecalho"])
         self.slot_sair.pack(side="right", padx=(18, 0))
         nome = self.ctx.config.nome_loja().upper()
-        tk.Label(topo, text=(nome[:1] or "W"), bg=CX["azul"], fg="#0b1330", font=(FONTE, 15, "bold"), width=2).pack(side="left")
+        tk.Label(topo, text=(nome[:1] or "W"), bg=CX["azul"], fg=CX["sobre_marca"], font=(FONTE, 15, "bold"), width=2).pack(side="left")
         titulos = tk.Frame(topo, bg=CX["cabecalho"])
         titulos.pack(side="left", padx=(12, 0))
         tk.Label(titulos, text="CAIXA", bg=CX["cabecalho"], fg=CX["suave"], font=(FONTE, 8, "bold")).pack(anchor="w")
@@ -300,14 +298,14 @@ class JanelaCaixa(tk.Toplevel):
         self.lbl_aberto_casa = self._indicador(topo, "EM ABERTO NA CASA", CX["verde"])[1]
         self.lbl_acertos = self._indicador(topo, "AGUARD. ACERTO", CX["ambar"])[1]
         self.lbl_abertas = self._indicador(topo, "ABERTAS", CX["texto"])[1]
-        self.lbl_fila = tk.Label(topo, bg=CX["cabecalho"], fg="#7ee2a8", font=tema.FONTE_B, cursor="hand2")
+        self.lbl_fila = tk.Label(topo, bg=CX["cabecalho"], fg=CX["verde"], font=tema.FONTE_B, cursor="hand2")
         self.lbl_fila.pack(side="right", padx=(0, 6))
         self.lbl_fila.bind("<Button-1>", lambda e: self.abrir_fila())
         tk.Frame(self, height=1, bg=CX["borda"]).pack(fill="x")
 
     def _indicador(self, pai, titulo: str, cor: str) -> tuple[tk.Label, tk.Label]:
         """Um indicador do cabeçalho (título pequeno e valor em destaque). Devolve (rótulo do título, rótulo do valor)."""
-        quadro = tk.Frame(pai, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], padx=14, pady=5)
+        quadro = tk.Frame(pai, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], highlightcolor=CX["borda"], padx=14, pady=5)
         quadro.pack(side="right", padx=(8, 0))
         lbl_titulo = tk.Label(quadro, text=titulo, bg=CX["cartao"], fg=CX["suave"], font=(FONTE, 8, "bold"))
         lbl_titulo.pack(anchor="w")
@@ -320,7 +318,7 @@ class JanelaCaixa(tk.Toplevel):
         lado = tk.Frame(corpo, bg=CX["fundo"], width=self.largura_lado)
         lado.pack(side="right", fill="y", padx=(16, 0))
         lado.pack_propagate(False)
-        cartao = tk.Frame(lado, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"])
+        cartao = tk.Frame(lado, bg=CX["cartao"], highlightthickness=1, highlightbackground=CX["borda"], highlightcolor=CX["borda"])
         cartao.pack(fill="x")
         tk.Frame(cartao, height=3, bg=CX["verde"]).pack(fill="x")
         dentro = tk.Frame(cartao, bg=CX["cartao"], padx=16, pady=10)
@@ -449,7 +447,7 @@ class JanelaCaixa(tk.Toplevel):
             texto, nivel = self.ctx.impressao.fila.texto_indicador()
             if nivel == "ok" and self.ctx.impressao.modo() != "termica":
                 texto = ""
-            self.lbl_fila.configure(text=texto, fg={"ok": "#7ee2a8", "aviso": "#ffd24d", "erro": "#ff8a8a"}[nivel])
+            self.lbl_fila.configure(text=texto, fg={"ok": CX["verde"], "aviso": CX["ambar"], "erro": CX["vermelho"]}[nivel])
         except Exception:  # noqa: BLE001 - um indicador nunca pode derrubar o caixa
             self.lbl_fila.configure(text="")
 
@@ -540,7 +538,7 @@ class JanelaCaixa(tk.Toplevel):
         elif recebido and recebido >= total > 0:
             texto, cor = "Concluir acerto", CX["ambar"]
         elif recebido:
-            texto, cor = "Pago em parte", CX["violeta"] if "violeta" in CX else "#b8a1ff"
+            texto, cor = "Pago em parte", CX["violeta"]
         elif v["status"] == "conta_enviada":
             texto, cor = "Conta enviada", CX["ambar"]
         else:
@@ -610,7 +608,7 @@ class JanelaCaixa(tk.Toplevel):
                 txt += f"     Paga neste turno: {fmt.fmt_brl(paga)}"
             if a_pagar and self._comissao_na_linha():
                 txt += "     F12 paga a garota"
-            self.faixa.configure(text=txt, bg=COR_COMISSAO)
+            self.faixa.configure(text=txt, bg=CX["comissao"])
             self.faixa.pack(fill="x", pady=(10, 0), before=self.cartao_entrada)
         else:
             self.faixa.pack_forget()
@@ -1375,7 +1373,7 @@ class JanelaCaixa(tk.Toplevel):
         self.modo_comissao = True
         self.lbl_cod_titulo.configure(text="Garota nº")
         self.lbl_qtd_titulo.configure(text=self.ctx.comissoes.rotulo_valor())
-        self.lbl_desc.configure(foreground=COR_COMISSAO_TEXTO)
+        self.lbl_desc.configure(foreground=CX["comissao_texto"])
         self.ent_qtd.configure(state="normal")
         self.var_cod.set(garota)
         self._comissao_nome()
