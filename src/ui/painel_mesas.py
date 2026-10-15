@@ -1,49 +1,59 @@
-"""Faixa de ícones com as mesas e comandas abertas, no rodapé do caixa.
+"""Painel de mesas e comandas do caixa: a coluna de cartões à esquerda da tela.
 
-Esc (ou F4) leva ao "marcar comanda": o painel aparece e o foco vai para o campo da posição. Cada posição aberta é um
-ícone com o número e o total embaixo: mesinha com garrafa e copo (mesa consumindo), cartão (comanda consumindo), conta
-sobre a bandeja (conta já enviada ao cliente) e um relógio quando está parada além do tempo de inatividade.
-O primeiro ícone é o balcão. A garota com comissão a pagar aparece com uma estrela (ou um selo na própria comanda, se ela
-tem consumo aberto): a comissão fica à vista na mesma tela do balcão. Tudo é desenhado com formas do Tk, sem arquivos de imagem.
+Esc (ou F4) leva ao "marcar comanda": o foco vai para o campo da posição e o painel fica à vista. Cada posição aberta é um
+cartão com o tipo (balcão, comanda, mesa ou garota), o número em destaque, uma linha de identificação (nome da comanda,
+pessoas na mesa, itens ou drinks marcados da garota), a situação em uma pílula colorida e o total. O primeiro cartão é o
+balcão. A garota com comissão a pagar ganha o próprio cartão (ou um selo na comanda dela, se tem consumo aberto): a
+comissão fica à vista na mesma tela do balcão. A busca e as abas (Todas, Abertas, Pago em parte, Aguardando acerto,
+Comissões) só controlam o que aparece; não fecham, cancelam nem transferem nada. Tudo é desenhado com formas do Tk.
 """
 from __future__ import annotations
 
 import math
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk
 from typing import Callable
 
 from src.core import formatacao as fmt
 from src.ui import tema
 from src.ui.caixa_tema import CX, FONTE
+from src.ui.menu_widgets import misturar
 
-LARGURA, ALTURA, MARGEM = 148, 108, 6
-LINHAS_VISIVEIS = 2           # acima disso a faixa rola, para não tomar a tela do caixa
-RESERVA_BARRA = 18            # espaço da barra de rolagem (sobreposta), reservado sempre para a disposição não oscilar
-LARGURA_PADRAO = 900          # antes de a janela ser mostrada o Tk ainda não sabe a largura real
+LARGURA, ALTURA, MARGEM = 204, 146, 8   # a célula de cada cartão (com o espaçamento)
+RESERVA_BARRA = 14                      # espaço da barra de rolagem (sobreposta), reservado sempre para a disposição não oscilar
+LARGURA_PADRAO = 640                    # antes de a janela ser mostrada o Tk ainda não sabe a largura real
+COLUNAS_PADRAO = 3
 
 ESTADOS = {          # cores para o fundo escuro do caixa
-    "consumindo": {"fundo": "#17234d", "borda": "#3d57a8", "texto": CX["texto"]},
-    "parada": {"fundo": "#3a1a2a", "borda": "#a24a5b", "texto": "#ff8a98"},
-    "conta": {"fundo": "#3a2f17", "borda": "#b08a2e", "texto": "#ffcf6e"},
-    "balcao": {"fundo": "#13302a", "borda": "#2e8f6c", "texto": "#5fe0b0"},
-    "garota": {"fundo": "#0f3434", "borda": "#2a9d92", "texto": "#4fd8c6"},
-    "parcial": {"fundo": "#252444", "borda": "#9b7bff", "texto": "#c4b1ff"},
-    "acerto": {"fundo": "#3a2f17", "borda": "#b08a2e", "texto": "#ffcf6e"},
+    "consumindo": {"fundo": "#121b45", "borda": "#34479a", "texto": "#9ab9ff"},
+    "parada": {"fundo": "#34182b", "borda": "#a24a6b", "texto": "#ff8fa6"},
+    "conta": {"fundo": "#33280f", "borda": "#a8832b", "texto": "#ffcf6e"},
+    "balcao": {"fundo": "#0f2c2a", "borda": "#2e8f6c", "texto": "#5fe0b0"},
+    "garota": {"fundo": "#0d3036", "borda": "#2a9d92", "texto": "#4fd8c6"},
+    "parcial": {"fundo": "#211c4a", "borda": "#7d63d6", "texto": "#c4b1ff"},
+    "acerto": {"fundo": "#33280f", "borda": "#a8832b", "texto": "#ffcf6e"},
 }
 ROTULOS_ESTADO = {"consumindo": "Aberta", "parada": "Sem movimento", "conta": "Aguard. acerto",
                   "balcao": "Venda de balcão", "garota": "Acerto pendente", "parcial": "Pago em parte",
                   "acerto": "Concluir acerto"}
+ROTULOS_PILULA = {"consumindo": "Aberta", "parada": "Parada", "conta": "Acerto", "balcao": "Balcão",
+                  "garota": "Comissão", "parcial": "Parcial", "acerto": "Concluir"}
+ROTULOS_TIPO = {"balcao": "BALCÃO", "comanda": "COMANDA", "mesa": "MESA", "garota": "GAROTA"}
+ABAS = (("Todas", "Todas"), ("Abertas", "Abertas"), ("Pago em parte", "Parciais"),
+        ("Aguardando acerto", "Acerto"), ("Comissões", "Comissões"))      # (valor do filtro, rótulo curto da tela estreita)
 
 
 def montar_tiles(mesas: list[dict], balcao: dict | None = None, garotas=()) -> list[dict]:
-    """Modelo dos ícones, sem Tk: o balcão primeiro, depois as mesas e comandas (na ordem recebida) e, por fim, as garotas
+    """Modelo dos cartões, sem Tk: o balcão primeiro, depois as mesas e comandas (na ordem recebida) e, por fim, as garotas
     com comissão a pagar.
 
     `mesas` é o que `CaixaController.mesas()` devolve; `balcao`, a venda de balcão em andamento (ou None); `garotas`, uma
-    lista de {'rotulo': a comanda da garota na notação da loja, 'total_cent': o que há a pagar a ela}. A garota que também
-    tem consumo aberto na comanda não ganha um ícone à parte: o ícone da comanda leva o selo `garota` (o total a pagar). Se a
-    comanda dela está aberta mas vazia (o operador só foi ver ou marcar a comissão), o ícone é o da garota, como seria fora dela."""
+    lista de {'rotulo': a comanda da garota na notação da loja, 'total_cent': o que há a pagar a ela} (e, se houver, 'nome' e
+    'marcacoes'). A garota que também tem consumo aberto na comanda não ganha um cartão à parte: o cartão da comanda leva o
+    selo `garota` (o total a pagar). Se a comanda dela está aberta mas vazia (o operador só foi ver ou marcar a comissão), o
+    cartão é o da garota, como seria fora dela. As chaves de identificação (`nome`, `pessoas`, `itens`, `marcacoes`) só
+    existem quando há o que mostrar."""
     tiles = [{"chave": "0", "rotulo": "Balcão", "tipo": "balcao", "estado": "balcao",
               "total": fmt.fmt_num(balcao["total_cent"]) if balcao and balcao["total_cent"] else "", "minutos": 0}]
     a_pagar = {g["rotulo"]: g for g in garotas}
@@ -66,64 +76,42 @@ def montar_tiles(mesas: list[dict], balcao: dict | None = None, garotas=()) -> l
         g = a_pagar.pop(m["rotulo"], None) if m["comanda"] else None
         if g is not None and m.get("n_itens", 1) == 0:
             tile.update(tipo="garota", estado="garota", total=fmt.fmt_num(g["total_cent"]), minutos=0)
-        elif g is not None:
-            tile["garota"] = fmt.fmt_num(g["total_cent"])
+            _identificar_garota(tile, g)
+        else:
+            if g is not None:
+                tile["garota"] = fmt.fmt_num(g["total_cent"])
+            for chave, valor in (("nome", (m.get("apelido") or m.get("cliente_nome") or "").strip()),
+                                 ("pessoas", m.get("pessoas") or 0), ("itens", m.get("n_itens") or 0)):
+                if valor:
+                    tile[chave] = valor
         tiles.append(tile)
     for g in a_pagar.values():
-        tiles.append({"chave": g["rotulo"], "rotulo": g["rotulo"], "tipo": "garota", "estado": "garota",
-                      "total": fmt.fmt_num(g["total_cent"]), "minutos": 0})
+        tile = {"chave": g["rotulo"], "rotulo": g["rotulo"], "tipo": "garota", "estado": "garota",
+                "total": fmt.fmt_num(g["total_cent"]), "minutos": 0}
+        _identificar_garota(tile, g)
+        tiles.append(tile)
     return tiles
 
 
-# ------------------------------------------------------------------ ícones (caixa de 36 x 32 px)
+def _identificar_garota(tile: dict, g: dict) -> None:
+    if g.get("nome"):
+        tile["nome"] = g["nome"]
+    if g.get("marcacoes"):
+        tile["marcacoes"] = g["marcacoes"]
+
+
+def idade(minutos: int) -> str:
+    """'42 min' ou '1h52': há quanto tempo a posição está aberta sem lançamento."""
+    if minutos < 1:
+        return "agora"
+    return f"{minutos} min" if minutos < 60 else f"{minutos // 60}h{minutos % 60:02d}"
+
+
+# ------------------------------------------------------------------ desenho
 def _cartao(c: tk.Canvas, x1, y1, x2, y2, raio: int = 8, **kw) -> int:
     pontos = [x1 + raio, y1, x2 - raio, y1, x2, y1, x2, y1 + raio, x2, y2 - raio, x2, y2,
               x2 - raio, y2, x1 + raio, y2, x1, y2, x1, y2 - raio, x1, y1 + raio, x1, y1]
     return c.create_polygon(pontos, smooth=True, **kw)
-
-
-def _icone_mesa(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
-    c.create_rectangle(x + 1, y + 17, x + 35, y + 22, fill="#2f87b0", outline="#1b556f", tags=tags)           # tampo
-    for lado in (5, 27):
-        c.create_rectangle(x + lado, y + 22, x + lado + 4, y + 31, fill="#1b556f", outline="", tags=tags)    # pernas
-    c.create_rectangle(x + 11, y + 2, x + 14, y + 8, fill="#2e8b57", outline="#1d5c39", tags=tags)           # gargalo
-    c.create_rectangle(x + 9, y + 8, x + 16, y + 17, fill="#2e8b57", outline="#1d5c39", tags=tags)           # garrafa
-    c.create_polygon(x + 21, y + 8, x + 31, y + 8, x + 29, y + 17, x + 23, y + 17,
-                     fill="#f6c445", outline="#a97b12", tags=tags)                                           # copo
-    c.create_rectangle(x + 21, y + 5, x + 31, y + 8, fill="#ffffff", outline="#cfd6e6", tags=tags)           # espuma
-
-
-def _icone_comanda(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
-    c.create_rectangle(x + 8, y + 1, x + 28, y + 31, fill="#ffffff", outline="#3a5bb5", width=2, tags=tags)
-    c.create_rectangle(x + 9, y + 2, x + 27, y + 9, fill="#3a5bb5", outline="", tags=tags)
-    c.create_oval(x + 16, y + 3, x + 20, y + 7, fill="#ffffff", outline="", tags=tags)                       # furo
-    for i, comprimento in enumerate((14, 14, 8)):
-        c.create_line(x + 12, y + 14 + i * 5, x + 12 + comprimento, y + 14 + i * 5, fill="#8da2d6", width=2, tags=tags)
-
-
-def _icone_conta(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
-    c.create_oval(x + 1, y + 21, x + 35, y + 31, fill="#d99a2b", outline="#8a5a00", tags=tags)               # bandeja
-    c.create_oval(x + 4, y + 22, x + 32, y + 29, fill="#f2c566", outline="", tags=tags)
-    c.create_rectangle(x + 10, y + 2, x + 26, y + 25, fill="#ffffff", outline="#8a5a00", tags=tags)          # conta
-    for i, comprimento in enumerate((10, 10, 6)):
-        c.create_line(x + 13, y + 7 + i * 5, x + 13 + comprimento, y + 7 + i * 5, fill="#b98a3a", width=2, tags=tags)
-
-
-def _icone_balcao(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
-    c.create_polygon(x + 2, y + 3, x + 34, y + 3, x + 31, y + 12, x + 5, y + 12,
-                     fill="#d9534f", outline="#9c2f2c", tags=tags)                                           # toldo
-    for deslocamento in (9, 21):
-        c.create_polygon(x + deslocamento, y + 3, x + deslocamento + 6, y + 3,
-                         x + deslocamento + 5, y + 12, x + deslocamento - 1, y + 12, fill="#ffffff", outline="", tags=tags)
-    c.create_rectangle(x + 5, y + 12, x + 31, y + 31, fill="#3d9a6a", outline="#256a45", tags=tags)
-    c.create_text(x + 18, y + 22, text="$", fill="#ffffff", font=("Segoe UI", 10, "bold"), tags=tags)
-
-
-def _icone_relogio(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
-    cx, cy, cor = x + 30, y + 7, tema.COR["perigo"]
-    c.create_oval(cx - 7, cy - 7, cx + 7, cy + 7, fill="#ffffff", outline=cor, width=2, tags=tags)
-    c.create_line(cx, cy, cx, cy - 4, fill=cor, width=2, tags=tags)
-    c.create_line(cx, cy, cx + 3, cy, fill=cor, width=2, tags=tags)
 
 
 def _estrela(cx: float, cy: float, externo: float, interno: float) -> list[float]:
@@ -135,33 +123,36 @@ def _estrela(cx: float, cy: float, externo: float, interno: float) -> list[float
     return pontos
 
 
-def _icone_garota(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
-    c.create_oval(x + 2, y + 1, x + 34, y + 31, fill="#0b7a6b", outline="#075247", width=2, tags=tags)
-    c.create_polygon(_estrela(x + 18, y + 16.5, 12, 5), fill="#ffd84d", outline="#b8860b", tags=tags)
+def _relogio(c: tk.Canvas, cx: int, cy: int, tags: tuple) -> None:
+    cor = tema.COR["perigo"]
+    c.create_oval(cx - 7, cy - 7, cx + 7, cy + 7, fill="#ffffff", outline=cor, width=2, tags=tags)
+    c.create_line(cx, cy, cx, cy - 4, fill=cor, width=2, tags=tags)
+    c.create_line(cx, cy, cx + 3, cy, fill=cor, width=2, tags=tags)
 
 
-def _selo_garota(c: tk.Canvas, x: int, y: int, tags: tuple) -> None:
-    """Selo no canto do ícone da comanda: a garota dela tem comissão a pagar."""
-    c.create_oval(x, y, x + 15, y + 15, fill="#0b7a6b", outline="#075247", tags=tags)
-    c.create_polygon(_estrela(x + 7.5, y + 7.8, 6, 2.6), fill="#ffd84d", outline="", tags=tags)
-
-
-ICONES = {"mesa": _icone_mesa, "comanda": _icone_comanda, "conta": _icone_conta, "balcao": _icone_balcao,
-          "garota": _icone_garota}
+def _selo_garota(c: tk.Canvas, cx: int, cy: int, tags: tuple) -> None:
+    """Selo no canto do cartão da comanda: a garota dela tem comissão a pagar."""
+    c.create_oval(cx - 8, cy - 8, cx + 8, cy + 8, fill="#0b7a6b", outline="#075247", tags=tags)
+    c.create_polygon(_estrela(cx, cy + 0.3, 6.2, 2.7), fill="#ffd84d", outline="", tags=tags)
 
 
 class PainelMesas(ttk.Frame):
-    """Os ícones, a navegação por teclado (setas, Enter, T, digitar o número) e o clique do mouse.
+    """Os cartões, a busca, as abas, a navegação por teclado (setas, Enter, T, digitar o número) e o clique do mouse.
 
-    Quem usa só informa o que fazer ao escolher um ícone (`ao_escolher`), ao pedir para transferir outras posições
+    Quem usa só informa o que fazer ao escolher um cartão (`ao_escolher`), ao pedir para transferir outras posições
     para ele (`ao_transferir`), ao voltar para o campo da posição (`ao_voltar`) e ao digitar um número ou a letra C
-    com o foco no painel (`ao_digitar`, que passa o caractere ao campo da posição)."""
+    com o foco no painel (`ao_digitar`, que passa o caractere ao campo da posição). `colunas` é quantos cartões cabem por
+    linha (3 na tela larga, 2 no notebook, 1 na tela pequena)."""
+
+    LARGURA_CARTAO = LARGURA              # para quem dimensiona a janela: a largura de cada coluna de cartões
+    RESERVA = RESERVA_BARRA + 4           # e o que sobra para a barra de rolagem e a margem
 
     def __init__(self, master, ao_escolher: Callable[[str], None], ao_transferir: Callable[[str], None],
-                 ao_voltar: Callable[[], None], ao_digitar: Callable[[str], None]):
+                 ao_voltar: Callable[[], None], ao_digitar: Callable[[str], None], colunas: int = COLUNAS_PADRAO):
         super().__init__(master, style="Cx.TFrame")
         self._ao_escolher, self._ao_transferir = ao_escolher, ao_transferir
         self._ao_voltar, self._ao_digitar = ao_voltar, ao_digitar
+        self.colunas = colunas
         self._tiles: list[dict] = []
         self._todos_tiles: list[dict] = []
         self._atual: str | None = None        # a posição que está na tela do caixa (borda grossa)
@@ -169,35 +160,45 @@ class PainelMesas(ttk.Frame):
         self._com_foco = False
         self._assinatura = None
         self._largura = 0
+        self._altura = 0
         self._altura_total = 0
-        self._por_linha = 1
+        self._por_linha = max(1, colunas)
         self._id_redesenho = None
-        self._janela = self.winfo_toplevel()
-        self._id_config_janela = self._janela.bind("<Configure>",
-            lambda e: self._agendar() if e.widget is self._janela else None, add="+")
+        self._f_pilula = tkfont.Font(self, font=(FONTE, 8, "bold"))
+        self.configure(width=colunas * LARGURA + RESERVA_BARRA + 4)
+        self.pack_propagate(False)
 
-        cabecalho = ttk.Frame(self, style="Cx.TFrame")
-        cabecalho.pack(fill="x")
-        ttk.Label(cabecalho, text="MESAS E COMANDAS", style="Cx.Rotulo.TLabel").pack(side="left")
-        self.lbl_resumo = ttk.Label(cabecalho, text="", font=(FONTE, 9), style="Cx.TLabel", foreground=CX["suave"])
-        self.lbl_resumo.pack(side="right")
-        filtros = ttk.Frame(self, style="Cx.TFrame")
-        filtros.pack(fill="x", pady=(6, 6))
-        ttk.Label(filtros, text="Buscar número", style="Cx.TLabel").pack(side="left")
+        self.topo = tk.Frame(self, bg=CX["fundo"])
+        self.topo.pack(fill="x")
+        self.titulos = tk.Frame(self.topo, bg=CX["fundo"])
+        tk.Label(self.titulos, text="Mesas e comandas", bg=CX["fundo"], fg=CX["texto"], font=(FONTE, 15, "bold")).pack(anchor="w")
+        tk.Label(self.titulos, text="Esc ou F4 busca  ·  clique ou digite o número + Enter", bg=CX["fundo"], fg=CX["suave"],
+                 font=(FONTE, 9)).pack(anchor="w", pady=(2, 0))
         self.var_busca = tk.StringVar(self)
-        self.ent_busca = ttk.Entry(filtros, textvariable=self.var_busca, width=10, style="Cx.TEntry")
-        self.ent_busca.pack(side="left", padx=(8, 12))
+        self.busca = tk.Frame(self.topo, bg=CX["fundo"])
+        self.ent_busca = ttk.Entry(self.busca, textvariable=self.var_busca, width=24, font=(FONTE, 11), style="Cx.TEntry")
+        self.ent_busca.pack(fill="x")
+        self.dica_busca = tk.Label(self.ent_busca, text="Buscar nº (ex.: 12 ou M5)", bg=CX["campo"], fg=CX["mudo"], font=(FONTE, 11))
+        self.dica_busca.place(x=8, rely=0.5, anchor="w")
+        self.topo.columnconfigure(0, weight=1)
+
         self.var_estado = tk.StringVar(self, value="Todas")
-        self.filtro_estado = ttk.Combobox(filtros, textvariable=self.var_estado, state="readonly", width=20,
-                                         values=("Todas", "Abertas", "Pago em parte", "Aguardando acerto", "Comissões"),
-                                         font=(FONTE, 10), style="Cx.TCombobox")
-        self.filtro_estado.pack(side="left")
-        ttk.Label(filtros, text="Setas + Enter escolhem", font=(FONTE, 9), style="Cx.TLabel",
-                  foreground=CX["suave"]).pack(side="right")
-        c = self.canvas = tk.Canvas(self, height=ALTURA + 2 * MARGEM, bg=CX["fundo"], bd=0, takefocus=True,
-                                    highlightthickness=1, highlightbackground=CX["borda"],
-                                    highlightcolor=CX["azul"], yscrollincrement=ALTURA)
-        c.pack(fill="x")
+        self.faixa = tk.Frame(self, bg=CX["fundo"])
+        self.faixa.pack(fill="x", pady=(10, 8))
+        self._abas: dict[str, tk.Label] = {}
+        for valor, curto in ABAS:
+            aba = tk.Label(self.faixa, text=valor, bg=CX["cartao"], fg=CX["texto"], font=(FONTE, 10, "bold"), padx=12, pady=6,
+                           cursor="hand2")
+            aba.bind("<Button-1>", lambda e, v=valor: self.var_estado.set(v))
+            aba.bind("<Enter>", lambda e, v=valor: self._pintar_abas(passando=v))
+            aba.bind("<Leave>", lambda e: self._pintar_abas())
+            self._abas[valor] = aba
+
+        self.lbl_resumo = ttk.Label(self, text="", font=(FONTE, 9), style="Cx.TLabel", foreground=CX["suave"])
+        self.lbl_resumo.pack(side="bottom", anchor="w", pady=(6, 0))
+        c = self.canvas = tk.Canvas(self, bg=CX["fundo"], bd=0, takefocus=True, highlightthickness=1,
+                                    highlightbackground=CX["fundo"], highlightcolor=CX["azul"], yscrollincrement=ALTURA)
+        c.pack(fill="both", expand=True)
         self.barra = ttk.Scrollbar(c, orient="vertical", command=c.yview, style="Cx.Vertical.TScrollbar")    # sobreposta ao canvas (place)
         c.configure(yscrollcommand=self.barra.set)
         c.bind("<Configure>", self._ao_configurar)
@@ -215,12 +216,73 @@ class PainelMesas(ttk.Frame):
         self.var_estado.trace_add("write", lambda *_: self._filtrar(reiniciar=True))
         self.ent_busca.bind("<Return>", lambda e: (self.focar(), "break")[1])
         self.ent_busca.bind("<Escape>", lambda e: (self.var_busca.set(""), self._ao_voltar(), "break")[2])
+        self.ent_busca.bind("<FocusIn>", lambda e: self._pintar_dica())
+        self.ent_busca.bind("<FocusOut>", lambda e: self._pintar_dica())
+        self.dica_busca.bind("<Button-1>", lambda e: self.ent_busca.focus_set())
+        self._largura_painel = 0
+        self.bind("<Configure>", self._ao_dimensionar)
+        self._dispor(self.winfo_reqwidth())
+        self._pintar_abas()
+
+    # -------------------------------------------------------------- disposição responsiva
+    def definir_colunas(self, colunas: int) -> None:
+        """Muda a largura do painel para `colunas` cartões por linha (a janela do caixa chama ao ser redimensionada)."""
+        colunas = max(1, colunas)
+        if colunas != self.colunas:
+            self.colunas = colunas
+            self.configure(width=colunas * LARGURA + RESERVA_BARRA + 4)
+
+    def _ao_dimensionar(self, ev) -> None:
+        if ev.widget is self and ev.width != self._largura_painel:
+            self._dispor(ev.width)
+
+    def _dispor(self, largura: int) -> None:
+        """Reorganiza o cabeçalho e as abas conforme a largura: o título e a busca dividem a linha só se couberem, e as abas
+        quebram de linha (com o texto curto quando a largura é pequena)."""
+        self._largura_painel = largura
+        for filho in (self.titulos, self.busca):
+            filho.grid_forget()
+        if largura >= 560:
+            self.titulos.grid(row=0, column=0, sticky="w")
+            self.busca.grid(row=0, column=1, sticky="ne", pady=(2, 0))
+        else:
+            self.titulos.grid(row=0, column=0, columnspan=2, sticky="w")
+            self.busca.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        longas = largura >= 600
+        x, linha, coluna = 0, 0, 0
+        for valor, curto in ABAS:
+            aba = self._abas[valor]
+            aba.grid_forget()
+            aba.configure(text=valor if longas else curto, padx=12 if longas else 8, font=(FONTE, 10 if longas else 9, "bold"))
+            aba.update_idletasks()
+            largura_aba = aba.winfo_reqwidth() + 6
+            if coluna and x + largura_aba > largura - 4:
+                linha, coluna, x = linha + 1, 0, 0
+            aba.grid(row=linha, column=coluna, padx=(0, 6), pady=(0, 6) if linha else 0, sticky="w")
+            x, coluna = x + largura_aba, coluna + 1
+
+    # -------------------------------------------------------------- abas e busca
+    def _pintar_abas(self, passando: str | None = None) -> None:
+        ativa = self.var_estado.get()
+        for valor, aba in self._abas.items():
+            if valor == ativa:
+                aba.configure(bg=CX["azul"], fg="#0b1330")
+            else:
+                aba.configure(bg=CX["cartao2"] if valor == passando else CX["cartao"], fg=CX["texto"])
+
+    def _pintar_dica(self) -> None:
+        """O texto-guia da busca só aparece com o campo vazio e sem o foco."""
+        vazio = not self.var_busca.get() and self.focus_get() is not self.ent_busca
+        if vazio:
+            self.dica_busca.place(x=8, rely=0.5, anchor="w")
+        else:
+            self.dica_busca.place_forget()
 
     # -------------------------------------------------------------- dados
     def atualizar(self, mesas: list[dict], balcao: dict | None = None, atual: str | None = None, garotas=()) -> None:
         tiles = montar_tiles(mesas, balcao, garotas)
         assinatura = ([(t["chave"], t["tipo"], t["estado"], t["total"], t.get("garota"), t.get("falta"),
-                       t["minutos"]) for t in tiles], atual)
+                        t["minutos"], t.get("nome"), t.get("pessoas"), t.get("itens"), t.get("marcacoes")) for t in tiles], atual)
         if assinatura == self._assinatura:
             return
         self._assinatura = assinatura
@@ -234,7 +296,8 @@ class PainelMesas(ttk.Frame):
         grupos = {"Abertas": {"consumindo", "parada"}, "Pago em parte": {"parcial"},
                   "Aguardando acerto": {"conta", "acerto", "garota"}, "Comissões": {"garota"}}
         estados = grupos.get(self.var_estado.get())
-        self._tiles = [t for t in self._todos_tiles if (not busca or busca in t["rotulo"].lower())
+        self._tiles = [t for t in self._todos_tiles
+                       if (not busca or busca in t["rotulo"].lower() or busca in (t.get("nome") or "").lower())
                        and (estados is None or t["estado"] in estados or
                             self.var_estado.get() == "Comissões" and t.get("garota"))]
         if self._cursor not in {t["chave"] for t in self._tiles}:
@@ -242,12 +305,25 @@ class PainelMesas(ttk.Frame):
         parciais = sum(t["estado"] == "parcial" for t in self._todos_tiles)
         acertos = sum(t["estado"] in {"conta", "acerto", "garota"} for t in self._todos_tiles)
         self.lbl_resumo.configure(text=f"Posições: {len(self._todos_tiles) - 1}  |  Parciais: {parciais}  |  Acertos: {acertos}")
+        self._pintar_abas()
+        self._pintar_dica()
         if reiniciar:
             self.canvas.yview_moveto(0)
         self._desenhar()
 
     def tiles(self) -> list[dict]:
         return [dict(t) for t in self._tiles]
+
+    def vizinha(self, chave: str | None, passo: int) -> str | None:
+        """A chave do cartão `passo` posições depois (ou antes, se negativo) de `chave`, na lista que está à vista (respeita a
+        aba e a busca). Sem `chave` na lista, `passo` positivo dá o primeiro cartão e negativo, o último. Nas pontas não dá
+        a volta: devolve a própria `chave`."""
+        chaves = [t["chave"] for t in self._tiles]
+        if not chaves:
+            return None
+        if chave not in chaves:
+            return chaves[0] if passo > 0 else chaves[-1]
+        return chaves[max(0, min(len(chaves) - 1, chaves.index(chave) + passo))]
 
     def _tipo(self, chave: str | None) -> str | None:
         return next((t["tipo"] for t in self._tiles if t["chave"] == chave), None)
@@ -256,7 +332,7 @@ class PainelMesas(ttk.Frame):
         return self._cursor
 
     def focar(self, chave: str | None = None) -> None:
-        """Põe o foco do teclado no painel, no ícone `chave` (ou no atual, ou no primeiro)."""
+        """Põe o foco do teclado no painel, no cartão `chave` (ou no atual, ou no primeiro)."""
         chaves = [t["chave"] for t in self._tiles]
         for candidata in (chave, self._cursor, self._atual):
             if candidata in chaves:
@@ -271,7 +347,7 @@ class PainelMesas(ttk.Frame):
 
     # ------------------------------------------------------------- desenho
     def _ao_configurar(self, ev) -> None:
-        if ev.width != self._largura:         # só a largura muda a disposição dos ícones
+        if ev.width != self._largura or ev.height != self._altura:      # a largura muda a disposição; a altura, a rolagem
             self._agendar()
 
     def _agendar(self) -> None:
@@ -286,7 +362,6 @@ class PainelMesas(ttk.Frame):
             pass
 
     def destroy(self) -> None:
-        self._janela.unbind("<Configure>", self._id_config_janela)
         if self._id_redesenho is not None:
             try:
                 self.after_cancel(self._id_redesenho)
@@ -298,16 +373,12 @@ class PainelMesas(ttk.Frame):
         c = self.canvas
         c.delete("all")
         largura = c.winfo_width() if c.winfo_width() > 1 else LARGURA_PADRAO
-        self._largura = largura
-        self._por_linha = max(1, (largura - 2 * MARGEM - RESERVA_BARRA) // LARGURA)
+        self._largura, self._altura = largura, c.winfo_height()
+        self._por_linha = max(1, (largura - RESERVA_BARRA) // LARGURA)
         linhas = max(1, -(-len(self._tiles) // self._por_linha))
-        self._altura_total = linhas * ALTURA + 2 * MARGEM
-        # com rolagem, a margem de baixo some: senão o topo da linha seguinte aparece cortado
-        altura_janela = self.winfo_toplevel().winfo_height()
-        limite_linhas = 1 if 1 < altura_janela < 680 else LINHAS_VISIVEIS
-        visivel = min(linhas, limite_linhas) * ALTURA + (2 * MARGEM if linhas <= limite_linhas else MARGEM)
-        c.configure(height=visivel, scrollregion=(0, 0, largura, self._altura_total))
-        if self._altura_total > visivel:
+        self._altura_total = linhas * ALTURA + MARGEM
+        c.configure(scrollregion=(0, 0, largura, self._altura_total))
+        if self._altura_total > max(self._altura, 1) and self._altura > 1:
             self.barra.place(relx=1.0, rely=0.0, relheight=1.0, anchor="ne")
         else:
             self.barra.place_forget()
@@ -320,34 +391,77 @@ class PainelMesas(ttk.Frame):
         self._marcar_cursor()
 
     def _posicao(self, i: int) -> tuple[int, int]:
-        return MARGEM + (i % self._por_linha) * LARGURA, MARGEM + (i // self._por_linha) * ALTURA
+        return (i % self._por_linha) * LARGURA, (i // self._por_linha) * ALTURA
+
+    def _detalhes(self, t: dict) -> tuple[str, str, str, str]:
+        """(linha de identificação, cor dela, aviso em destaque, cor do aviso) do cartão."""
+        if t["tipo"] == "balcao":
+            return "Venda rápida", CX["suave"], "", ""
+        if t["tipo"] == "garota":
+            n = t.get("marcacoes")
+            if n:
+                return (f"{n} drinks marcados" if n != 1 else "1 drink marcado"), CX["suave"], "", ""
+            return ("Comissão a pagar" if t.get("nome") else ""), CX["suave"], "", ""
+        if t.get("nome"):
+            ident = t["nome"]
+        elif t.get("pessoas"):
+            ident = f"{t['pessoas']} pessoas" if t["pessoas"] != 1 else "1 pessoa"
+        elif t.get("itens"):
+            ident = f"{t['itens']} itens" if t["itens"] != 1 else "1 item"
+        else:
+            ident = ""
+        if t.get("falta"):
+            return ident, CX["suave"], f"Falta R$ {t['falta']}", CX["ambar"]
+        if t["estado"] == "parada":
+            return ident, CX["suave"], f"{t['minutos']} min sem lançar", CX["vermelho"]
+        if t.get("garota"):
+            return ident, CX["suave"], f"Comissão R$ {t['garota']}", ESTADOS["garota"]["texto"]
+        return ident, CX["suave"], "", ""
 
     def _desenhar_tile(self, i: int, t: dict) -> None:
         c = self.canvas
         x, y = self._posicao(i)
         marca = (f"t:{t['chave']}", "tile")        # o prefixo evita que "5" seja tomado por número de item do Tk
-        estilo = ESTADOS[t["estado"]]
+        e = ESTADOS[t["estado"]]
         atual = t["chave"] == self._atual
-        _cartao(c, x + 3, y + 3, x + LARGURA - 3, y + ALTURA - 3, fill=estilo["fundo"],
-                outline=CX["azul"] if atual else estilo["borda"], width=3 if atual else 1,
-                tags=marca + ("fundo",))
-        ox, oy = x + 10, y + 8
+        x1, y1, x2, y2 = x + 4, y + 4, x + LARGURA - 4, y + ALTURA - 4
+        _cartao(c, x1, y1, x2, y2, raio=14, fill=e["fundo"], outline=CX["azul"] if atual else e["borda"],
+                width=3 if atual else 1, tags=marca + ("fundo",))
+        pad = 14
+        esquerda, direita = x1 + pad, x2 - pad
         tipo_icone = "conta" if t["estado"] == "conta" else t["tipo"]
-        ICONES[tipo_icone](c, ox, oy, marca + ("icone", f"icone:{tipo_icone}"))
+        rotulo_tipo = ROTULOS_TIPO[t["tipo"]] + (f" {t['rotulo']}" if t["tipo"] == "garota" and t.get("nome") else "")
+        c.create_text(esquerda, y1 + 17, text=rotulo_tipo, anchor="w", font=(FONTE, 8, "bold"), fill=CX["suave"],
+                      tags=marca + ("icone", f"icone:{tipo_icone}"))
         if t["estado"] == "parada":
-            _icone_relogio(c, ox, oy, marca + ("relogio",))
+            _relogio(c, direita - 7, y1 + 17, marca + ("relogio",))
+            direita -= 22
         if t.get("garota"):
-            _selo_garota(c, x + LARGURA - 22, y + 7, marca + ("selo",))
-        c.create_text(x + 52, y + 23, text=t["rotulo"], anchor="w", font=(FONTE, 12, "bold"),
-                      fill=estilo["texto"], tags=marca + ("rotulo",))
-        if t["total"]:
-            c.create_text(x + 12, y + 51, text=f"R$ {t['total']}", anchor="w", font=(FONTE, 11, "bold"),
+            _selo_garota(c, direita - 8, y1 + 17, marca + ("selo",))
+            direita -= 22
+        if t["tipo"] in ("comanda", "mesa") and t["minutos"] is not None:
+            c.create_text(direita, y1 + 17, text=idade(t["minutos"]), anchor="e", font=(FONTE, 9),
+                          fill=CX["vermelho"] if t["estado"] == "parada" else CX["suave"], tags=marca + ("idade",))
+        titulo = t["nome"] if t["tipo"] == "garota" and t.get("nome") else t["rotulo"]
+        c.create_text(esquerda, y1 + 47, text=titulo, anchor="w", font=(FONTE, 22 if len(titulo) <= 8 else 16, "bold"),
+                      fill=CX["texto"], tags=marca + ("rotulo",))
+        ident, cor_ident, aviso, cor_aviso = self._detalhes(t)
+        if ident:
+            c.create_text(esquerda, y1 + 78, text=ident, anchor="w", font=(FONTE, 9), fill=cor_ident, tags=marca + ("identificacao",))
+        if aviso:
+            c.create_text(esquerda, y1 + 95, text=aviso, anchor="w", font=(FONTE, 8, "bold"), fill=cor_aviso, tags=marca + ("detalhe",))
+        # pílula da situação (à esquerda) e total (à direita), na linha de baixo
+        baixo = y2 - 20
+        texto = ROTULOS_PILULA[t["estado"]]
+        largura_pilula = self._f_pilula.measure(texto) + 18
+        _cartao(c, esquerda, baixo - 10, esquerda + largura_pilula, baixo + 10, raio=10,
+                fill=misturar(e["borda"], e["fundo"], 0.62), outline=e["borda"], tags=marca + ("pilula",))
+        c.create_text(esquerda + largura_pilula / 2, baixo, text=texto, font=(FONTE, 8, "bold"), fill=e["texto"],
+                      tags=marca + ("estado",))
+        total = t["total"] or ("0,00" if t["tipo"] == "balcao" else "")
+        if total:
+            c.create_text(x2 - pad, baixo, text=f"R$ {total}", anchor="e", font=(FONTE, 11, "bold"),
                           fill=CX["texto"], tags=marca + ("total",))
-        c.create_text(x + 12, y + 73, text=ROTULOS_ESTADO[t["estado"]], anchor="w", font=(FONTE, 9, "bold"),
-                      fill=estilo["texto"], tags=marca + ("estado",))
-        detalhe = f"Falta R$ {t['falta']}" if t.get("falta") else f"{t['minutos']} min sem lançar" if t["estado"] == "parada" else ""
-        if detalhe:
-            c.create_text(x + 12, y + 92, text=detalhe, anchor="w", font=(FONTE, 8), fill=CX["suave"], tags=marca + ("detalhe",))
 
     def _marcar_cursor(self) -> None:
         c = self.canvas
@@ -362,14 +476,14 @@ class PainelMesas(ttk.Frame):
         chaves = [t["chave"] for t in self._tiles]
         if chave not in chaves or self._altura_total <= 0:
             return
-        topo = MARGEM + (chaves.index(chave) // self._por_linha) * ALTURA
+        topo = (chaves.index(chave) // self._por_linha) * ALTURA
         base = topo + ALTURA
         janela_topo = self.canvas.canvasy(0)
         janela_base = janela_topo + self.canvas.winfo_height()
         if topo < janela_topo:
-            self.canvas.yview_moveto(max(0.0, (topo - MARGEM) / self._altura_total))
-        elif base + MARGEM > janela_base:
-            self.canvas.yview_moveto(max(0.0, (base + MARGEM - self.canvas.winfo_height()) / self._altura_total))
+            self.canvas.yview_moveto(max(0.0, topo / self._altura_total))
+        elif base > janela_base:
+            self.canvas.yview_moveto(max(0.0, (base - self.canvas.winfo_height()) / self._altura_total))
 
     # --------------------------------------------------- mouse e teclado
     def _chave_do_item_atual(self) -> str | None:
@@ -416,7 +530,7 @@ class PainelMesas(ttk.Frame):
             self._mover(self._por_linha)
         elif k == "Up":
             if self._cursor in chaves and chaves.index(self._cursor) < self._por_linha:
-                self._ao_voltar()              # no alto da faixa, a seta para cima volta ao campo da posição
+                self._ao_voltar()              # no alto do painel, a seta para cima volta ao campo da posição
             else:
                 self._mover(-self._por_linha)
         elif k in ("Home", "End"):

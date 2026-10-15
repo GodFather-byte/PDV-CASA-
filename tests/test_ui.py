@@ -716,14 +716,13 @@ class TesteFluxosCaixa(BaseUI):
         self.sem_travar()
 
     def test_muitos_icones_quebram_em_linhas_e_rolam(self):
-        from src.ui.painel_mesas import ALTURA, MARGEM
         for n in range(1, 61):
             v, _ = self.ctx.caixa.abrir_mesa(n, comanda=True)
             self.ctx.caixa.adicionar_item(v, self.skol, 1)
         self.cx.carregar_mesas(); self.cx.update()
         p = self.cx.painel_mesas
         self.assertEqual(len(p.tiles()), 61)                          # 60 comandas e o balcão
-        self.assertEqual(int(p.canvas.cget("height")), 2 * ALTURA + MARGEM)      # só duas linhas à vista
+        self.assertGreater(p._altura_total, p.canvas.winfo_height())  # não cabem na coluna: o painel rola
         self.assertEqual(p.barra.winfo_manager(), "place")            # e a barra de rolagem aparece
         p.focar("C1")
         p._tecla(SimpleNamespace(keysym="End", char=""))

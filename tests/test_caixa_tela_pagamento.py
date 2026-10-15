@@ -275,12 +275,17 @@ class TesteSeletorDePagamento(BasePagamento):
 
 
 class TesteTelaDoCaixa(BasePagamento):
-    def test_acoes_secundarias_ficam_em_mais_opcoes_e_continuam_funcionando(self):
+    def test_acoes_do_dia_a_dia_ficam_a_vista_e_as_demais_em_mais_opcoes(self):
         self.assertEqual([t[0] for t in self.cx.tarefas[:3]],
                          ["Pagar (F12)", "Lançar produto", "Escolher comanda (F4)"])
+        fixos = self.cx._n_fixos
+        nomes = [t[0] for t in self.cx.tarefas]
+        for esperado in ("Pré-Conta (F8)", "Transfere (F10)", "Repique (F9)", "Comissões", "Sangria (F7)", "Gaveta (F11)",
+                         "Consulta Comanda", "Cancelar"):
+            self.assertLess(nomes.index(esperado), fixos, esperado)
         self.assertFalse(self.cx.opcoes.winfo_viewable())
-        self.assertTrue(all(b.winfo_viewable() for b in self.cx.botoes_tarefa[:3]))
-        self.assertTrue(all(not b.winfo_viewable() for b in self.cx.botoes_tarefa[3:-1]))
+        self.assertTrue(all(b.winfo_viewable() for b in self.cx.botoes_tarefa[:fixos]))     # a coluna da direita
+        self.assertTrue(all(not b.winfo_viewable() for b in self.cx.botoes_tarefa[fixos:-1]))   # o resto, só na janela
         leitor = self.cx.leitor
         self.cx.btn_opcoes.invoke(); self.cx.update()
         self.assertTrue(self.cx.opcoes.winfo_viewable())
@@ -293,7 +298,7 @@ class TesteTelaDoCaixa(BasePagamento):
     def test_navegacao_por_setas_abre_opcoes_e_esc_preserva_a_venda(self):
         venda_id = self.cx.venda_id
         self.cx._entrar_barra()
-        for _ in range(3):
+        for _ in range(self.cx._n_fixos):                 # passa pelas ações à vista e chega às de "Mais opções"
             self.cx._barra_mover(1)
         self.cx.update()
         self.assertTrue(self.cx.opcoes.winfo_viewable())
@@ -364,7 +369,7 @@ class TesteTelaDoCaixa(BasePagamento):
         self.assertIn("tot", self.cx.grade.tree.cget("displaycolumns"))
         self.assertTrue(self.cx.botoes_tarefa[0].winfo_viewable())
         p = self.cx.painel_mesas
-        self.assertLess(int(p.canvas.cget("height")), 200)
+        self.assertGreater(p._altura_total, p.canvas.winfo_height())      # as comandas não cabem: o painel rola
         p.focar(); p._tecla(SimpleNamespace(keysym="End", char=""))
         self.assertGreater(p.canvas.yview()[0], 0)
         antes = p.canvas.yview()[0]

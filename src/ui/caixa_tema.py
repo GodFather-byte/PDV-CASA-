@@ -7,12 +7,12 @@ from tkinter import ttk
 
 from src.ui.menu_widgets import PAL, FONTE, misturar
 
-CX = {
-    "fundo": PAL["fundo"], "cabecalho": PAL["cabecalho"], "cartao": PAL["cartao"], "cartao2": PAL["cartao_hover"],
-    "borda": PAL["borda"], "texto": PAL["texto"], "suave": PAL["suave"], "mudo": PAL["mudo"],
+CX = {      # o azul-noite do caixa: mais saturado que o do menu, para os cartões de comanda se destacarem
+    "fundo": "#0a1029", "cabecalho": "#0c1432", "cartao": "#111a40", "cartao2": "#1a2656",
+    "borda": "#25336e", "texto": PAL["texto"], "suave": PAL["suave"], "mudo": PAL["mudo"],
     "azul": PAL["azul"], "verde": PAL["verde"], "ambar": PAL["ambar"], "vermelho": PAL["vermelho"],
-    "turquesa": PAL["turquesa"], "campo": "#0b1330", "linha_par": "#16204a", "selecao": "#2a4fb0",
-    "botao": "#1b2756", "botao_hover": "#2a3c80",
+    "turquesa": PAL["turquesa"], "campo": "#0a1030", "linha_par": "#141e4a", "selecao": "#2a4fb0",
+    "botao": "#17224f", "botao_hover": "#26367c",
 }
 
 
@@ -43,11 +43,19 @@ def aplicar(root) -> None:
           foreground=[("disabled", c["mudo"])])
     s.configure("Cx.Sel.TButton", background=c["ambar"], foreground="#10131f", **base)       # escolhido pelo teclado (setas)
     s.map("Cx.Sel.TButton", background=[("active", misturar(c["ambar"], "#ffffff", 0.2))])
-    s.configure("Cx.Perigo.TButton", background=misturar(c["botao"], c["vermelho"], 0.18), foreground="#ffb3bb", **base)
-    s.map("Cx.Perigo.TButton", background=[("active", misturar(c["botao"], c["vermelho"], 0.38))])
+    s.configure("Cx.Perigo.TButton", background=misturar(c["fundo"], c["vermelho"], 0.2), foreground="#ffb3bb", **base)
+    s.map("Cx.Perigo.TButton", background=[("active", misturar(c["fundo"], c["vermelho"], 0.4))])
+    s.configure("Cx.Mini.TButton", background=c["botao"], foreground=c["texto"], **dict(base, padding=(4, 1), font=(FONTE, 8, "bold")))
+    s.map("Cx.Mini.TButton", background=[("active", c["botao_hover"]), ("disabled", c["cartao"])])
     forte = dict(base, padding=(12, 10), font=(FONTE, 15, "bold"))
     s.configure("Cx.Pagar.TButton", background=c["verde"], foreground="#04241a", **forte)
     s.map("Cx.Pagar.TButton", background=[("active", misturar(c["verde"], "#ffffff", 0.25)), ("disabled", c["cartao"])])
+    acao = dict(base, padding=(6, 11), font=(FONTE, 10, "bold"))              # as ações do dia a dia, na coluna da direita
+    s.configure("Cx.Acao.TButton", background=c["botao"], foreground=c["texto"], **acao)
+    s.map("Cx.Acao.TButton", background=[("active", c["botao_hover"]), ("disabled", c["cartao"])],
+          foreground=[("disabled", c["mudo"])])
+    s.configure("Cx.AcaoPerigo.TButton", background=misturar(c["fundo"], c["vermelho"], 0.2), foreground="#ffb3bb", **acao)
+    s.map("Cx.AcaoPerigo.TButton", background=[("active", misturar(c["fundo"], c["vermelho"], 0.4))])
     medio = dict(base, padding=(12, 9), font=(FONTE, 11, "bold"))
     s.configure("Cx.Principal.TButton", background=c["botao"], foreground=c["texto"], **medio)
     s.map("Cx.Principal.TButton", background=[("active", c["botao_hover"])])
