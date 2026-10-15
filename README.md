@@ -89,18 +89,30 @@ impressão RAW do Windows precisa de `pip install -r requirements.txt`.
 
 ## A tela do caixa
 
-Visual escuro alinhado ao menu principal. Na **direita**: o **total a pagar** em destaque (com o troco), o valor já recebido
-e o que falta receber quando há pagamentos, e três ações principais: **Pagar (F12)**, **Lançar produto** e
-**Escolher comanda (F4)**. **Mais opções** reúne pré-conta, transferências, comissões, cancelamento e as operações de caixa
-(sangria, gaveta, impressora, balança, leitor e fechamento do turno). Os atalhos F continuam funcionando, inclusive em
-Mais opções; as setas abrem esse painel quando chegam a uma ação secundária. **Sair** permanece no cabeçalho.
-Na **esquerda**: a comanda/mesa e a venda atual,
-o cartão de **entrada do item** (código, descrição, quantidade e preço, com a dica das teclas), a lista de itens (com um convite
-quando está vazia) e, embaixo, os cartões das mesas e comandas. Cada cartão mostra o número, o total e a situação por texto
-e cor: aberta, pagamento parcial (com saldo pendente), conta enviada aguardando acerto, sem movimento ou comissão a pagar.
-Uma comanda com pagamentos suficientes permanece aberta até o operador concluir o acerto. Há busca por número e filtro
-por situação. **Enter** com código vazio entra na barra de ações. Em telas menores os campos encolhem, a tabela mantém
-quantidade e total visíveis (observações continuam pelo atalho O) e o painel de comandas usa uma linha com rolagem.
+Visual escuro em três colunas, no azul-noite do menu principal.
+
+- **Cabeçalho:** a casa e os indicadores do turno: posições **abertas**, as **aguardando acerto** (conta enviada, pagamento
+  suficiente ou comissão a pagar), o que está **em aberto na casa** e o turno com o operador e a hora. **Sair** fica no canto.
+- **Esquerda, "Mesas e comandas":** cartões grandes de cada posição aberta, com a **busca** (número, `M5` ou o nome da
+  comanda) e as **abas** Todas, Abertas, Pago em parte, Aguardando acerto e Comissões. O cartão mostra o tipo, o número em
+  destaque, a identificação (nome da comanda, pessoas na mesa, itens ou "N drinks marcados" da garota), a situação numa pílula
+  colorida (Aberta, Parada, Acerto, Parcial, Concluir, Comissão), o total e há quanto tempo está aberta. O da **garota** traz o
+  nome e o número dela; a comanda com consumo e comissão a pagar ganha o selo de estrela. As colunas de cartões (3, 2 ou 1)
+  acompanham a largura da janela. Busca e abas só controlam o que aparece: não fecham, cancelam nem transferem nada.
+- **Centro, venda atual:** o título (`Comanda 12 · Carlos`) com o **selo da situação** (Aberta, Conta enviada, Pago em parte,
+  Concluir acerto), a linha de **entrada do item** (código, descrição, quantidade e preço, com o texto-guia) e a lista de itens
+  (Produto, Preço, Qtd e Total; a observação aparece em janela larga e continua pelo atalho **O**).
+- **Direita:** o **total a pagar** com a origem do acréscimo embaixo (serviço, taxa, taxa do crédito, desconto), o valor
+  já recebido, **Pagar (F12)** e as ações do dia a dia em duas colunas: Lançar produto, Escolher comanda (F4), Pré-conta (F8),
+  Transfere (F10), Repique (F9), Comissões, Sangria (F7), Gaveta (F11), Consulta comanda e Cancelar. **Mais opções** reúne
+  Nomear comanda, delivery, caderneta, impressora, balança, leitor e o fechamento do turno. Os atalhos F valem também lá;
+  as setas abrem essa janela quando chegam a uma ação dela. **Enter** com código vazio entra na barra de ações.
+
+**Navegar pelas comandas** (clientes e garotas): **PgDn** e **PgUp**, ou os botões ▶ e ◀ ao lado de "Venda atual", vão para a
+comanda seguinte ou anterior da lista do painel, respeitando a aba e a busca (na aba Comissões, passam só pelas garotas).
+Na lista de itens, as setas andam pelas linhas (a seta para cima na primeira volta ao código) e **Enter** ou duplo clique abre
+as **ações da linha**: no item, observação, transferir e cancelar; na comanda da garota, pagar a comissão ou cancelar aquele
+lançamento. Para dar nome a uma comanda ou mesa, clique no título (ou use Mais opções > Nomear comanda).
 
 **Pagamento (F12):** as formas (Dinheiro, Débito, Crédito e Pix) são linhas grandes com a **tecla** de cada uma: **1 a 4**, ou
 a inicial (**D** alterna Dinheiro e Débito, **C** é Crédito, **P** é Pix); um clique na forma já leva ao valor, e o valor sugerido é o
@@ -121,25 +133,25 @@ Quem prefere a notação de restaurante (o número sem letra é a mesa e a coman
 serviço > Número digitado sem letra no caixa é**. As telas, as listas e os relatórios sempre mostram a posição do mesmo jeito
 que se digita.
 
-No **rodapé** do caixa ficam os ícones das posições abertas, cada um com o número e o total embaixo: o **Balcão** (primeiro
-ícone), a **mesa** (mesinha com garrafa e copo), a **comanda** (cartão, ex.: `123`), a **conta enviada** (conta sobre a
-bandeja) e o **relógio** nas paradas além do tempo de inatividade. A **garota** com comissão a pagar aparece com uma **estrela**
-(ver [Comissão das garotas](#comissão-das-garotas)). O ícone da venda que está na tela tem a borda grossa.
-São mostradas duas linhas; havendo mais, a faixa rola (barra ou roda do mouse).
+Na **coluna da esquerda** do caixa ficam os cartões das posições abertas (ver [A tela do caixa](#a-tela-do-caixa)): o
+**Balcão** (primeiro cartão), as **mesas**, as **comandas** (ex.: `123`) e as **garotas** com comissão a pagar
+(ver [Comissão das garotas](#comissão-das-garotas)). Uma conta enviada aparece como **Acerto** e a parada além do tempo de
+inatividade ganha o **relógio**. O cartão da venda que está na tela tem a borda grossa. Havendo mais cartões que espaço,
+a coluna rola (barra ou roda do mouse).
 
 - **Esc volta ao "marcar comanda":** com a venda em andamento, Esc leva ao campo da posição, com o número selecionado:
   digite `7` (comanda 7) ou `M7` (mesa 7) e Enter. Com um produto escolhido (esperando a quantidade), o Esc só cancela o produto. Um segundo Esc
   volta ao balcão; as mesas e comandas abertas continuam gravadas.
-- **Escolher um ícone:** clique nele, ou seta para baixo no campo da posição e então setas, **Enter** (chama), **T**
-  (outras posições vêm para a escolhida) e **Esc** (volta ao campo). Digitar um número, `C` ou `M` com o foco nos ícones já
+- **Escolher um cartão:** clique nele, ou seta para baixo no campo da posição e então setas, **Enter** (chama), **T**
+  (outras posições vêm para a escolhida) e **Esc** (volta ao campo). Digitar um número, `C` ou `M` com o foco nos cartões já
   começa a marcar a posição; `0` é o balcão.
 - A comanda funciona como uma mesa com **numeração própria**: a comanda 2 e a mesa 2 (`M2`) existem ao mesmo tempo.
 - Tudo o que vale para a mesa vale para a comanda: serviço, desconto, pré-conta (impressa como "CONTA DA COMANDA"),
   F10 (transfere tudo), T (várias para uma) e a transferência de parte dos itens, inclusive entre mesa e comanda
   (ex.: F10 e `2` levam a mesa 5 para a comanda 2; `M5` leva uma comanda para a mesa 5).
 - Em **Configurações > Mesas e serviço**: *Número digitado sem letra* (comanda ou mesa), *Número de comandas* (padrão 10000; **0 desliga as comandas**), *Cobrar serviço
-  nas comandas* e *Mostrar sempre os ícones das mesas e comandas abertas no rodapé do caixa* (desligado, eles só aparecem
-  com Esc/F4 e somem ao escolher uma posição).
+  nas comandas* e *Mostrar sempre o painel das mesas e comandas abertas no caixa* (desligado, ele só aparece
+  com Esc/F4 e some ao escolher uma posição).
 - Relatórios: "Mesas e comandas" mostra a posição como `123` (comanda) ou `M5` (mesa); o filtro *Modalidade* separa `mesa` de `comanda`.
 
 ## Comissão das garotas
@@ -157,22 +169,23 @@ Fora de comanda (no balcão, por exemplo) o cursor começa em *Garota nº*: digi
 para cima volta do valor ao número (para lançar em outra garota) e **Esc cancela** a comissão. O 50 nunca vira produto nem
 entra na venda: a comanda da garota continua vazia e some sozinha, e a comissão fica guardada.
 
-- **A via da garota:** a cada comissão lançada sai uma via (não fiscal) para ela acompanhar: o *valor desta comissão*, a lista
-  de tudo o que ela tem a receber (os lançamentos pendentes, os 15 mais recentes) e o *total a receber*, com hora e operador.
-  Sem impressora configurada (modo "tela") a via só fica gravada na pasta `impressao/` e a barra de estado avisa; falha na
+- **A via da garota:** a cada comissão lançada sai uma via (não fiscal) só com o *valor desta comissão* (o que acabou de ser
+  marcado, sem somar o que já estava marcado na comanda), com hora e operador. O total que ela tem a receber aparece no recibo
+  do acerto. Sem impressora configurada (modo "tela") a via só fica gravada na pasta `impressao/` e a barra de estado avisa; falha na
   impressora nunca desfaz o lançamento. Em Configurações > Caixa: *Imprimir a via da garota a cada comissão lançada*.
-- **As garotas ficam à vista no rodapé:** junto com o balcão, as mesas e as comandas, a garota com comissão a pagar aparece
-  como um ícone (estrela, com o valor a pagar embaixo); clicar abre a comanda dela. Se ela também tem consumo aberto, o ícone
-  da comanda ganha um selo com a estrela. Em Configurações > Mesas e serviço: *Mostrar no rodapé do caixa as garotas com
-  comissão a pagar*.
+- **As garotas ficam à vista no painel:** junto com o balcão, as mesas e as comandas, a garota com comissão a pagar ganha um
+  cartão (o nome dela, quantos drinks estão marcados e o valor a pagar); clicar abre a comanda dela. Se ela também tem
+  consumo aberto, o cartão da comanda ganha um selo com a estrela. Em Configurações > Mesas e serviço: *Mostrar no caixa as
+  garotas com comissão a pagar*.
 - **A comanda mostra o que foi marcado nela:** ao abrir a comanda da garota (ex.: `180`), as comissões marcadas aparecem
   na lista, em verde (código 50, `COMISSÃO (a pagar)`, valor, hora e operador), e a faixa verde de cima mostra o total a pagar.
   As pagas neste turno ficam em cinza, para saber se já foi paga; as canceladas somem. É só leitura e não é venda: o
   Total continua sendo o dos itens. Comanda de cliente e mesa não mostram nada disso (mas uma comissão lançada por engano no
   número de um cliente aparece nela, o que ajuda a achar o erro).
 - **Pagar e cancelar sem sair da tela:** **F12** na comanda da garota paga tudo o que está pendente: o dinheiro sai da gaveta
-  (uma sangria "Comissão garota 180 NOME", então a conferência do caixa já conta), a gaveta abre e sai um **recibo** com a
-  linha de assinatura; desmarcando a opção, paga fora do caixa (só dá baixa). Se a comanda também tem consumo, o F12 pergunta o
+  (uma sangria "Comissão garota 180 NOME", então a conferência do caixa já conta), a gaveta abre e saem dois papéis: o **recibo**
+  do acerto, com a linha de assinatura, e o **comprovante da saída financeira** (o mesmo da sangria) com o valor que saiu do
+  caixa (a parte paga por Pix não entra nele); desmarcando a opção, paga fora do caixa (só dá baixa). Se a comanda também tem consumo, o F12 pergunta o
   que pagar. **Delete** numa linha de comissão cancela aquele lançamento (pede confirmação e, se o operador não tem nível, a
   senha de supervisor, como no cancelamento de item); comissão já paga não se cancela.
 - **Shows no acerto da garota:** ao fechar a conta dela (F12, ou o botão *Comissões*), a janela *Pagar comissão* tem o campo

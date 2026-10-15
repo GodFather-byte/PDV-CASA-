@@ -10,7 +10,10 @@ Comanda e mesa: no campo da posição digite o número da comanda (ex.: 123) ou 
 
 Comissão das garotas, sem sair desta tela: o código 50 troca a linha de entrada para "Garota nº" e "Valor (R$)" (Enter
 confirma e imprime a via da garota; Esc cancela). Na comanda da garota, F12 paga o que está marcado e Delete cancela a
-linha selecionada. As garotas com comissão a pagar aparecem como ícones (estrela) ao lado do balcão, no rodapé.
+linha selecionada. As garotas com comissão a pagar ganham um cartão no painel de comandas, à esquerda.
+
+Três colunas: o painel de comandas (cartões, busca e abas), a venda atual e o total com as ações. PgUp/PgDn (ou ◀ ▶) passam
+pela comanda anterior/seguinte da lista do painel; Enter ou duplo clique numa linha abre as ações dela.
 """
 from __future__ import annotations
 
@@ -142,6 +145,8 @@ class JanelaCaixa(tk.Toplevel):
         self.btn_anterior.pack(side="right", padx=(0, 3))
         self.lbl_situacao = ttk.Label(quem, text="Balcão", font=(FONTE, 22, "bold"), style="Cx.TLabel", foreground=CX["azul"])
         self.lbl_situacao.pack(anchor="w")
+        self.lbl_situacao.bind("<Button-1>", self.nomear_comanda)           # clicar no título dá nome à comanda
+        self.lbl_situacao.configure(cursor="hand2")
         bloco = tk.Frame(linha, bg=CX["fundo"])
         bloco.pack(side="right", padx=(12, 0))
         ttk.Label(bloco, text=rotulo_do_campo(self.ctx.caixa.padrao_posicao()), style="Cx.Rotulo.TLabel").pack(anchor="e")
@@ -341,7 +346,7 @@ class JanelaCaixa(tk.Toplevel):
         diarias = [("Pré-Conta (F8)", self.pre_conta), ("Transfere (F10)", self.transferir_mesa), ("Repique (F9)", self.repique),
                    ("Comissões", self.comissoes), ("Sangria (F7)", self.sangria), ("Gaveta (F11)", self.gaveta),
                    ("Consulta Comanda", self.consultar_comanda), ("Cancelar", self.menu_cancelar)]
-        venda = [("Delivery (F6)", self.entrega), ("Caderneta (F5)", self.caderneta)]
+        venda = [("Nomear comanda", self.nomear_comanda), ("Delivery (F6)", self.entrega), ("Caderneta (F5)", self.caderneta)]
         caixa = [("Impressora", self.impressora), ("Balança (F2)", self.balanca), ("Leitor (F3)", self.alternar_leitor),
                  ("Fecha Turno", self.fechar_turno)]
         sair = [("Sair", self.sair)]                       # fica no canto do cabeçalho, longe dos botões de uso diário
@@ -392,7 +397,7 @@ class JanelaCaixa(tk.Toplevel):
         linhas = 1 + (self._n_fixos - 1 + 1) // 2
         self.btn_opcoes = ttk.Button(self.barra, text="Mais opções", style="Cx.TButton", command=self._abrir_opcoes)
         self.btn_opcoes.grid(row=linhas, column=0, columnspan=2, sticky="ew", padx=3, pady=(14, 3))
-        tk.Label(self.barra, text="Delivery, caderneta, impressora,\nbalança, leitor e fechamento de turno",
+        tk.Label(self.barra, text="Nomear comanda, delivery, caderneta, impressora,\nbalança, leitor e fechamento de turno",
                  bg=CX["fundo"], fg=CX["suave"], font=(FONTE, 9), justify="center").grid(row=linhas + 1, column=0, columnspan=2, pady=6)
         linha = 0
         for titulo, qtd, inicio in (("VENDA", len(venda), self._n_fixos), ("CAIXA", len(caixa), self._n_fixos + len(venda))):
@@ -578,6 +583,7 @@ class JanelaCaixa(tk.Toplevel):
             garota = self.ctx.comissoes.garota(v["posicao"]) if v["comanda"] else None
             self.lbl_situacao.configure(text=nome_posicao(v["comanda"], v["posicao"])
                                         + (f" - {garota['nome']}" if garota and garota["ativo"] else "")
+                                        + (f" · {v['apelido']}" if v["apelido"] else "")
                                         + (" - CONTA ENVIADA" if v["status"] == "conta_enviada" else ""))
             self.var_pos.set(self.ctx.caixa.rotular_posicao(v["comanda"], v["posicao"]))
         else:
@@ -976,6 +982,22 @@ class JanelaCaixa(tk.Toplevel):
         self.lbl_acertos.configure(text=str(sum(t["estado"] in {"conta", "acerto", "garota"} for t in tiles)))
         aberto = sum(m["total_cent"] for m in mesas) + (balcao["total_cent"] if balcao else 0)
         self.lbl_aberto_casa.configure(text=fmt.fmt_brl(aberto))
+
+    def nomear_comanda(self, _=None) -> None:
+        """Clique no título (ou Mais opções): dá nome à comanda ou mesa da tela, que aparece no cartão do painel."""
+        v = self.venda()
+        if v is None or v["modalidade"] != "mesa":
+            tema.aviso(self, "Escolha uma comanda ou mesa para dar nome a ela.")
+            return
+        texto = tema.pedir_texto(self, "Nome da comanda", f"Nome de {nome_posicao(v['comanda'], v['posicao']).lower()} "
+                                 "(ex.: Carlos, Aniversário). Vazio tira o nome:", v["apelido"] or "", largura=30)
+        if texto is None:
+            return
+        ok, _ = tema.tratar(self, self.ctx.caixa.definir_apelido, v["id"], texto)
+        if ok:
+            self.recarregar()
+            self.avisar("Nome da comanda gravado." if texto.strip() else "Nome da comanda removido.", tema.COR["ok"])
+        self.ent_codigo.focus_set()
 
     def navegar_comanda(self, passo: int) -> None:
         """PgDn/PgUp (ou ▶ e ◀): vai para a comanda, mesa ou garota seguinte (ou anterior) da lista do painel, que respeita a
