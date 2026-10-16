@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 15
+VERSAO_ESQUEMA = 16
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -469,7 +469,8 @@ TABELAS = [
         total_cent INTEGER NOT NULL,
         movimento_id INTEGER REFERENCES movimentos_caixa(id),
         tirou_do_caixa INTEGER NOT NULL DEFAULT 0,
-        pix_cent INTEGER NOT NULL DEFAULT 0
+        pix_cent INTEGER NOT NULL DEFAULT 0,
+        vale_cent INTEGER NOT NULL DEFAULT 0
     )""",
     "CREATE INDEX IF NOT EXISTS ix_acertos_garota ON acertos_garotas(garota, criado_em)",
     "CREATE INDEX IF NOT EXISTS ix_acertos_turno ON acertos_garotas(turno_id)",
@@ -581,5 +582,9 @@ MIGRACOES = {
     # v15: nome da comanda ou mesa ("Carlos", "Aniversário"), mostrado no cartão do painel e no título da venda.
     15: [
         ("coluna", "vendas", "apelido", "TEXT"),
+    ],
+    # v16: vale da garota, descontado da parte do acerto paga por Pix (o dinheiro do vale já saiu antes).
+    16: [
+        ("coluna", "acertos_garotas", "vale_cent", "INTEGER NOT NULL DEFAULT 0"),
     ],
 }

@@ -208,6 +208,9 @@ entra na venda: a comanda da garota continua vazia e some sozinha, e a comissão
   (R$)** e o botão **Tudo no Pix**. A tela mostra a divisão (`Dinheiro R$ 60,00 + Pix R$ 40,00`): só a parte em dinheiro vira
   sangria e abre a gaveta; o Pix nunca sai dela. O recibo separa *Dinheiro* e *Pix*, e o fechamento do turno traz a linha
   *Pago às garotas por Pix* (para o dono conferir no banco).
+- **Vale da garota:** na mesma janela, o campo **A garota pegou vale?** desconta o vale **só da parte paga por Pix** (o dinheiro do vale
+  já saiu do caixa antes). Exemplo: R$ 550,00 de acerto, tudo no Pix e vale de R$ 100,00 → Pix de R$ 450,00. O vale não pode passar da
+  parte paga por Pix, não mexe no dinheiro nem na gaveta, aparece no recibo (*Vale (já recebido)*) e fica guardado no acerto.
 - **Contra erro de digitação:** havendo garotas cadastradas, um número que não está no cadastro (ou de garota inativa) pede
   confirmação, e valor acima de R$ 500,00 também.
 - **Comissões** (botão na barra do caixa): a lista geral, com o que há a pagar a cada garota e os lançamentos dela, para pagar

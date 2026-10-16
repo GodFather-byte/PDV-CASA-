@@ -151,9 +151,11 @@ def lancar(master, ctx, sugerida: str = "", ao_lancar=None) -> int | None:
 def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quantidade: int,
                   do_caixa_padrao: bool = False) -> dict | None:
     """O acerto da garota: a comissão marcada e, se a casa pergunta (`comissao_pede_shows`), os shows que o OPERADOR lança aqui
-    (quantidade e valor de cada um; nada é contado sozinho). Devolve {"do_caixa", "shows", "valor_show_cent", "pix_cent"} ou None.
+    (quantidade e valor de cada um; nada é contado sozinho). Devolve {"do_caixa", "shows", "valor_show_cent", "pix_cent",
+    "vale_cent"} ou None.
     `do_caixa` True = o dinheiro sai da gaveta; False = pago fora do caixa. `pix_cent` é a parte paga por Pix (sem dinheiro no
-    caixa, ou só parte dele): o resto é dinheiro e o Pix nunca passa pela gaveta."""
+    caixa, ou só parte dele): o resto é dinheiro e o Pix nunca passa pela gaveta. `vale_cent` é o vale que a garota já pegou: sai
+    só da parte paga por Pix (o dinheiro do vale já tinha saído do caixa), então o campo só vale quando há Pix."""
     pede_shows = ctx.comissoes.pede_shows()
     dlg = tema.Dialogo(master, "Pagar comissão")
     ttk.Label(dlg.corpo, text=f"Garota {numero} {nome}".strip(), font=tema.FONTE_B).pack(anchor="w")
@@ -164,6 +166,7 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
     valor_show = tk.IntVar(master=dlg, value=0)                    # centavos de cada show; 0 = ainda não escolhido
     total_txt = tk.StringVar(master=dlg)
     pix = tk.StringVar(master=dlg)
+    vale = tk.StringVar(master=dlg)
     divisao_txt = tk.StringVar(master=dlg)
     msg = ttk.Label(dlg.corpo, text="", foreground=tema.COR["perigo"], wraplength=400)
     en_qtd = None
@@ -175,6 +178,14 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
         except ValueError:
             return None
         return cent if 0 <= cent <= total else None
+
+    def vale_digitado(pix_bruto: int | None) -> int | None:
+        """O vale em centavos (vazio = 0), ou None se inválido ou maior que a parte paga por Pix (só o Pix desconta vale)."""
+        try:
+            cent = fmt.para_centavos(vale.get()) if vale.get().strip() else 0
+        except ValueError:
+            return None
+        return cent if pix_bruto is not None and 0 <= cent <= pix_bruto else None
 
     def calcular(*_) -> tuple[int, int] | None:
         """(quantidade, valor) se o que está na tela é válido; atualiza o total e a divisão dinheiro/Pix. Sem shows, o total é
@@ -189,8 +200,15 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
         total = comissao_cent + n * v
         total_txt.set(fmt.fmt_brl(total))
         p = pix_digitado(total)
-        divisao_txt.set("Pix maior que o total ou inválido." if p is None else
-                        f"Dinheiro {fmt.fmt_brl(total - p)}  +  Pix {fmt.fmt_brl(p)}")
+        v = vale_digitado(p)
+        if p is None:
+            divisao_txt.set("Pix maior que o total ou inválido.")
+        elif v is None:
+            divisao_txt.set("O vale é inválido ou maior que a parte paga por Pix (vale só se desconta do Pix).")
+        elif v:
+            divisao_txt.set(f"Dinheiro {fmt.fmt_brl(total - p)}  +  Pix {fmt.fmt_brl(p - v)}  (vale {fmt.fmt_brl(v)} descontado)")
+        else:
+            divisao_txt.set(f"Dinheiro {fmt.fmt_brl(total - p)}  +  Pix {fmt.fmt_brl(p)}")
         return ok
 
     if pede_shows:
@@ -228,8 +246,16 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
         en_pix.focus_set()
 
     ttk.Button(linha_pix, text="Tudo no Pix", command=tudo_no_pix).pack(side="left")
+    linha_vale = ttk.Frame(quadro_pix)
+    linha_vale.pack(fill="x", pady=(6, 0))
+    ttk.Label(linha_vale, text="A garota pegou vale? Valor do vale (R$):").pack(side="left")
+    en_vale = ttk.Entry(linha_vale, textvariable=vale, width=10, font=("Segoe UI", 14, "bold"), justify="right")
+    en_vale.pack(side="left", padx=8)
+    ttk.Label(quadro_pix, text="O vale é descontado só da parte paga por Pix (o dinheiro dele já saiu do caixa). Deixe vazio se não tem vale.",
+              foreground=tema.COR["suave"], wraplength=400, justify="left").pack(anchor="w")
     ttk.Label(quadro_pix, textvariable=divisao_txt, foreground=tema.COR["suave"]).pack(anchor="w", pady=(4, 0))
     pix.trace_add("write", calcular)
+    vale.trace_add("write", calcular)
     calcular()
     # Nem sempre sobra dinheiro no caixa: por padrão o pagamento só fica registrado (comissao_paga_do_caixa = N).
     do_caixa = tk.BooleanVar(master=dlg, value=do_caixa_padrao)
@@ -255,7 +281,12 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
             msg.configure(text="O valor do Pix é inválido ou maior que o total a pagar.")
             en_pix.focus_set()
             return
-        dlg.ok({"do_caixa": bool(do_caixa.get()), "shows": n, "valor_show_cent": v, "pix_cent": p})
+        vl = vale_digitado(p)
+        if vl is None:
+            msg.configure(text="O vale é inválido ou maior que a parte paga por Pix: o vale só se desconta do Pix.")
+            en_vale.focus_set()
+            return
+        dlg.ok({"do_caixa": bool(do_caixa.get()), "shows": n, "valor_show_cent": v, "pix_cent": p, "vale_cent": vl})
 
     b = tema._botoes(dlg, "Pagar", comando_ok=confirmar)
     dlg.bind("<Return>", confirmar)
@@ -263,7 +294,7 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
         return dlg.mostrar(en_qtd if en_qtd is not None else b)
     finally:
         try:
-            for variavel in (qtd, valor_show, pix):       # desfaz os ciclos variável <-> função: nada fica para o coletor de lixo
+            for variavel in (qtd, valor_show, pix, vale):       # desfaz os ciclos variável <-> função: nada fica para o coletor de lixo
                 for _modo, comando in variavel.trace_info():
                     variavel.trace_remove("write", comando)
         except tk.TclError:
@@ -285,7 +316,8 @@ def pagar_garota(master, ctx, numero: int) -> dict | None:
         return None
     turno = ctx.turnos.atual()
     ok, pag = tema.tratar(master, ctx.comissoes.pagar, numero, turno["id"] if turno else None, ctx.operador_id,
-                          escolha["do_caixa"], escolha["shows"], escolha["valor_show_cent"], escolha["pix_cent"])
+                          escolha["do_caixa"], escolha["shows"], escolha["valor_show_cent"], escolha["pix_cent"],
+                          escolha["vale_cent"])
     if not ok:
         return None
     enviar_ou_mostrar(master, ctx, "Recibo de acerto" if pag["shows"] else "Recibo de comissão",
