@@ -414,11 +414,13 @@ class ImpressaoController:
                        "-" * w, _lr("TOTAL PAGO", M(pag["total_cent"]), w)]
         else:
             linhas += ["-" * w, _lr(f"TOTAL PAGO ({pag['quantidade']})", M(pag["total_cent"]), w)]
-        pix = pag.get("pix_cent", 0)
-        if pix:
-            dinheiro = pag["total_cent"] - pix
+        pix, vale = pag.get("pix_cent", 0), pag.get("vale_cent", 0)
+        if pix or vale:
+            dinheiro = pag["total_cent"] - pix - vale
             if dinheiro:
                 linhas.append(_lr("Dinheiro" + (" (saiu do caixa)" if pag.get("tirou_do_caixa") else " (fora do caixa)"), M(dinheiro), w))
+            if vale:
+                linhas.append(_lr("Vale (já recebido)", M(vale), w))
             linhas.append(_lr("Pix", M(pix), w))
         else:
             linhas.append("Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.")

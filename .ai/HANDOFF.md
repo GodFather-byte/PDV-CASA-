@@ -1,15 +1,15 @@
 # HANDOFF
 
-## Último trabalho: reusar o número de produto excluído/guardado; fim do instalador de licenças no Actions
-- `entidades._antes_produto` chama `_liberar_produtos_guardados`: cadastro de produto que pede um código, nome ou código de barras
-  preso a um produto INATIVO (guardado por já ter sido vendido, ex. depois de "Excluir todos os produtos") faz o inativo ceder
-  (`_guardar_produto`: código `COD~id`, nome "(excluído id)", atalho e cbarra limpos). Produto ativo continua bloqueando.
-- `.github/workflows/build-windows.yml`: removido o job `licenciador`; o workflow gera só o WillPDV. README e
-  `docs/LICENCIADOR.md` dizem para gerar o instalador de licenças na máquina (`python build_licenciador.py`).
-- Testes: `tests/test_excluir_produto_cadastrado.py`.
+## Último trabalho: vale da garota no acerto (desconto do Pix)
+- Janela *Pagar comissão* (`comissao_ui.dialogo_pagar`): campo "A garota pegou vale? Valor do vale (R$)". O vale sai só da parte
+  paga por Pix (o dinheiro dele já saiu do caixa antes); não pode passar do Pix. Dinheiro e gaveta não mudam.
+- `ComissaoController.pagar(..., pix_cent, vale_cent)`: `pix_cent` é a parte paga por Pix (bruta); o Pix que vai para ela é
+  `pix_cent - vale_cent` (devolvido e gravado como `pix_cent`), `vale_cent` fica em `acertos_garotas` (esquema v16). O fechamento
+  (`pix_do_turno`) soma o Pix líquido. Recibo: linha "Vale (já recebido)".
+- Testes: `TesteValeDaGarota` (test_acerto_garota_shows) e 2 de tela (test_comissao_na_tela). Suíte inteira: 1.239 OK.
 
 ## Anteriores (já mesclados)
-Excluir produto cadastrado (PR #51), limite de R$ 200 por comanda (#50), modo claro/escuro (#49).
+Reusar número de produto guardado + fim do instalador de licenças no Actions (#52), excluir produto (#51), limite R$ 200 por comanda (#50).
 
 ## Pendências
 Nenhuma.
