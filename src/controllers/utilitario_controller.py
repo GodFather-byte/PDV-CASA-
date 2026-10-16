@@ -5,8 +5,10 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from src.controllers import notificacoes
 from src.core import formatacao as fmt
@@ -66,7 +68,130 @@ class UtilitarioController:
                 erro_extra = f"não foi possível gravar na pasta extra ({e})"
                 log.warning("Backup extra falhou: %s", e)
         self.banco.cfg_set("backup_extra_erro", erro_extra)
+        if self.banco.cfg("backup_externo_pasta"):
+            try:
+                self.backup_externo(origem=destino, manter=manter)
+            except (OSError, ValueError, ErroNegocio) as e:
+                self.banco.cfg_set("backup_externo_erro", f"{fmt.agora()} {e}"[:300])
+                log.error("Backup externo criptografado falhou: %s", e)
+                notificacoes.avisar(self.banco, "backup", "backup_externo_falhou", str(e))
         return str(destino)
+
+    def _cofre_backup(self) -> Path:
+        if self.banco.caminho == ":memory:":
+            raise ErroNegocio("Configure o backup automático em um banco salvo no computador.")
+        return Path(self.banco.caminho + ".backup.key")
+
+    def configurar_backup_externo(self, pasta: str, senha: str) -> None:
+        from src.core import backup_seguro
+        if not pasta.strip():
+            raise ErroNegocio("Escolha a pasta sincronizada para o backup externo.")
+        destino = Path(pasta).expanduser().resolve()
+        if any(destino == local.resolve() for local in self.pastas_backup()):
+            raise ErroNegocio("Escolha uma pasta exclusiva para os arquivos criptografados, diferente dos backups locais/extra.")
+        destino.mkdir(parents=True, exist_ok=True)
+        try:
+            backup_seguro.guardar_senha(self._cofre_backup(), senha)
+        except ValueError as e:
+            raise ErroNegocio(str(e)) from e
+        with self.banco.transacao():
+            self.banco.cfg_set("backup_externo_pasta", str(destino))
+            self.banco.cfg_set("backup_externo_ultimo", "")
+            self.banco.cfg_set("backup_externo_verificado_em", "")
+            self.banco.cfg_set("backup_externo_erro", "")
+            self.banco.log("backup_externo_configurado", str(destino), self.operador_id)
+
+    def desativar_backup_externo(self) -> None:
+        cofre = self._cofre_backup()
+        with self.banco.transacao():
+            self.banco.cfg_set("backup_externo_pasta", "")
+            self.banco.cfg_set("backup_externo_erro", "")
+            self.banco.log("backup_externo_desativado", "", self.operador_id)
+        cofre.unlink(missing_ok=True)
+
+    def backup_externo(self, senha: str | None = None, origem: Path | None = None, manter: int = 60) -> str:
+        from src.core import backup_seguro
+        if manter < 1:
+            raise ErroNegocio("Mantenha pelo menos um backup externo.")
+        pasta = self.banco.cfg("backup_externo_pasta").strip()
+        if not pasta:
+            raise ErroNegocio("Configure a pasta do backup externo antes de gerar a cópia.")
+        try:
+            senha = senha if senha is not None else backup_seguro.ler_senha(self._cofre_backup())
+            destino = Path(pasta)
+            destino.mkdir(parents=True, exist_ok=True)
+            nome = f"loja_offline-seguro-{fmt.agora().replace(':', '').replace(' ', '-')}-{uuid4().hex}.pdvbkp"
+            arquivo = destino / nome
+            preparado = destino / f".{nome}.verificando"
+            try:
+                with tempfile.TemporaryDirectory(prefix="willpdv_backup_") as temporarios:
+                    copia = Path(temporarios) / "copia.db"
+                    if origem is None:
+                        self.banco.copiar_para(str(copia))
+                    else:
+                        copia = Path(origem)
+                    if not protecao.backup_valido(copia):
+                        raise ErroNegocio("A cópia local não é um backup válido do PDV.")
+                    backup_seguro.criptografar(copia, preparado, senha)
+                    self.verificar_backup_externo(str(preparado), senha)
+                    os.replace(preparado, arquivo)
+            finally:
+                preparado.unlink(missing_ok=True)
+        except (OSError, ValueError, ErroNegocio) as e:
+            self.banco.cfg_set("backup_externo_erro", f"{fmt.agora()} {e}"[:300])
+            log.error("Não foi possível gerar o backup externo: %s", e)
+            raise ErroNegocio(f"Backup externo não concluído: {e}") from e
+        self.banco.cfg_set("backup_externo_ultimo", fmt.agora())
+        self.banco.cfg_set("backup_externo_verificado_em", fmt.agora())
+        self.banco.cfg_set("backup_externo_erro", "")
+        self.banco.log("backup_externo_verificado", str(arquivo), self.operador_id)
+        for antigo in sorted(destino.glob("loja_offline-seguro-*.pdvbkp"),
+                             key=lambda p: (p == arquivo, p.name), reverse=True)[manter:]:
+            try:
+                antigo.unlink()
+            except OSError as e:
+                log.warning("Não foi possível remover backup externo antigo %s: %s", antigo.name, e)
+        return str(arquivo)
+
+    def verificar_backup_externo(self, caminho: str, senha: str) -> None:
+        from src.core import backup_seguro
+        try:
+            with tempfile.TemporaryDirectory(prefix="willpdv_verificar_") as pasta:
+                destino = Path(pasta) / "recuperado.db"
+                backup_seguro.descriptografar(caminho, destino, senha)
+                if not protecao.backup_valido(destino):
+                    raise ValueError("O conteúdo recuperado não é um banco válido do PDV.")
+        except (OSError, ValueError) as e:
+            raise ErroNegocio(f"Não foi possível verificar o backup: {e}") from e
+
+    def pedir_restauracao_externa(self, caminho: str, senha: str) -> None:
+        from src.core import backup_seguro
+        from src.database import esquema
+        import sqlite3
+        try:
+            with tempfile.TemporaryDirectory(prefix="willpdv_recuperar_") as pasta:
+                recuperado = Path(pasta) / "recuperado.db"
+                backup_seguro.descriptografar(caminho, recuperado, senha)
+                if not protecao.backup_valido(recuperado):
+                    raise ValueError("O conteúdo recuperado não é um banco válido do PDV.")
+                conexao = sqlite3.connect(recuperado)
+                try:
+                    versao = conexao.execute("PRAGMA user_version").fetchone()[0]
+                finally:
+                    conexao.close()
+                if versao > esquema.VERSAO_ESQUEMA:
+                    raise ValueError("Este backup exige uma versão mais recente do PDV.")
+                destino = self.pasta_backup()
+                destino.mkdir(parents=True, exist_ok=True)
+                local = destino / f"loja_offline-recuperado-{uuid4().hex}.db"
+                shutil.copyfile(recuperado, local)
+                try:
+                    self.pedir_restauracao(str(local))
+                except BaseException:
+                    local.unlink(missing_ok=True)
+                    raise
+        except (OSError, ValueError) as e:
+            raise ErroNegocio(f"Não foi possível recuperar o backup externo: {e}") from e
 
     @staticmethod
     def _podar(pasta: Path, manter: int) -> None:
@@ -106,6 +231,10 @@ class UtilitarioController:
         erro = self.banco.cfg("backup_erro")
         idade = self.idade_backup_horas()
         if idade is None:
+            externo = self.banco.cfg("backup_externo_ultimo")
+            if self.banco.cfg("backup_externo_pasta") and externo:
+                return "aviso", ("Nenhum backup local registrado. Última cópia externa verificada: "
+                                 f"{fmt.fmt_datahora(externo)}; confira o envio no sincronizador.")
             return "sem", "ATENÇÃO: nenhum backup feito ainda. Faça em Utilitários > Backup de dados."
         quando = fmt.fmt_datahora(self.ultimo_backup())
         if erro:
@@ -115,6 +244,19 @@ class UtilitarioController:
         extra_erro = self.banco.cfg("backup_extra_erro")
         if extra_erro:
             return "aviso", f"Último backup: {quando}, mas {extra_erro}."
+        if self.banco.cfg("backup_externo_pasta"):
+            externo = self.banco.cfg("backup_externo_ultimo")
+            if self.banco.cfg("backup_externo_erro"):
+                return "aviso", f"Backup local: {quando}. A cópia externa criptografada falhou; verifique em Utilitários."
+            if not externo:
+                return "aviso", f"Backup local: {quando}. Ainda não há cópia externa criptografada verificada."
+            try:
+                idade_externa = (datetime.fromisoformat(fmt.agora()) - datetime.fromisoformat(externo)).total_seconds() / 3600
+            except ValueError:
+                return "aviso", "A data do backup externo é inválida; gere uma nova cópia."
+            if idade_externa >= limite_horas:
+                return "aviso", f"Backup local: {quando}. A cópia externa criptografada está atrasada."
+            return "ok", f"Backup local: {quando}. Cópia externa verificada; envio online depende do sincronizador da pasta."
         return "ok", f"Último backup: {quando}"
 
     def listar_backups(self) -> list[Path]:

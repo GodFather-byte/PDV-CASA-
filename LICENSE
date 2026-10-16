@@ -32,6 +32,9 @@ copiar, baixar, executar, modificar ou distribuir qualquer parte dele, você con
 5. COMPONENTES DE TERCEIROS
    O WillPDV usa componentes de terceiros (por exemplo Python, Tk, SQLite, requests, pyserial, PyInstaller e Inno Setup),
    que continuam sob as licenças próprias de cada um. Esta licença não altera os direitos que elas concedem.
+   Qt/PySide6, Shiboken6 e cryptography também conservam suas licenças. As restrições acima não limitam os direitos
+   concedidos pela LGPL sobre as bibliotecas Qt, incluindo sua substituição por versões modificadas compatíveis e a
+   engenharia reversa necessária para depurar essas modificações. Veja docs/TERCEIROS_QT.md e os avisos no instalador.
 
 6. SEM GARANTIA
    O PROGRAMA É FORNECIDO "COMO ESTÁ", SEM GARANTIA DE QUALQUER TIPO, EXPRESSA OU IMPLÍCITA, INCLUINDO ADEQUAÇÃO A UM FIM

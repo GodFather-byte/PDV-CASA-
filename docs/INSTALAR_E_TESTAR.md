@@ -60,6 +60,27 @@ atalho na Área de Trabalho e no Menu Iniciar.
 
 ## 4. Primeira abertura: banco e licença
 
+### Interface Qt em migração
+
+O atalho normal continua abrindo a interface Tk completa. O Menu Iniciar inclui
+**WillPDV Qt (prévia)**, que abre a nova interface com `--qt`.
+Não misture as duas interfaces ao mesmo tempo: elas usam o mesmo banco e a mesma
+trava de instância. `--tk` seleciona explicitamente a interface anterior.
+
+A prévia não significa que todas as telas foram migradas. Confira o escopo e
+o roteiro de homologação em [INTERFACE_QT.md](INTERFACE_QT.md) antes de usá-la
+numa noite de operação. Não há conversão para banco remoto: o caixa continua
+SQLite local e a nuvem/licenças permanece separada.
+
+Ao executar pelo código-fonte, instale `pip install -r requirements.txt`;
+o instalador já leva Qt Widgets e as bibliotecas do backup seguro.
+As bibliotecas Qt são maiores que Tk; o tamanho do pacote aumenta.
+As licenças de terceiros ficam na pasta `licencas` do programa.
+
+O comando `WillPDV.exe --autoteste-qt caminho-do-relatorio.txt` verifica a
+interface Qt num banco temporário, sem usar as vendas da loja. O build executa
+essa checagem tanto no programa empacotado quanto depois de instalá-lo.
+
 ### Proteção do banco durante atualização e restauração
 
 - Antes de migrar um banco existente, o PDV gera e confere uma cópia SQLite ao lado dele
@@ -68,6 +89,16 @@ atalho na Área de Trabalho e no Menu Iniciar.
 - A restauração prepara e valida uma cópia antes de substituir o banco. Em falha, o pedido é preservado,
   o erro é mostrado e a abertura normal não pode criar um banco vazio no lugar do anterior.
 - Continue mantendo backup em outro disco/local. Uma cópia no mesmo disco não protege contra perda do equipamento.
+
+### Cópia criptografada em pasta sincronizada
+
+Em **Utilitários > Backup externo criptografado**, escolha uma pasta já
+sincronizada pelo OneDrive/Google Drive e uma senha de recuperação.
+Não coloque o banco em uso dentro dessa pasta.
+Guarde a senha fora do computador e teste a recuperação antes de depender dela.
+O PDV confere o arquivo gerado, mas o envio à nuvem depende do sincronizador.
+Veja configuração, recuperação em outra máquina e limitações em
+[BACKUP_EXTERNO.md](BACKUP_EXTERNO.md).
 
 ### Consulta de licença sem travar a entrada
 

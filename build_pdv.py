@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib.metadata import distribution
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent
@@ -34,7 +35,28 @@ def gerar_executavel() -> None:
         comando += ["--icon", str(ICONE), "--add-data", f"{ICONE}{os.pathsep}."]
     comando.append(str(RAIZ / "src" / "app.py"))
     subprocess.run(comando, check=True, cwd=RAIZ)
+    copiar_licencas(RAIZ / "dist" / "WillPDV")
     print(f"Executável pronto: {RAIZ / 'dist' / 'WillPDV' / 'WillPDV.exe'}")
+
+
+def copiar_licencas(destino: Path) -> None:
+    pasta = destino / "licencas"
+    pasta.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(RAIZ / "docs" / "TERCEIROS_QT.md", pasta / "TERCEIROS_QT.md")
+    for arquivo in (RAIZ / "instalador" / "licencas").glob("*.txt"):
+        shutil.copyfile(arquivo, pasta / arquivo.name)
+    manifesto = []
+    for nome in ("PySide6-Essentials", "shiboken6", "cryptography", "cffi"):
+        pacote = distribution(nome)
+        manifesto.append(f"{nome} {pacote.version}: {pacote.metadata.get('License-Expression') or pacote.metadata.get('License', '')}")
+        for arquivo in pacote.files or ():
+            if ".dist-info" in str(arquivo) and (
+                    "license" in str(arquivo).lower() or "copying" in str(arquivo).lower()):
+                origem = Path(pacote.locate_file(arquivo))
+                alvo = pasta / "pacotes" / nome / Path(arquivo).name
+                alvo.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(origem, alvo)
+    (pasta / "DEPENDENCIAS.txt").write_text("\n".join(manifesto) + "\n", encoding="utf-8")
 
 
 def achar_iscc() -> str | None:

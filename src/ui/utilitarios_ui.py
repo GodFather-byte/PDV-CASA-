@@ -1,6 +1,10 @@
 """Utilitários (manual ADM seção 7): limpeza do movimento, programa de comunicação e backup."""
 from __future__ import annotations
 
+import os
+from pathlib import Path
+from tkinter import filedialog
+
 from src.core import formatacao as fmt
 from src.ui import tema
 
@@ -9,7 +13,10 @@ def executar(master, ctx, chave: str) -> None:
     if chave == "backup":
         ok, caminho = tema.tratar(master, ctx.utilitarios.backup)
         if ok:
-            tema.mensagem(master, f"Backup gerado com sucesso:\n{caminho}", "Backup de dados")
+            _, situacao = ctx.utilitarios.situacao_backup()
+            tema.mensagem(master, f"Backup local gerado:\n{caminho}\n\n{situacao}", "Backup de dados")
+    elif chave == "backup_externo":
+        backup_externo(master, ctx)
     elif chave == "restaurar":
         restaurar(master, ctx)
     elif chave == "suporte":
@@ -106,3 +113,63 @@ def restaurar(master, ctx) -> None:
     ok, _ = tema.tratar(master, ctx.utilitarios.pedir_restauracao, escolhido)
     if ok:
         tema.mensagem(master, "Restauração marcada. FECHE o programa e abra de novo para concluir.", "Restaurar backup")
+
+
+def backup_externo(master, ctx) -> None:
+    acoes = [("configurar", "Configurar pasta e senha de recuperação"),
+             ("gerar", "Gerar cópia criptografada agora"),
+             ("verificar", "Testar recuperação de um arquivo"),
+             ("recuperar", "Restaurar arquivo criptografado"),
+             ("desativar", "Desativar cópias externas automáticas")]
+    acao = tema.escolher(master, "Backup externo criptografado", acoes,
+                         "A pasta será sincronizada pelo OneDrive/Google Drive do computador.\n"
+                         "O PDV verifica o arquivo, mas não confirma o envio à nuvem.", largura=650)
+    if acao == "configurar":
+        sugestao = os.environ.get("OneDriveCommercial") or os.environ.get("OneDrive") or str(Path.home())
+        pasta = filedialog.askdirectory(parent=master, title="Escolha uma pasta sincronizada",
+                                        initialdir=ctx.banco.cfg("backup_externo_pasta") or sugestao)
+        if not pasta:
+            return
+        senha = tema.pedir_texto(master, "Senha de recuperação",
+                                 "Crie uma senha de pelo menos 12 caracteres e guarde FORA deste computador.\n"
+                                 "Sem ela, outra máquina não recupera os arquivos. O fornecedor não consegue redefini-la.\n"
+                                 "No Windows ela é guardada protegida para as cópias automáticas.", senha=True)
+        if senha is None:
+            return
+        repetida = tema.pedir_texto(master, "Confirme a senha", "Digite a senha de recuperação novamente:", senha=True)
+        if repetida is None:
+            return
+        if senha != repetida:
+            tema.aviso(master, "As senhas são diferentes. A configuração não foi alterada.")
+            return
+        ok, _ = tema.tratar(master, ctx.utilitarios.configurar_backup_externo, pasta, senha)
+        if ok:
+            tema.mensagem(master, "Configuração gravada. Gere a primeira cópia e teste a recuperação.\n"
+                                  "Confira também no OneDrive/Google Drive se o arquivo foi enviado.", "Backup externo")
+    elif acao == "gerar":
+        ok, caminho = tema.tratar(master, ctx.utilitarios.backup_externo)
+        if ok:
+            tema.mensagem(master, f"Cópia criptografada gerada e recuperação verificada:\n{caminho}\n\n"
+                                  "O envio à nuvem depende do sincronizador da pasta.", "Backup externo")
+    elif acao in ("verificar", "recuperar"):
+        arquivo = filedialog.askopenfilename(parent=master, title="Escolha o backup criptografado",
+                                             filetypes=[("Backup seguro WillPDV", "*.pdvbkp")])
+        if not arquivo:
+            return
+        senha = tema.pedir_texto(master, "Recuperação de backup", "Informe a senha usada neste arquivo:", senha=True)
+        if senha is None:
+            return
+        if acao == "verificar":
+            ok, _ = tema.tratar(master, ctx.utilitarios.verificar_backup_externo, arquivo, senha)
+            if ok:
+                tema.mensagem(master, "Senha e integridade conferidas. O banco atual não foi alterado.", "Recuperação verificada")
+        elif tema.confirmar(master, "Tudo lançado depois do backup será perdido.\n"
+                                    "Uma cópia local do estado atual será guardada antes.\n"
+                                    "Marcar a restauração para a próxima abertura?", "Restaurar", padrao_sim=False):
+            ok, _ = tema.tratar(master, ctx.utilitarios.pedir_restauracao_externa, arquivo, senha)
+            if ok:
+                tema.mensagem(master, "Restauração marcada. Feche e abra o programa para aplicar.", "Restaurar backup")
+    elif acao == "desativar" and tema.confirmar(
+            master, "Desativar as próximas cópias externas? Os arquivos já gerados não serão apagados.",
+            "Backup externo", padrao_sim=False):
+        tema.tratar(master, ctx.utilitarios.desativar_backup_externo)

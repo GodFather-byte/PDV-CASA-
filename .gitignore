@@ -41,6 +41,8 @@ dist/
 
 # Chaves privadas (ex.: licença do fornecedor) nunca vão para o repositório
 *.key
+*.pdvbkp
+*.antes-migracao-*.bak
 
 # Instalador gerado pelo Inno Setup (build_pdv.py)
 instalador/saida/

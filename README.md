@@ -50,6 +50,7 @@ Requer Python 3.10 ou superior. Na raiz do repositório:
 
 ```powershell
 python --version
+python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
@@ -64,8 +65,13 @@ qualquer operador cuja senha seja igual ao nome); depois crie os operadores em M
 Cinco senhas erradas seguidas bloqueiam aquele usuário (ou a senha de supervisor) por 5 minutos. Operadores de nível 0
 entram direto no caixa. O primeiro acesso ao caixa pede o número do turno e o valor do fundo de caixa.
 
-O sistema local usa só a biblioteca padrão (Tkinter e SQLite). Quem usa a nuvem, a balança ou a
-impressão RAW do Windows precisa de `pip install -r requirements.txt`.
+O caixa continua usando SQLite local e a interface Tk completa pode funcionar sem pacotes externos.
+Instale `pip install -r requirements.txt` para Qt, backup criptografado e integrações.
+O instalador Windows já inclui as dependências.
+`python -m src.app --qt` abre a interface Qt em migração; `--tk` abre explicitamente a atual.
+Confira os limites antes de operar na [documentação Qt](docs/INTERFACE_QT.md).
+Veja também [backup externo criptografado](docs/BACKUP_EXTERNO.md) e
+[auditoria estruturada](docs/AUDITORIA.md).
 
 ## O que já existe
 
@@ -585,7 +591,7 @@ logs) ficam em `%LOCALAPPDATA%\WILL-PDV`.
 ou [abrir a página da Release](https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao). Passo a passo em
 [`docs/INSTALAR_E_TESTAR.md`](docs/INSTALAR_E_TESTAR.md).
 
-**Gerar na sua máquina** (Windows, uma vez só): instale o Python 3.10+ (64 bits), rode `pip install pyinstaller pyserial requests`
+**Gerar na sua máquina** (Windows, uma vez só): instale o Python 3.10+ (64 bits), rode `pip install -r requirements.txt "pyinstaller>=6,<7"`
 e instale o [Inno Setup 6](https://jrsoftware.org/isdl.php) (6.3 ou mais novo). A cada versão:
 
 1. Suba o número em `src/versao.py`.

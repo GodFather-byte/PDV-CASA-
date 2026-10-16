@@ -3,6 +3,7 @@ transações aninhadas e atalhos de consulta."""
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 import sys
 import unicodedata
@@ -44,6 +45,8 @@ class BancoDados:
     def __init__(self, caminho: str | None = None, semear: bool = True):
         self.caminho = str(caminho or caminho_padrao())
         self._profundidade = 0
+        self._operador_auditoria = None
+        self._auditoria_ativa = False
         if self.caminho != ":memory:":
             Path(self.caminho).parent.mkdir(parents=True, exist_ok=True)
         self.conexao = self._abrir()
@@ -61,6 +64,7 @@ class BancoDados:
             self._criar_esquema()
             if semear:
                 sementes.aplicar(self)
+            self._auditoria_ativa = True
         except Exception:
             self.conexao.close()
             raise
@@ -76,6 +80,11 @@ class BancoDados:
                     "Atualize o PDV antes de abrir este banco.")
             con.row_factory = sqlite3.Row
             con.create_function("norm", 1, normalizar, deterministic=True)
+            con.create_function("auditoria_agora", 0, fmt.agora)
+            con.create_function("auditoria_operador", 0, lambda: self._operador_auditoria)
+            con.create_function("auditoria_ativa", 0, lambda: int(self._auditoria_ativa))
+            con.create_function("auditoria_json", -1, lambda *pares: json.dumps(
+                dict(zip(pares[::2], pares[1::2])), ensure_ascii=False, allow_nan=False))
             con.execute("PRAGMA foreign_keys = ON")
             if self.caminho != ":memory:":
                 con.execute("PRAGMA journal_mode = WAL")
@@ -141,7 +150,7 @@ class BancoDados:
             self.conexao.execute(comando)
         if not novo and versao < esquema.VERSAO_ESQUEMA:
             self._migrar(versao)
-        for comando in esquema.INDICES_POS_MIGRACAO:   # dependem de colunas que as migrações acabam de criar
+        for comando in esquema.INDICES_POS_MIGRACAO + esquema.AUDITORIA:
             self.conexao.execute(comando)
         self.conexao.execute(f"PRAGMA user_version = {esquema.VERSAO_ESQUEMA}")
 
@@ -220,6 +229,15 @@ class BancoDados:
         self.conexao.execute(f"UPDATE {tabela} SET {sets} WHERE id = ?", (*dados.values(), id_))
 
     # ------------------------------------------------------- config e auditoria
+    def definir_operador_auditoria(self, operador_id: int | None) -> None:
+        """Identidade da sessão; autorizações de supervisor não a substituem."""
+        if operador_id is not None:
+            if not isinstance(operador_id, int) or isinstance(operador_id, bool):
+                raise ValueError("Operador da auditoria deve ser um identificador inteiro.")
+            if not self.valor("SELECT 1 FROM operadores WHERE id = ? AND ativo = 1", (operador_id,)):
+                raise ValueError("Operador da auditoria não encontrado ou inativo.")
+        self._operador_auditoria = operador_id
+
     def cfg(self, chave: str, padrao: str = "") -> str:
         v = self.valor("SELECT valor FROM config WHERE chave = ?", (chave,))
         return padrao if v is None else v

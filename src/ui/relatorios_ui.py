@@ -180,6 +180,9 @@ class PainelFiltros(ttk.LabelFrame):
 
 
 def abrir_relatorio(master, ctx, chave: str):
+    if chave == "auditoria_eventos":
+        from src.ui.auditoria_ui import JanelaAuditoria
+        return JanelaAuditoria(master, ctx)
     if chave == "vendas_periodo":
         return JanelaVendasPeriodo(master, ctx)
     if chave == "estoque_atual":

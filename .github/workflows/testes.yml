@@ -40,6 +40,8 @@ jobs:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20          # um teste de tela travado (janela esperando resposta) vira falha, não horas de espera
+    env:
+      QT_QPA_PLATFORM: offscreen
     strategy:
       fail-fast: false
       matrix:
@@ -61,6 +63,6 @@ jobs:
         if: runner.os == 'Linux'
         # 24 bits de cor: com a tela padrão do xvfb-run (8 bits) o Tk cai com segmentation fault.
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q xvfb python3-tk
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb python3-tk libegl1 libopengl0
           # -X faulthandler: se o Tk cair, o log mostra em qual teste (sem isso só aparece "Segmentation fault")
           xvfb-run -a -s "-screen 0 1920x1080x24" python -X faulthandler -m unittest discover -s tests

@@ -68,8 +68,9 @@ class AcessoController:
 
     def trocar_senha(self, operador: Operador, nova: str) -> None:
         nova = self.validar_nova_senha(operador, nova)
-        self.banco.executar("UPDATE operadores SET senha = ? WHERE id = ?", (seguranca.gerar_hash(nova), operador.id))
-        self.banco.log("senha_trocada", operador.nome, operador.id)
+        with self.banco.transacao():
+            self.banco.executar("UPDATE operadores SET senha = ? WHERE id = ?", (seguranca.gerar_hash(nova), operador.id))
+            self.banco.log("senha_trocada", operador.nome, operador.id)
 
     # --------------------------------------------- tentativas erradas
     def _falhas(self, chave: str) -> tuple[int, str]:

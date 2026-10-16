@@ -4,12 +4,14 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime
 
 from src.controllers.caixa_controller import CaixaController
 from src.controllers.relatorio_controller import RelatorioController
 from src.controllers.turno_controller import TurnoController
 from src.database.conexao import BancoDados
+from src.database import esquema
 from src.database.esquema import VERSAO_ESQUEMA
 from tests.base import BaseTeste
 
@@ -18,7 +20,11 @@ class TesteMigracaoV3(unittest.TestCase):
     def test_v2_ganha_na_gaveta_e_os_indices_sem_perder_dados(self):
         with tempfile.TemporaryDirectory() as pasta:
             caminho = os.path.join(pasta, "v2.db")
-            b = BancoDados(caminho)
+            # Bancos anteriores à v18 não possuem gatilhos de auditoria.
+            with patch.object(esquema, "AUDITORIA", []):
+                b = BancoDados(caminho)
+            self.assertIsNone(b.um(
+                "SELECT name FROM sqlite_master WHERE name = 'auditoria_eventos'"))
             b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Visa Crédito', 20)")
             b.executar("INSERT INTO tipos_pagamento(tipo, ordem, aciona_tef) VALUES ('Maquineta', 21, 1)")
             b.executar("INSERT INTO tipos_pagamento(tipo, ordem) VALUES ('Voucher', 22)")
@@ -30,6 +36,7 @@ class TesteMigracaoV3(unittest.TestCase):
             b.executar("DROP INDEX ix_vendas_cliente")
             b.executar("DROP INDEX ix_movest_ref")
             b.executar("ALTER TABLE tipos_pagamento DROP COLUMN na_gaveta")      # como era no banco v2
+            self.assertNotIn("na_gaveta", {r[1] for r in b.todos("PRAGMA table_info(tipos_pagamento)")})
             b.executar("PRAGMA user_version = 2")
             b.fechar()
 

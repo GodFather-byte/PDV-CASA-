@@ -5,7 +5,7 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 17
+VERSAO_ESQUEMA = 18
 
 PRODUTOS_HISTORICO_DDL = """CREATE TABLE IF NOT EXISTS produtos_historico (
     id INTEGER PRIMARY KEY,
@@ -577,6 +577,129 @@ INDICES_POS_MIGRACAO = [
     "CREATE INDEX IF NOT EXISTS ix_pagto_turno ON pagamentos_venda(turno_id)",     # v9
 ]
 
+# Lista positiva: campos livres, contatos, documentos e credenciais nunca viram
+# retratos. As colunas omitidas podem disparar o evento, mas não são serializadas.
+_AUDITORIA_CAMPOS = {
+    "produtos": ("id codigo nome subgrupo_id unidade_id preco_cent ativo controla_estoque "
+                 "estoque_minimo qt_atual qt_inicial ult_preco_cent promo_de promo_ate promo_preco_cent "
+                 "sem_inicial sem_final sem_preco_cent hora_ini hora_fim hora_preco_cent "
+                 "cobrar_servico venda aceita_decimal partes maior montagem composto comissao_pct").split(),
+    "produtos_historico": "id qt_atual custo_cent ativo excluido_em".split(),
+    "unidades": "id nome abreviatura".split(),
+    "grupos": "id nome".split(),
+    "subgrupos": "id nome grupo_id impressora_remota".split(),
+    "aliquotas": "id aliquota formato".split(),
+    "observacoes": "id codigo".split(),
+    "composicoes": "id produto_id insumo_id quantidade".split(),
+    "cargos": "id".split(),
+    "operadores": ("id nivel cargo_id garcom entregador vendedor recebe_comissao comissao_pct ativo").split(),
+    "fornecedores": "id ativo".split(),
+    "bairros": "id taxa_cent".split(),
+    "clientes": "id bairro_id limite_cent saldo_cent ativo".split(),
+    "garotas": "id numero ativo".split(),
+    "tipos_pagamento": ("id tipo ordem caixa emite_vale permite_troco na_gaveta saldo_inicial_cent "
+                        "taxa_pct desc_cartao_pct acrescimo_cent ativo").split(),
+    "planos_contas": "id codigo debito resultado ordem".split(),
+    "subplanos": "id plano_id".split(),
+    "acessos": "modulo nivel".split(),
+    "vendas": ("id uuid cupom turno_id status subtotal_cent desconto_cent desconto_pct servico_cent "
+               "taxa_cent acrescimo_cent total_cent pago_cent cancelada_por").split(),
+    "itens_venda": ("id venda_id produto_id quantidade preco_unit_cent total_cent cancelado cancelado_em").split(),
+    "lancamentos_estoque": ("id tipo data fornecedor_id valor_cent desconto_cent").split(),
+    "itens_estoque": ("id lancamento_id produto_id quantidade preco_unit_cent desconto_cent valor_cent "
+                      "qt_anterior diferenca aplicado").split(),
+}
+_AUDITORIA_OMITIDOS = {
+    "produtos": ("atalho cbarra usa_observacao texto_sugestao para_ser_montado manual compoe "
+                 "validade_dias balanca automatico ncm desc_aliq_icms situacao_tributaria aliquota_ipi reducao_base").split(),
+    "subgrupos": ["figura"],
+    "aliquotas": ["descricao"],
+    "observacoes": ["texto"],
+    "cargos": ["nome"],
+    "operadores": ["nome", "senha"],
+    "fornecedores": ("nome contato ddd telefone celular cnpj ie endereco complemento bairro cidade uf cep email obs").split(),
+    "bairros": ["nome"],
+    "clientes": ("numero_consulta nome endereco complemento cep codigo cidade telefone rg cpf email obs").split(),
+    "garotas": ["nome", "observacao"],
+    "tipos_pagamento": "vias tipo_tef aciona_tef cheque_tef mais_info".split(),
+    "planos_contas": ["nome"],
+    "subplanos": ["nome"],
+}
+
+
+def _gatilhos_auditoria() -> list[str]:
+    comandos = []
+    for tabela, campos in _AUDITORIA_CAMPOS.items():
+        chave = "modulo" if tabela == "acessos" else "uuid" if tabela == "vendas" else "id"
+        def retrato(prefixo):
+            pares = ", ".join(f"'{c}', {prefixo}.{c}" for c in campos)
+            return f"auditoria_json({pares})"
+
+        def mudou(colunas):
+            return " OR ".join(f"OLD.{c} IS NOT NEW.{c}" for c in colunas)
+
+        alterados = mudou(campos + _AUDITORIA_OMITIDOS.get(tabela, []))
+        acao = "'alteracao'"
+        if tabela == "produtos":
+            precos = [c for c in campos if "preco" in c]
+            acao = (f"CASE WHEN {mudou(precos)} THEN 'preco_alterado' "
+                    "WHEN OLD.qt_atual IS NOT NEW.qt_atual THEN 'estoque_alterado' ELSE 'alteracao' END")
+        elif tabela == "produtos_historico":
+            acao = "'estoque_alterado'"
+        elif tabela in ("operadores", "acessos"):
+            permissoes = ["nivel", "ativo"] if tabela == "operadores" else ["nivel"]
+            acao = f"CASE WHEN {mudou(permissoes)} THEN 'permissao_alterada' ELSE 'alteracao' END"
+            if tabela == "operadores":
+                acao = (f"CASE WHEN {mudou(permissoes)} THEN 'permissao_alterada' "
+                        "WHEN OLD.senha IS NOT NEW.senha THEN 'credencial_alterada' ELSE 'alteracao' END")
+        elif tabela == "vendas":
+            acao = ("CASE WHEN OLD.status IS NOT NEW.status AND NEW.status = 'cancelada' "
+                    "THEN 'venda_cancelada' WHEN OLD.desconto_cent IS NOT NEW.desconto_cent "
+                    "OR OLD.desconto_pct IS NOT NEW.desconto_pct THEN 'desconto_alterado' ELSE 'alteracao' END")
+        elif tabela == "itens_venda":
+            acao = ("CASE WHEN OLD.cancelado IS NOT NEW.cancelado AND NEW.cancelado = 1 "
+                    "THEN 'item_cancelado' WHEN OLD.preco_unit_cent IS NOT NEW.preco_unit_cent "
+                    "THEN 'preco_alterado' ELSE 'alteracao' END")
+        for operacao, prefixo, antes, depois, evento in (
+            ("INSERT", "NEW", "NULL", retrato("NEW"), "'cadastro'"),
+            ("UPDATE", "NEW", retrato("OLD"), retrato("NEW"), acao),
+            ("DELETE", "OLD", retrato("OLD"), "NULL", "'exclusao'"),
+        ):
+            condicao = "auditoria_ativa() = 1"
+            if operacao == "UPDATE":
+                condicao += f" AND ({alterados})"
+            if tabela == "produtos_historico":
+                # O espelho de um produto vivo não pode duplicar seu evento.
+                if operacao != "UPDATE":
+                    continue
+                condicao += (f" AND NOT EXISTS (SELECT 1 FROM produtos WHERE id = {prefixo}.id)"
+                             " AND OLD.qt_atual IS NOT NEW.qt_atual")
+            comandos.append(
+                f"CREATE TRIGGER IF NOT EXISTS auditoria_{tabela}_{operacao.lower()} "
+                f"AFTER {operacao} ON {tabela} WHEN {condicao} BEGIN "
+                "INSERT INTO auditoria_eventos(quando, operador_id, origem, entidade, entidade_id, acao, antes, depois) "
+                f"VALUES (auditoria_agora(), auditoria_operador(), "
+                f"CASE WHEN auditoria_operador() IS NULL THEN 'sistema' ELSE 'operador' END, "
+                f"'{tabela}', CAST({prefixo}.{chave} AS TEXT), {evento}, {antes}, {depois}); END")
+    return comandos
+
+
+AUDITORIA = [
+    """CREATE TABLE IF NOT EXISTS auditoria_eventos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        quando TEXT NOT NULL,
+        operador_id INTEGER,
+        origem TEXT NOT NULL CHECK (origem IN ('sistema', 'operador')),
+        entidade TEXT NOT NULL,
+        entidade_id TEXT NOT NULL,
+        acao TEXT NOT NULL,
+        antes TEXT,
+        depois TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS ix_auditoria_quando ON auditoria_eventos(quando, id)",
+    "CREATE INDEX IF NOT EXISTS ix_auditoria_acao_quando ON auditoria_eventos(acao, quando, id)",
+] + _gatilhos_auditoria()
+
 
 # Migrações por versão de destino, aplicadas em ordem quando o banco está atrasado
 # (ver BancoDados._migrar). Bancos novos já nascem na VERSAO_ESQUEMA e não as executam. Cada passo é um
@@ -665,4 +788,5 @@ MIGRACOES = {
         ("coluna", "acertos_garotas", "vale_cent", "INTEGER NOT NULL DEFAULT 0"),
     ],
     17: _migracao_historico_produtos(),
+    18: AUDITORIA,
 }

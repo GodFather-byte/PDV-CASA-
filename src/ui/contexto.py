@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from src.controllers.acesso_controller import AcessoController, Operador
+from src.controllers.auditoria_controller import AuditoriaController
 from src.controllers.cadastro_controller import CadastroController
 from src.controllers.caderneta_controller import CadernetaController
 from src.controllers.caixa_controller import CaixaController
@@ -35,6 +36,19 @@ class Contexto:
         self.comissoes = ComissaoController(banco)
         self.telegram = TelegramController(banco)
         self.ao_mudar_tema = None          # a janela principal põe aqui o que refaz o visual quando o operador troca claro/escuro
+
+    @property
+    def operador(self) -> Operador | None:
+        return self._operador
+
+    @operador.setter
+    def operador(self, operador: Operador | None) -> None:
+        self.banco.definir_operador_auditoria(operador.id if operador else None)
+        self._operador = operador
+
+    @property
+    def auditoria(self) -> AuditoriaController:
+        return AuditoriaController(self.banco, self.operador)
 
     @property
     def operador_id(self) -> int | None:

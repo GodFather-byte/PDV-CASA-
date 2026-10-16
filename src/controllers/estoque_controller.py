@@ -32,15 +32,16 @@ class EstoqueController:
         tabela = "produtos" if self.produtos.por_id(produto_id) is not None else "produtos_historico"
         if not self.banco.valor(f"SELECT 1 FROM {tabela} WHERE id = ?", (produto_id,)):
             raise ErroNegocio("Produto do movimento de estoque não encontrado.")
-        self.banco.executar(
-            f"UPDATE {tabela} SET qt_atual = ROUND(qt_atual + ?, 4) WHERE id = ?",
-            (delta, produto_id))
-        if tabela == "produtos":
-            self.banco.executar("UPDATE produtos SET ult_atualizacao = ? WHERE id = ?", (agora, produto_id))
-        apos = self.banco.valor(f"SELECT qt_atual FROM {tabela} WHERE id = ?", (produto_id,))
-        self.banco.inserir("movimentos_estoque", {
-            "produto_id": produto_id, "tipo": tipo, "quantidade": fmt.arred_qtd(delta),
-            "qt_apos": apos, "ref_tipo": ref_tipo, "ref_id": ref_id, "criado_em": agora})
+        with self.banco.transacao():
+            self.banco.executar(
+                f"UPDATE {tabela} SET qt_atual = ROUND(qt_atual + ?, 4) WHERE id = ?",
+                (delta, produto_id))
+            if tabela == "produtos":
+                self.banco.executar("UPDATE produtos SET ult_atualizacao = ? WHERE id = ?", (agora, produto_id))
+            apos = self.banco.valor(f"SELECT qt_atual FROM {tabela} WHERE id = ?", (produto_id,))
+            self.banco.inserir("movimentos_estoque", {
+                "produto_id": produto_id, "tipo": tipo, "quantidade": fmt.arred_qtd(delta),
+                "qt_apos": apos, "ref_tipo": ref_tipo, "ref_id": ref_id, "criado_em": agora})
         return apos
 
     def _estornar_referencia(self, ref_tipo: str, ref_id: int, tipo_original: str | None, tipo_estorno: str) -> None:

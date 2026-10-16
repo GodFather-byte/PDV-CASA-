@@ -414,16 +414,23 @@ class CaixaController:
         if pct is not None:
             if not 0 <= pct <= 100:
                 raise ErroNegocio("O percentual de desconto deve estar entre 0 e 100.")
-            self.banco.executar("UPDATE vendas SET desconto_pct = ?, desconto_cent = 0 WHERE id = ?", (pct, venda_id))
+            v.update(desconto_pct=pct, desconto_cent=0)
         else:
             valor_cent = valor_cent or 0
             if valor_cent < 0:
                 raise ErroNegocio("O desconto não pode ser negativo.")
             if valor_cent > v["subtotal_cent"]:
                 raise ErroNegocio("O desconto não pode ser maior que o total dos produtos.")
-            self.banco.executar("UPDATE vendas SET desconto_pct = 0, desconto_cent = ? WHERE id = ?", (valor_cent, venda_id))
-        self.banco.log("desconto", f"venda {venda_id}: pct={pct} valor={valor_cent}", self.operador_id)
-        return self.recalcular(venda_id)
+            v.update(desconto_pct=0, desconto_cent=valor_cent)
+        calculo = self.calcular(v)
+        with self.banco.transacao():
+            self.banco.atualizar("vendas", venda_id, {
+                "desconto_pct": v["desconto_pct"], "desconto_cent": calculo["desconto"],
+                "subtotal_cent": calculo["subtotal"], "servico_cent": calculo["servico"],
+                "taxa_cent": calculo["taxa"], "acrescimo_cent": calculo["acrescimo"],
+                "total_cent": calculo["total"]})
+            self.banco.log("desconto", f"venda {venda_id}: pct={pct} valor={valor_cent}", self.operador_id)
+        return calculo
 
     def definir_servico(self, venda_id: int, valor_cent: int | None) -> dict:
         """None volta ao cálculo automático. O cliente pode pagar menos (ou zero): serviço não é obrigatório."""

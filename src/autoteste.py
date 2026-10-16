@@ -21,7 +21,8 @@ from pathlib import Path
 # se algo ficou para trás. Um teste confere que esta lista acompanha os arquivos de `src/` (módulo novo precisa entrar aqui).
 # `src.app` fica de fora de propósito: no executável ele é o próprio script de entrada (`__main__`), não um módulo importável.
 MODULOS = [
-    "src.autoteste", "src.versao",
+    "src.autoteste", "src.autoteste_qt", "src.versao",
+    "src.controllers.auditoria_controller",
     "src.controllers.acesso_controller", "src.controllers.cadastro_controller", "src.controllers.caderneta_controller",
     "src.controllers.caixa_controller", "src.controllers.comissao_controller", "src.controllers.conferencia_turno",
     "src.controllers.config_controller", "src.controllers.contas_controller", "src.controllers.entidades",
@@ -31,16 +32,17 @@ MODULOS = [
     "src.controllers.relatorio_vendas", "src.controllers.telegram_controller", "src.controllers.telegram_textos",
     "src.controllers.turno_controller", "src.controllers.utilitario_controller",
     "src.core.ed25519", "src.core.erros", "src.core.formatacao", "src.core.instancia", "src.core.licenca",
-    "src.core.posicao", "src.core.registro", "src.core.relatorio", "src.core.seguranca",
+    "src.core.posicao", "src.core.registro", "src.core.relatorio", "src.core.seguranca", "src.core.backup_seguro",
     "src.database.conexao", "src.database.esquema", "src.database.protecao", "src.database.sementes",
     "src.hardware.dispositivos", "src.hardware.imagem_escpos", "src.hardware.impressora_termica",
     "src.hardware.impressoras_so",
     "src.sync.atualizacoes", "src.sync.licenca_nuvem", "src.sync.sincronizador", "src.sync.telegram_api",
-    "src.ui.app", "src.ui.assistente_impressora_ui", "src.ui.atualizacao_ui", "src.ui.cadastro_loja_ui", "src.ui.cadastros_tk", "src.ui.caixa_dialogos",
+    "src.ui.app", "src.ui.assistente_impressora_ui", "src.ui.atualizacao_ui", "src.ui.auditoria_ui", "src.ui.cadastro_loja_ui", "src.ui.cadastros_tk", "src.ui.caixa_dialogos",
     "src.ui.caixa_pagamento", "src.ui.caixa_tema", "src.ui.caixa_ui", "src.ui.clientes_ui", "src.ui.comissao_ui", "src.ui.composicao_ui",
     "src.ui.config_ui", "src.ui.contexto", "src.ui.escolher_impressora_ui", "src.ui.fila_impressao_ui", "src.ui.icone",
     "src.ui.estoque_ui", "src.ui.importar_produtos_ui", "src.ui.inicializacao", "src.ui.lancamentos_ui", "src.ui.login", "src.ui.menu_widgets", "src.ui.paleta", "src.ui.painel_mesas",
     "src.ui.relatorios_ui", "src.ui.telegram_ui", "src.ui.tema", "src.ui.utilitarios_ui", "src.ui.visualizador",
+    "src.ui_qt.app", "src.ui_qt.tema", "src.ui_qt.login", "src.ui_qt.cadastros", "src.ui_qt.caixa", "src.ui_qt.auditoria",
 ]
 
 
@@ -71,6 +73,7 @@ def _banco_e_telas(pasta: Path) -> list[str]:
     from src.database.conexao import BancoDados
     from src.ui import config_ui, tema
     from src.ui.app import App
+    from src.ui.auditoria_ui import JanelaAuditoria
     from src.ui.cadastros_tk import JanelaCadastro
 
     banco = BancoDados(str(pasta / "autoteste.db"))
@@ -90,6 +93,7 @@ def _banco_e_telas(pasta: Path) -> list[str]:
                 raise RuntimeError("o menu principal abriu vazio")
             tema.aplicar_tema(app.root)
             for abrir in (lambda: JanelaCadastro(app.root, app.ctx, "produtos"),
+                          lambda: JanelaAuditoria(app.root, app.ctx),
                           lambda: config_ui.abrir(app.root, app.ctx, "configuracoes"),
                           lambda: config_ui.abrir(app.root, app.ctx, "telegram")):
                 janela = abrir()
@@ -101,7 +105,7 @@ def _banco_e_telas(pasta: Path) -> list[str]:
             app.root.destroy()
     finally:
         banco.fechar()
-    return ["banco novo, menu principal e telas de cadastro, configurações e Telegram abrem"]
+    return ["banco novo, menu principal e telas de cadastro, auditoria, configurações e Telegram abrem"]
 
 
 def _rede() -> list[str]:

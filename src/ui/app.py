@@ -35,6 +35,7 @@ RELATORIOS = [
     ("Caixa", [("caixa_mov", "Entradas e saídas financeiras", "rel_caixa"), ("fechamentos", "Fechamentos do caixa", "rel_caixa"),
                ("comandas", "Comandas", "rel_comandas"), ("garcons", "Garçons", "rel_garcons"),
                ("auditoria_operadores", "Auditoria por operador", "rel_auditoria"),
+               ("auditoria_eventos", "Alterações e auditoria detalhada", "rel_auditoria"),
                ("comissao_garotas", "Comissão das garotas", "rel_comissao_garotas")]),
     ("Gestão", [("cmv", "C.M.V. (custo da mercadoria vendida)", "rel_cmv"),
                 ("comissao_produto", "Comissão por produto", "rel_comissoes"), ("comissao_venda", "Comissão por venda", "rel_comissoes"),
@@ -50,6 +51,7 @@ UTILITARIOS = [("limpeza", "Limpeza do movimento", "util_limpeza"),
                ("excluir_produtos", "Excluir todos os produtos", "util_excluir_produtos"),
                ("comunicacao", "Programa de comunicação", "util_comunicacao"),
                ("backup", "Backup de dados", "util_backup"), ("restaurar", "Restaurar backup", "util_backup"),
+               ("backup_externo", "Backup externo criptografado", "util_backup"),
                ("suporte", "Pacote de suporte (log de erros)", "util_backup"),
                ("fila_impressao", "Fila de impressão", "util_fila_impressao")]
 CONFIGURACOES = [("acessos", "Acessos", "cfg_acessos"), ("loja", "Loja", "cfg_loja"),
@@ -592,7 +594,8 @@ class App:
                     m.add_command(label=rotulo, command=lambda c=chave: self.abrir_lancamento(c))
         elif grupo == "Relatórios":
             for sub, itens in RELATORIOS:
-                visiveis = [i for i in itens if i[2] in permitidos]
+                visiveis = [i for i in itens if i[2] in permitidos
+                            and (i[0] != "auditoria_eventos" or ctx.operador.nivel == 4)]
                 if visiveis:
                     sm = tk.Menu(m, **estilo)
                     for chave, rotulo, _ in visiveis:
@@ -659,6 +662,9 @@ class App:
 
     def abrir_relatorio(self, chave: str) -> None:
         from src.ui.relatorios_ui import abrir_relatorio
+        if chave == "auditoria_eventos":
+            tema.tratar(self.root, self._unica, "auditoria_eventos", lambda: abrir_relatorio(self.root, self.ctx, chave))
+            return
         abrir_relatorio(self.root, self.ctx, chave)
 
     def abrir_config(self, chave: str) -> None:

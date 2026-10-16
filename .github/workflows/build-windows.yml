@@ -83,6 +83,11 @@ jobs:
           if (-not $p.WaitForExit(240000)) { $p.Kill(); throw "O autoteste travou (mais de 4 minutos)." }
           if (Test-Path $saida) { Get-Content $saida } else { Write-Host "O programa não escreveu o relatório do autoteste." }
           if ($p.ExitCode -ne 0) { throw "Autoteste do programa falhou (código $($p.ExitCode))." }
+          $saidaQt = Join-Path $env:RUNNER_TEMP "autoteste-qt-exe.txt"
+          $qt = Start-Process -FilePath $exe -ArgumentList "--autoteste-qt", "`"$saidaQt`"" -PassThru
+          if (-not $qt.WaitForExit(240000)) { $qt.Kill(); throw "O autoteste Qt travou." }
+          if (Test-Path $saidaQt) { Get-Content $saidaQt }
+          if ($qt.ExitCode -ne 0) { throw "Autoteste Qt do programa empacotado falhou." }
 
       - name: Instalar o instalador de verdade (silencioso) e rodar o autoteste do instalado
         run: |
@@ -98,6 +103,11 @@ jobs:
           if (-not $t.WaitForExit(240000)) { $t.Kill(); throw "O autoteste do programa instalado travou." }
           if (Test-Path $saida) { Get-Content $saida }
           if ($t.ExitCode -ne 0) { throw "Autoteste do programa instalado falhou (código $($t.ExitCode))." }
+          $saidaQt = Join-Path $env:RUNNER_TEMP "autoteste-qt-instalado.txt"
+          $qt = Start-Process -FilePath "$destino\WillPDV.exe" -ArgumentList "--autoteste-qt", "`"$saidaQt`"" -PassThru
+          if (-not $qt.WaitForExit(240000)) { $qt.Kill(); throw "O autoteste Qt instalado travou." }
+          if (Test-Path $saidaQt) { Get-Content $saidaQt }
+          if ($qt.ExitCode -ne 0) { throw "Autoteste Qt instalado falhou." }
 
       # O caso do PC da boate: o WillPDV continua rodando (tela de entrada aberta e o processo de segundo plano --sync, que nem
       # janela tem) quando se roda o instalador de novo. O Restart Manager não fecha o que não tem janela e a instalação travava em
