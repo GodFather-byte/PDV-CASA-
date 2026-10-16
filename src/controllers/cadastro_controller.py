@@ -246,8 +246,15 @@ class CadastroController:
             raise self._traduzir(ent, e) from e
         return id_
 
-    def excluir(self, chave: str, id_: int) -> None:
+    def excluir(self, chave: str, id_: int) -> str | None:
+        """Exclui o registro. Devolve um texto para a tela quando o cadastro faz algo além de apagar (produto já vendido é
+        guardado inativo, com o código liberado)."""
         ent = ENTIDADES[chave]
+        if ent.excluir_fn:
+            try:
+                return ent.excluir_fn(self.banco, id_)
+            except sqlite3.IntegrityError as e:
+                raise ErroNegocio(ent.msg_em_uso) from e
         if ent.antes_excluir:
             ent.antes_excluir(self.banco, id_)
         try:
