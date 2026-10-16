@@ -1,7 +1,7 @@
 """API de nuvem do PDV (FastAPI): licença das lojas e aviso de versão nova.
 
-A nuvem NÃO recebe vendas nem tem painel de faturamento: o PDV funciona sozinho em cada boate. Ela só guarda a lista de
-lojas (cada uma com o SEU token e a data até quando pagou), entrega o código de licença a quem está em dia e publica as
+A nuvem NÃO recebe vendas nem tem painel de faturamento: o PDV funciona sozinho em cada boate. Ela guarda a lista de
+lojas e cobranças de licença Asaas (cada loja com o SEU token e a data até quando pagou), entrega a licença e publica as
 versões novas do PDV. Cadastro das lojas (o token aparece uma única vez):
     python -m backend.lojas criar BOATE-CENTRO "Boate Centro"
 
@@ -23,11 +23,12 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query
 from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
+from backend import cobrancas
 from src.core import ed25519, licenca as licenca_pdv
 from src.versao import chave, mais_nova, valida      # a mesma regra de comparação de versões do PDV
 
@@ -128,6 +129,34 @@ def autenticar(authorization: Optional[str] = Header(None), db: Session = Depend
     raise HTTPException(status_code=401, detail="Token invalido")
 
 
+@app.post("/v1/webhooks/asaas")
+def webhook_asaas(dados: dict = Body(...), asaas_access_token: Optional[str] = Header(None),
+                  db: Session = Depends(get_db)):
+    segredo = os.environ.get("ASAAS_WEBHOOK_TOKEN", "").strip()
+    if not segredo:
+        raise HTTPException(status_code=503, detail="Webhook Asaas não configurado.")
+    if not asaas_access_token or not hmac.compare_digest(asaas_access_token.encode(), segredo.encode()):
+        raise HTTPException(status_code=401, detail="Token do webhook inválido.")
+    evento = dados.get("event")
+    pagamento = dados.get("payment")
+    if not isinstance(evento, str) or not evento.startswith("PAYMENT_") or not isinstance(pagamento, dict):
+        raise HTTPException(status_code=422, detail="Informe um evento de cobrança Asaas.")
+    if not pagamento.get("subscription"):
+        log.info("Evento Asaas sem assinatura ignorado.")
+        return {"situacao": "sem_assinatura"}
+    try:
+        evento_id = cobrancas.identificador(dados.get("id"), "evt_")
+        return {"situacao": cobrancas.processar(db, pagamento["subscription"], pagamento.get("id"), evento_id)}
+    except cobrancas.AsaasIndisponivel as erro:
+        db.rollback()
+        log.error("Falha na consulta Asaas: %s", erro)
+        raise HTTPException(status_code=503, detail=str(erro)) from None
+    except cobrancas.ErroCobranca as erro:
+        db.rollback()
+        log.warning("Webhook Asaas recusado: %s", erro)
+        raise HTTPException(status_code=422, detail=str(erro)) from None
+
+
 @app.get("/v1/saude")
 def saude():
     return {"status": "ok"}
@@ -198,4 +227,3 @@ def licenca(acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db))
         raise HTTPException(status_code=503, detail="A nuvem não está configurada para emitir licenças.")
     return {"codigo": licenca_pdv.gerar_licenca(semente, loja.chave_loja, (ate - hoje).days, hoje),
             "expira_em": ate.isoformat()}
-

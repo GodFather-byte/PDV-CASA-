@@ -3,6 +3,10 @@
 É um programa **separado do PDV**, só para quem vende o sistema. Você escolhe a loja e o tipo de licença, toca em **Gerar licença** e
 copia o código (ou uma mensagem pronta) para mandar ao cliente. Não precisa de Python nem de linha de comando.
 
+Para cobrar mensalidades e renovar pela internet, veja o guia separado
+[Cobrança de licenças com Asaas](COBRANCA_LICENCAS_ASAAS.md). O licenciador continua
+disponível para operação manual e liberações excepcionais; não é entregue ao cliente.
+
 > **Não entregue este programa a clientes.** O cliente só recebe o *código* da licença. Quem tem este programa **e a chave de
 > segurança** emite licenças.
 

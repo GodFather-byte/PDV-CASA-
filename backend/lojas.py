@@ -7,6 +7,9 @@
     python -m backend.lojas ativar BOATE-CENTRO
     python -m backend.lojas assinatura BOATE-CENTRO 2026-11-30  # pagou até essa data: o PDV renova a licença sozinho
     python -m backend.lojas assinatura BOATE-CENTRO cancelar    # não emite mais (a licença do caixa vence no prazo)
+    python -m backend.lojas cobranca vincular BOATE-CENTRO sub_EXEMPLO 9900
+    python -m backend.lojas cobranca conciliar BOATE-CENTRO
+    python -m backend.lojas cobranca listar
 
 No PDV da loja, em Configurações > Nuvem: a chave da loja (ex.: BOATE-CENTRO) e o token mostrado aqui.
 Usa o mesmo banco da API (PDV_NUVEM_DB_URL).
@@ -71,6 +74,10 @@ def definir_ativa(db: Session, chave: str, ativa: bool) -> None:
 
 def definir_assinatura(db: Session, chave: str, ate: date | None) -> None:
     """Até quando a loja pagou (None cancela). A nuvem passa a emitir licença até essa data para o PDV dela."""
+    from backend.cobrancas import Assinatura
+    if db.query(Assinatura).filter_by(chave_loja=chave).first():
+        raise ErroLoja("Esta loja usa Asaas: concilie a cobrança para renovar; cancele a recorrência no painel Asaas. "
+                      "Para uma liberação excepcional, emita um código no licenciador.")
     _obter(db, chave).licenca_ate = ate.isoformat() if ate else None
     db.commit()
 
@@ -82,6 +89,9 @@ def listar(db: Session) -> list[Loja]:
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     comando, resto = (args[0], args[1:]) if args else ("", [])
+    if comando == "cobranca":
+        from backend.cobrancas import main as gerenciar_cobrancas
+        return gerenciar_cobrancas(resto)
     db = SessionLocal()
     try:
         if comando == "criar" and len(resto) == 2:

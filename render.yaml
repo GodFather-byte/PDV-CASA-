@@ -1,6 +1,8 @@
 # Nuvem do WillPDV no Render (plano gratuito). Passo a passo em docs/NUVEM.md, "Opção grátis: Render + Neon".
 # O banco NÃO fica no Render: o disco do plano grátis é apagado a cada reinício. Os dados ficam num PostgreSQL
 # gratuito do Neon (neon.tech), informado em PDV_NUVEM_DB_URL.
+# Cobrança Asaas: docs/COBRANCA_LICENCAS_ASAAS.md. Em produção, escolha plano pago
+# sempre ligado e configure ASAAS_AMBIENTE, ASAAS_API_KEY e ASAAS_WEBHOOK_TOKEN no painel.
 services:
   - type: web
     name: willpdv-nuvem

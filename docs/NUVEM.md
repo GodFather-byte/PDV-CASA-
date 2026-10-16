@@ -13,6 +13,11 @@ O caixa **não depende** da nuvem para vender: sem internet ele continua funcion
 
 Tudo o que é da nuvem está na pasta `backend/` do projeto.
 
+**Cobrança automática da mensalidade:** veja o guia separado
+[Cobrança de licenças com Asaas](COBRANCA_LICENCAS_ASAAS.md). Ele explica vínculo
+por loja, webhook, conciliação, custos e homologação. Para cobranças reais,
+não use o Render gratuito descrito abaixo: escolha serviço sempre ligado e banco persistente.
+
 ---
 
 ## 1. Testar no seu computador (10 minutos)

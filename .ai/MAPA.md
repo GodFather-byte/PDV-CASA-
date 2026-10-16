@@ -12,6 +12,7 @@ O repositório gera dois programas Windows: **WillPDV** (o PDV do cliente) e **W
 | `python -m tools.gerar_licenca` | Licenças pela linha de comando (`novo-par`, `emitir`, `ver`) |
 | `python -m uvicorn backend.main:app` | API da nuvem |
 | `python -m backend.lojas` / `backend.atualizacoes` | Lojas, assinatura e versões na nuvem |
+| `python -m backend.lojas cobranca` | Vínculos Asaas e conciliação das mensalidades |
 | `python build_pdv.py` / `build_licenciador.py` | Executável (PyInstaller) e instalador (Inno Setup) |
 
 ## Pastas
@@ -25,7 +26,7 @@ O repositório gera dois programas Windows: **WillPDV** (o PDV do cliente) e **W
 | `src/hardware/` | Impressora térmica ESC/POS e gaveta, balança, logotipo no cupom, impressoras do Windows |
 | `src/sync/` | `sincronizador.py`, `licenca_nuvem.py`, `atualizacoes.py`, `telegram_api.py` |
 | `licenciador/` | `nucleo.py` (regras), `tela.py` (janela), `app.py`, `autoteste.py` |
-| `backend/` | FastAPI: `main.py` (rotas), `lojas.py`, `atualizacoes.py`, `database.py` |
+| `backend/` | FastAPI: `main.py` (rotas), `lojas.py`, `atualizacoes.py`, `database.py`, `cobrancas.py` (Asaas) |
 | `tools/` | `gerar_licenca.py`, `gerar_logos.py` (não vão no instalador do PDV) |
 | `instalador/` | Scripts Inno Setup (`WillPDV.iss`, `WillLicencas.iss`) e imagens |
 | `tests/` | Um `test_*.py` por assunto; `base.py` (banco em memória, relógio controlável); `ui_robo.py` (robô das janelas modais) |
@@ -55,7 +56,7 @@ O repositório gera dois programas Windows: **WillPDV** (o PDV do cliente) e **W
 
 `ESPECIFICACAO.md` (o que o sistema deve fazer), `INSTALAR_E_TESTAR.md`, `LICENCIADOR.md`,
 `NUVEM.md`, `TELEGRAM.md`, `IMPRESSORA.md`, `ESTOQUE.md`, `IMPORTAR_PRODUTOS.md`, `PILOTO.md`,
-`COORDENACAO.md` (histórico de pedidos entre agentes).
+`COBRANCA_LICENCAS_ASAAS.md` (cobrança e renovação mensal), `COORDENACAO.md` (histórico de pedidos entre agentes).
 
 ## Dados
 
