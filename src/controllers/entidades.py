@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from src.core import seguranca
+from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio, ErroValidacao
 
 
@@ -157,10 +158,8 @@ def _antes_excluir_garota(banco, id_):
 
 
 def _guardar_produto(banco, p) -> None:
-    """Deixa o produto (já vendido ou inativo) guardado, sem prender nada: inativo, com o código, o nome, o atalho e o código de
-    barras livres para outro produto. O histórico das vendas continua apontando para ele."""
-    banco.executar("UPDATE produtos SET ativo = 0, codigo = ?, nome = ?, atalho = NULL, cbarra = NULL WHERE id = ?",
-                   (f"{p['codigo']}~{p['id']}", f"{p['nome']} (excluído {p['id']})", p["id"]))
+    """Libera um cadastro inativo legado preservando sua identidade histórica."""
+    _excluir_produto(banco, p["id"])
 
 
 def _liberar_produtos_guardados(banco, d, id_) -> None:
@@ -176,34 +175,30 @@ def _liberar_produtos_guardados(banco, d, id_) -> None:
 
 
 def _excluir_produto(banco, id_):
-    """Excluir produto: sem uso em venda, apaga de verdade (com composição e estoque dele). Já vendido não pode sumir (cupom,
-    relatórios e estorno dependem dele): fica guardado, inativo, e o código, o nome, o atalho e o código de barras ficam livres
-    para outro produto. Recusa se o produto está numa mesa, comanda ou balcão aberto."""
+    """Remove o cadastro, sem remover os registros históricos associados à sua identidade."""
     p = banco.um("SELECT * FROM produtos WHERE id = ?", (id_,))
     if p is None:
         raise ErroNegocio("Produto não encontrado.")
-    aberto = banco.valor(
-        """SELECT COUNT(*) FROM itens_venda i JOIN vendas v ON v.id = i.venda_id
-           WHERE i.produto_id = ? AND i.cancelado = 0 AND v.status IN ('aberta','conta_enviada')""", (id_,), 0)
-    if aberto:
-        raise ErroNegocio("Este produto está em mesa, comanda ou venda aberta. Feche ou cancele antes de excluir.")
-    vendido = banco.valor("SELECT 1 FROM itens_venda WHERE produto_id = ? LIMIT 1", (id_,)) or \
-        banco.valor("SELECT 1 FROM itens_venda_partes WHERE produto_id = ? LIMIT 1", (id_,))
     with banco.transacao():
-        lancamentos = [x[0] for x in banco.todos("SELECT DISTINCT lancamento_id FROM itens_estoque WHERE produto_id = ?", (id_,))]
-        banco.executar("DELETE FROM composicoes WHERE produto_id = ? OR insumo_id = ?", (id_, id_))
-        if vendido:
-            _guardar_produto(banco, p)
-            banco.log("produto_excluido", f"produto {id_} ({p['codigo']}) guardado inativo, código liberado")
-            return (f"O produto '{p['nome']}' já foi vendido e não pode sumir dos relatórios. Ele ficou guardado, inativo, "
-                    f"e o código {p['codigo']} está livre para um produto novo.")
-        banco.executar("DELETE FROM itens_estoque WHERE produto_id = ?", (id_,))
-        banco.executar("DELETE FROM movimentos_estoque WHERE produto_id = ?", (id_,))
-        for lanc in lancamentos:
-            banco.executar("DELETE FROM lancamentos_estoque WHERE id = ? AND NOT EXISTS "
-                           "(SELECT 1 FROM itens_estoque e WHERE e.lancamento_id = lancamentos_estoque.id)", (lanc,))
+        aberto = banco.valor(
+            """SELECT COUNT(*) FROM itens_venda i JOIN vendas v ON v.id = i.venda_id
+               WHERE i.cancelado = 0 AND v.status IN ('aberta','conta_enviada')
+               AND (i.produto_id = ? OR EXISTS (
+                   SELECT 1 FROM itens_venda_partes p WHERE p.item_id = i.id AND p.produto_id = ?))""", (id_, id_), 0)
+        if aberto:
+            raise ErroNegocio("Este produto está em mesa, comanda ou venda aberta. Feche ou cancele antes de excluir.")
+        if banco.valor("SELECT 1 FROM composicoes WHERE insumo_id = ? AND produto_id <> ? LIMIT 1", (id_, id_)):
+            raise ErroNegocio("Este produto é insumo de uma composição. Remova-o da ficha técnica antes de excluir.")
+        if banco.valor("""SELECT 1 FROM itens_estoque i JOIN lancamentos_estoque l ON l.id = i.lancamento_id
+                          WHERE i.produto_id = ? AND l.tipo = 'pedido' LIMIT 1""", (id_,)):
+            raise ErroNegocio("Este produto está em um pedido de compra. Remova-o do pedido antes de excluir.")
+        from src.controllers.produto_controller import ProdutoController
+        custo = ProdutoController(banco).custo(id_)
+        banco.executar("UPDATE produtos_historico SET custo_cent = ?, ativo = 0, excluido_em = ? WHERE id = ?",
+                       (custo, fmt.agora(), id_))
+        banco.executar("DELETE FROM composicoes WHERE produto_id = ?", (id_,))
         banco.executar("DELETE FROM produtos WHERE id = ?", (id_,))
-        banco.log("produto_excluido", f"produto {id_} ({p['codigo']}) apagado")
+        banco.log("produto_excluido", f"produto {id_} ({p['codigo']}) excluído do cadastro; histórico preservado")
     return None
 
 

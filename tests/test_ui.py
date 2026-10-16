@@ -1156,6 +1156,13 @@ class TesteLoginComLicenca(BaseUI):
         with mock.patch.object(tema, "pedir_texto", return_value=codigo) as pedir, \
                 mock.patch.object(tema, "mensagem") as aviso:
             j.entrar()
+            if j._consulta_licenca is not None:
+                from time import monotonic, sleep
+                limite = monotonic() + 3
+                while j._consulta_licenca is not None and monotonic() < limite:
+                    self.root.update()
+                    sleep(0.01)
+                self.assertIsNone(j._consulta_licenca, "A consulta de licença não terminou.")
         return j, pedir, aviso
 
     def test_sem_licenca_pede_o_codigo_e_entra_ao_ativar(self):
@@ -1169,10 +1176,10 @@ class TesteLoginComLicenca(BaseUI):
     def test_licenca_paga_na_nuvem_entra_sem_pedir_o_codigo(self):
         from src.sync import licenca_nuvem
 
-        def renovar(banco, **kw):
-            self.licenca.ativar(banco, self.codigo())
-            return True
-        with mock.patch.object(licenca_nuvem, "renovar", side_effect=renovar) as nuvem:
+        self.banco.cfg_set("api_url", "https://nuvem/v1")
+        self.banco.cfg_set("api_token", "tok")
+        with mock.patch.object(licenca_nuvem, "consultar_resultado",
+                               return_value=licenca_nuvem.ResultadoConsulta(True, self.codigo())) as nuvem:
             j, pedir, _ = self.entrar()
         nuvem.assert_called_once()
         pedir.assert_not_called()

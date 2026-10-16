@@ -5,7 +5,29 @@ datas em texto ISO local. Booleanos sao INTEGER 0/1.
 """
 
 
-VERSAO_ESQUEMA = 16
+VERSAO_ESQUEMA = 17
+
+PRODUTOS_HISTORICO_DDL = """CREATE TABLE IF NOT EXISTS produtos_historico (
+    id INTEGER PRIMARY KEY,
+    codigo TEXT NOT NULL,
+    nome TEXT NOT NULL,
+    subgrupo_id INTEGER NOT NULL REFERENCES subgrupos(id),
+    unidade_id INTEGER NOT NULL REFERENCES unidades(id),
+    controla_estoque INTEGER NOT NULL DEFAULT 0,
+    estoque_minimo REAL NOT NULL DEFAULT 0,
+    qt_atual REAL NOT NULL DEFAULT 0,
+    ult_preco_cent INTEGER NOT NULL DEFAULT 0,
+    custo_cent INTEGER NOT NULL DEFAULT 0,
+    ativo INTEGER NOT NULL DEFAULT 1,
+    excluido_em TEXT
+)"""
+_CAMPOS_HISTORICO = ("id", "codigo", "nome", "subgrupo_id", "unidade_id", "controla_estoque",
+                     "estoque_minimo", "qt_atual", "ult_preco_cent", "ativo")
+_COLUNAS_HISTORICO = ", ".join(_CAMPOS_HISTORICO)
+_SINCRONIZAR_HISTORICO = (
+    f"INSERT INTO produtos_historico ({_COLUNAS_HISTORICO}) "
+    f"VALUES ({', '.join('NEW.' + c for c in _CAMPOS_HISTORICO)}) "
+    f"ON CONFLICT(id) DO UPDATE SET {', '.join(c + '=excluded.' + c for c in _CAMPOS_HISTORICO if c != 'id')};")
 
 # Definição única da tabela de máquinas (reutilizada na migração v2). Sem CHECK em
 # modo_impressao: a validação fica em config_controller, e isso permite novos modos
@@ -33,6 +55,7 @@ MAQUINAS_DDL = """CREATE TABLE IF NOT EXISTS maquinas (
 )"""
 
 TABELAS = [
+    PRODUTOS_HISTORICO_DDL,
     # ------------------------------------------------------------ infraestrutura
     """CREATE TABLE IF NOT EXISTS config (
         chave TEXT PRIMARY KEY,
@@ -491,6 +514,60 @@ TABELAS = [
     "CREATE INDEX IF NOT EXISTS ix_contas_quit ON contas(dt_quitacao)",
 ]
 
+# As relações históricas não dependem da permanência do cadastro comercial.
+_TABELAS_HISTORICAS = ("itens_venda", "itens_venda_partes", "itens_estoque", "movimentos_estoque")
+TABELAS = [
+    sql.replace("REFERENCES produtos(id)", "REFERENCES produtos_historico(id)")
+    if any(sql.startswith(f"CREATE TABLE IF NOT EXISTS {t} (") for t in _TABELAS_HISTORICAS) else sql
+    for sql in TABELAS
+]
+TABELAS += [
+    f"CREATE TRIGGER IF NOT EXISTS produtos_historico_inserir AFTER INSERT ON produtos BEGIN {_SINCRONIZAR_HISTORICO} END",
+    f"CREATE TRIGGER IF NOT EXISTS produtos_historico_atualizar AFTER UPDATE ON produtos BEGIN {_SINCRONIZAR_HISTORICO} END",
+]
+
+
+def _migracao_historico_produtos() -> list[str]:
+    comandos = [
+        f"INSERT OR IGNORE INTO produtos_historico ({_COLUNAS_HISTORICO}) SELECT {_COLUNAS_HISTORICO} FROM produtos",
+        "UPDATE produtos_historico SET custo_cent = ult_preco_cent",
+        "CREATE TEMP TABLE _excluidos_v17 AS SELECT id FROM produtos "
+        "WHERE instr(codigo, '~') > 0 AND substr(codigo, instr(codigo, '~') + 1) = CAST(id AS TEXT)",
+        "CREATE TEMP TABLE _sequencias_v17 AS SELECT name, seq FROM sqlite_sequence",
+        "CREATE TEMP TABLE _partes_v17 AS SELECT * FROM itens_venda_partes",
+        "DROP TABLE itens_venda_partes",
+    ]
+    for tabela in ("itens_venda", "itens_estoque", "movimentos_estoque"):
+        ddl = next(sql for sql in TABELAS if sql.startswith(f"CREATE TABLE IF NOT EXISTS {tabela} ("))
+        nova = f"_{tabela}_v17"
+        comandos += [
+            ddl.replace(f"IF NOT EXISTS {tabela} (", f"{nova} (", 1),
+            f"INSERT INTO {nova} SELECT * FROM {tabela}",
+            f"DROP TABLE {tabela}",
+            f"ALTER TABLE {nova} RENAME TO {tabela}",
+        ]
+    comandos += [
+        next(sql for sql in TABELAS if sql.startswith("CREATE TABLE IF NOT EXISTS itens_venda_partes (")),
+        "INSERT INTO itens_venda_partes SELECT * FROM _partes_v17",
+        "DROP TABLE _partes_v17",
+        "UPDATE sqlite_sequence SET seq = MAX(seq, COALESCE((SELECT seq FROM _sequencias_v17 s "
+        "WHERE s.name = sqlite_sequence.name), seq))",
+        "INSERT INTO sqlite_sequence(name, seq) SELECT s.name, s.seq FROM _sequencias_v17 s "
+        "WHERE s.name IN ('itens_venda', 'itens_venda_partes', 'itens_estoque', 'movimentos_estoque') "
+        "AND NOT EXISTS (SELECT 1 FROM sqlite_sequence atual WHERE atual.name = s.name)",
+        "DROP TABLE _sequencias_v17",
+        "UPDATE produtos_historico SET codigo = substr(codigo, 1, instr(codigo, '~') - 1), "
+        "nome = CASE WHEN substr(nome, -length(' (excluído ' || id || ')')) = ' (excluído ' || id || ')' "
+        "THEN substr(nome, 1, length(nome) - length(' (excluído ' || id || ')')) ELSE nome END, "
+        "ativo = 0, excluido_em = datetime('now', 'localtime') WHERE id IN (SELECT id FROM _excluidos_v17)",
+        "DELETE FROM composicoes WHERE produto_id IN (SELECT id FROM _excluidos_v17) "
+        "OR insumo_id IN (SELECT id FROM _excluidos_v17)",
+        "DELETE FROM produtos WHERE id IN (SELECT id FROM _excluidos_v17)",
+        "DROP TABLE _excluidos_v17",
+    ]
+    comandos += [sql for sql in TABELAS if sql.startswith("CREATE INDEX") or sql.startswith("CREATE UNIQUE INDEX")]
+    return comandos
+
 # Índices que dependem de colunas criadas por migrações: rodam DEPOIS delas (ver BancoDados._criar_esquema),
 # senão um banco antigo falharia ao criar o índice de uma coluna que ainda não existe.
 INDICES_POS_MIGRACAO = [
@@ -587,4 +664,5 @@ MIGRACOES = {
     16: [
         ("coluna", "acertos_garotas", "vale_cent", "INTEGER NOT NULL DEFAULT 0"),
     ],
+    17: _migracao_historico_produtos(),
 }

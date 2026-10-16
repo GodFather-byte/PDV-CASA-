@@ -150,7 +150,7 @@ def mais_vendidos(banco, dia: str | None = None, limite: int = 10) -> str:
     ini, fim = _faixa(banco, dia)
     linhas = banco.todos(
         """SELECT pr.nome, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS total FROM itens_venda i
-           JOIN vendas v ON v.id = i.venda_id JOIN produtos pr ON pr.id = i.produto_id
+           JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico pr ON pr.id = i.produto_id
            WHERE i.cancelado = 0 AND v.status = 'fechada' AND v.fechada_em >= ? AND v.fechada_em < ?
            GROUP BY pr.id ORDER BY total DESC, qt DESC LIMIT ?""", (ini, fim, limite))
     if not linhas:
@@ -201,7 +201,7 @@ def cancelamentos(banco, dia: str | None = None) -> str:
            ORDER BY v.fechada_em DESC""", (ini, fim))
     itens = banco.todos(
         """SELECT pr.nome, i.quantidade, i.total_cent AS total, i.cancelado_em AS quando, o.nome AS por
-           FROM itens_venda i JOIN produtos pr ON pr.id = i.produto_id LEFT JOIN operadores o ON o.id = i.operador_id
+           FROM itens_venda i JOIN produtos_historico pr ON pr.id = i.produto_id LEFT JOIN operadores o ON o.id = i.operador_id
            WHERE i.cancelado = 1 AND i.cancelado_em >= ? AND i.cancelado_em < ? ORDER BY i.cancelado_em DESC""", (ini, fim))
     if not cupons and not itens:
         return f"❌ Cancelamentos — {_dia_rotulo(dia)}\n\n✅ Nenhum cancelamento."
@@ -445,7 +445,7 @@ def mesa(banco, texto: str) -> str:
         return f"🪑 {nome} não está aberta."
     v = vendas[0]
     itens = banco.todos(
-        """SELECT p.nome, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS total FROM itens_venda i JOIN produtos p ON p.id = i.produto_id
+        """SELECT p.nome, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS total FROM itens_venda i JOIN produtos_historico p ON p.id = i.produto_id
            WHERE i.venda_id = ? AND i.cancelado = 0 GROUP BY p.id ORDER BY MIN(i.id)""", (v["id"],))
     if not itens:
         return f"🪑 {nome} está aberta, sem consumo."
@@ -498,7 +498,7 @@ def venda_cancelada(banco, venda_id: int) -> str:
 
 def item_cancelado(banco, item_id: int, motivo: str, operador_id) -> str:
     i = banco.um("SELECT i.*, pr.nome AS produto, v.modalidade, v.comanda, v.posicao FROM itens_venda i "
-                 "JOIN produtos pr ON pr.id = i.produto_id JOIN vendas v ON v.id = i.venda_id WHERE i.id = ?", (item_id,))
+                 "JOIN produtos_historico pr ON pr.id = i.produto_id JOIN vendas v ON v.id = i.venda_id WHERE i.id = ?", (item_id,))
     local = {"mesa": nome_posicao(i["comanda"], i["posicao"]), "balcao": "balcão", "caderneta": "caderneta"}.get(i["modalidade"], "entrega")
     linhas = [f"❌ Item cancelado — {local}", f"{_qtd(i['quantidade'])}x {i['produto']} ({_brl(i['total_cent'])})",
               f"Por: {_operador(banco, operador_id)}"]

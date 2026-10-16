@@ -156,5 +156,7 @@ class ProdutoController:
         sem composição, o último preço de compra do próprio produto."""
         comps = self.banco.todos("SELECT insumo_id, quantidade FROM composicoes WHERE produto_id = ?", (produto_id,))
         if not comps:
-            return self.banco.valor("SELECT ult_preco_cent FROM produtos WHERE id = ?", (produto_id,), 0)
+            atual = self.por_id(produto_id)
+            return atual["ult_preco_cent"] if atual else self.banco.valor(
+                "SELECT custo_cent FROM produtos_historico WHERE id = ?", (produto_id,), 0)
         return sum(fmt.mult_cent(self.custo(c["insumo_id"]), c["quantidade"]) for c in comps)

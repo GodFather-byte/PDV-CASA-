@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import tkinter as tk
+import logging
+import threading
+from queue import Empty, Queue
 from tkinter import ttk
 
 from src.controllers.turno_controller import TurnoController
@@ -19,6 +22,10 @@ class JanelaLogin(tk.Toplevel):
     def __init__(self, master, ctx, titulo_loja: str = "PDV"):
         super().__init__(master)
         self.ctx, self.operador = ctx, None
+        self._entrando = False
+        self._fechada = False
+        self._consulta_licenca = None
+        self._consulta_after = None
         self.title("WillPDV • Entrada no sistema")
         self.configure(bg=PAL["fundo"])
         self.resizable(False, False)
@@ -116,10 +123,25 @@ class JanelaLogin(tk.Toplevel):
         self.ent_senha.configure(show="" if self.var_mostrar_senha.get() else "*")
 
     def entrar(self) -> None:
+        if self._fechada or self._entrando:
+            return
+        self._entrando = True
+        self.btn_entrar.configure(state="disabled")
+        self._executar_entrada(consultar_nuvem=True)
+
+    def _executar_entrada(self, consultar_nuvem: bool) -> None:
+        try:
+            self._continuar_entrada(consultar_nuvem)
+        finally:
+            if self._consulta_licenca is None and not self._fechada:
+                self._entrando = False
+                self.btn_entrar.configure(state="normal")
+
+    def _continuar_entrada(self, consultar_nuvem: bool) -> None:
         estado = licenca.estado(self.ctx.banco)
         turno = TurnoController(self.ctx.banco).atual()
-        if estado.bloqueia and self._renovar_pela_nuvem():
-            estado = licenca.estado(self.ctx.banco)
+        if estado.bloqueia and consultar_nuvem and self._renovar_pela_nuvem():
+            return
         if estado.bloqueia and not licenca.turno_vale_como_isencao(self.ctx.banco, turno):
             # Com um turno recente aberto a loja continua operando (só avisa); sem ele, exige a renovação.
             self.ctx.banco.log("licenca_bloqueio", estado.mensagem)
@@ -171,16 +193,68 @@ class JanelaLogin(tk.Toplevel):
         return True
 
     def _renovar_pela_nuvem(self) -> bool:
-        """Licença bloqueada: antes de pedir o código, tenta a renovação pela nuvem (a loja pode já ter pago)."""
+        """Inicia só a rede fora da thread Tk; True indica que a entrada será retomada."""
         from src.sync import licenca_nuvem
+        url, token = self.ctx.banco.cfg("api_url"), self.ctx.banco.cfg("api_token")
+        if not url.strip() or not token.strip() or not licenca_nuvem.iniciar_consulta(self.ctx.banco, forcar=True):
+            return False
         self.lbl_msg.configure(text="Verificando a licença na nuvem...", fg=PAL["texto"])
-        self.update_idletasks()
-        renovou = licenca_nuvem.renovar(self.ctx.banco, forcar=True, timeout=(3, 5))
-        self.lbl_msg.configure(text="")
-        return renovou
+        fila = self._consulta_licenca = Queue()
+
+        def rede():
+            try:
+                resultado = licenca_nuvem.consultar_resultado(url, token, timeout=(3, 5))
+                fila.put((resultado, None))
+            except Exception as e:
+                logging.getLogger("pdv.licenca").exception("Falha na consulta de licença do login.")
+                fila.put((licenca_nuvem.ResultadoConsulta(False, erro=str(e)), e))
+
+        try:
+            threading.Thread(target=rede, name="consulta-licenca-login", daemon=True).start()
+            self._consulta_after = self.after(100, self._receber_licenca)
+        except Exception:
+            self._consulta_licenca = None
+            raise
+        return True
+
+    def _receber_licenca(self) -> None:
+        from src.sync import licenca_nuvem
+        self._consulta_after = None
+        if self._fechada or self._consulta_licenca is None:
+            return
+        try:
+            resultado, erro = self._consulta_licenca.get_nowait()
+        except Empty:
+            self._consulta_after = self.after(100, self._receber_licenca)
+            return
+        self._consulta_licenca = None
+        try:
+            licenca_nuvem.registrar_resultado(self.ctx.banco, resultado)
+            licenca_nuvem.aplicar(self.ctx.banco, resultado.codigo)
+        except Exception as e:
+            logging.getLogger("pdv.licenca").exception("Falha ao aplicar licença no login.")
+            self.lbl_msg.configure(text=f"Não foi possível atualizar a licença: {e}", fg=PAL["vermelho"])
+            self._entrando = False
+            self.btn_entrar.configure(state="normal")
+            return
+        self.lbl_msg.configure(text=f"Consulta de licença falhou: {erro}" if erro else "")
+        self._executar_entrada(consultar_nuvem=False)
+
+    def destroy(self) -> None:
+        self._fechada = True
+        self._consulta_licenca = None
+        if self._consulta_after is not None:
+            try:
+                self.after_cancel(self._consulta_after)
+            except tk.TclError:
+                pass
+            self._consulta_after = None
+        super().destroy()
 
     def pedir_licenca(self, motivo: str = "") -> bool:
         """Pede o código de licença e o ativa. Devolve True se a licença ficou liberada para entrar."""
+        if self._fechada or self._consulta_licenca is not None:
+            return False
         texto = (f"{motivo}\n\n" if motivo else "") + "Cole o código de licença fornecido:"
         codigo = tema.pedir_texto(self, "Código de licença", texto, largura=64)
         if not codigo:

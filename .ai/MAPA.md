@@ -13,6 +13,7 @@ O repositório gera dois programas Windows: **WillPDV** (o PDV do cliente) e **W
 | `python -m uvicorn backend.main:app` | API da nuvem |
 | `python -m backend.lojas` / `backend.atualizacoes` | Lojas, assinatura e versões na nuvem |
 | `python -m backend.lojas cobranca` | Vínculos Asaas e conciliação das mensalidades |
+| `python -m backend.worker_asaas` | Processamento durável de webhooks e conciliação periódica |
 | `python build_pdv.py` / `build_licenciador.py` | Executável (PyInstaller) e instalador (Inno Setup) |
 
 ## Pastas
@@ -20,13 +21,13 @@ O repositório gera dois programas Windows: **WillPDV** (o PDV do cliente) e **W
 | Pasta | O que tem |
 |---|---|
 | `src/core/` | Dinheiro e datas (`formatacao.py`), licença Ed25519 (`licenca.py`, `ed25519.py`), senhas (`seguranca.py`), erros de negócio (`erros.py`), comanda e mesa (`posicao.py`), log (`registro.py`), base dos relatórios (`relatorio.py`), instância única (`instancia.py`) |
-| `src/database/` | `esquema.py` (tabelas, `VERSAO_ESQUEMA`, `MIGRACOES`), `conexao.py`, `protecao.py` (integridade e backup), `sementes.py` (dados iniciais) |
+| `src/database/` | `esquema.py` (tabelas, migrações e histórico de produtos separado do catálogo), `conexao.py`, `protecao.py` (integridade e backup), `sementes.py` (dados iniciais) |
 | `src/controllers/` | Regras de negócio, um arquivo por assunto (lista abaixo) |
 | `src/ui/` | Telas Tkinter: `app.py` (janela principal), `caixa_ui.py` (caixa), `painel_mesas.py` (cartões, busca e abas das comandas), `caixa_tema.py` (cores e estilos do caixa), `paleta.py` (modo claro/escuro: as paletas e a troca), `login.py`, `tema.py` e uma tela por módulo |
 | `src/hardware/` | Impressora térmica ESC/POS e gaveta, balança, logotipo no cupom, impressoras do Windows |
 | `src/sync/` | `sincronizador.py`, `licenca_nuvem.py`, `atualizacoes.py`, `telegram_api.py` |
 | `licenciador/` | `nucleo.py` (regras), `tela.py` (janela), `app.py`, `autoteste.py` |
-| `backend/` | FastAPI: `main.py` (rotas), `lojas.py`, `atualizacoes.py`, `database.py`, `cobrancas.py` (Asaas) |
+| `backend/` | FastAPI: `main.py` (rotas), `lojas.py`, `atualizacoes.py`, `database.py`, `cobrancas.py` (Asaas), `operacao_asaas.py` e `worker_asaas.py` (fila, agenda e indicadores) |
 | `tools/` | `gerar_licenca.py`, `gerar_logos.py` (não vão no instalador do PDV) |
 | `instalador/` | Scripts Inno Setup (`WillPDV.iss`, `WillLicencas.iss`) e imagens |
 | `tests/` | Um `test_*.py` por assunto; `base.py` (banco em memória, relógio controlável); `ui_robo.py` (robô das janelas modais) |

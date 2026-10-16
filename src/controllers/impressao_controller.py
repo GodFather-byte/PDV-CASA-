@@ -199,7 +199,7 @@ class ImpressaoController:
         w = self.largura()
         v = self.caixa.obter(venda_id)
         sql = """SELECT i.id, i.quantidade, i.observacao, pr.nome, s.nome AS subgrupo FROM itens_venda i
-                 JOIN produtos pr ON pr.id = i.produto_id JOIN subgrupos s ON s.id = pr.subgrupo_id
+                 JOIN produtos_historico pr ON pr.id = i.produto_id JOIN subgrupos s ON s.id = pr.subgrupo_id
                  WHERE i.venda_id = ? AND i.cancelado = 0 AND s.impressora_remota = 1"""
         params: list = [venda_id]
         if item_ids:

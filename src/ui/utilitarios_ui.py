@@ -72,10 +72,8 @@ def excluir_produtos(master, ctx) -> bool:
     texto = (f"Isto exclui TODOS os produtos de uma vez, para você cadastrar a tabela de novo\n"
              f"(Cadastros > Produtos > Importar planilha).\n\nProdutos cadastrados: {r['total']}\n"
              f"Serão excluídos: {r['excluidos']}\n")
-    if r["guardados"]:
-        texto += (f"Já foram vendidos: {r['guardados']}. Esses NÃO podem ser apagados (o histórico das vendas depende deles):\n"
-                  "ficam guardados como inativos, fora do caixa e das listas, e voltam a valer quando a planilha trouxer "
-                  "o mesmo código.\n")
+    texto += ("O cadastro será removido e os códigos ficarão livres. Cupons, relatórios e movimentos antigos "
+              "continuam no histórico, sem ligação com os novos produtos.\n")
     texto += ("\nUm backup é feito antes. Não dá para desfazer, a não ser restaurando o backup.\n\n"
               "Digite APAGAR para confirmar:")
     conf = tema.pedir_texto(master, "Excluir todos os produtos", texto, largura=16)
@@ -85,8 +83,7 @@ def excluir_produtos(master, ctx) -> bool:
     if not ok:
         return False
     msg = f"Produtos excluídos: {res['excluidos']}\n"
-    if res["guardados"]:
-        msg += f"Guardados como inativos (já vendidos): {res['guardados']}\n"
+    msg += "Histórico de vendas e estoque preservado.\n"
     tema.mensagem(master, msg + f"\nBackup anterior à exclusão:\n{res['backup']}\n\nAgora é só importar a planilha.",
                   "Excluir todos os produtos")
     return True

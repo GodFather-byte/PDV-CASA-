@@ -232,10 +232,10 @@ class CadastroController:
     def salvar(self, chave: str, valores: dict, id_: int | None = None) -> int:
         ent = ENTIDADES[chave]
         dados = self.converter(ent, valores, inserindo=id_ is None)
-        if ent.antes_salvar:
-            dados = ent.antes_salvar(self.banco, dados, id_)
         try:
             with self.banco.transacao():
+                if ent.antes_salvar:
+                    dados = ent.antes_salvar(self.banco, dados, id_)
                 if id_ is None:
                     id_ = self.banco.inserir(ent.tabela, dados)
                 else:
@@ -247,8 +247,7 @@ class CadastroController:
         return id_
 
     def excluir(self, chave: str, id_: int) -> str | None:
-        """Exclui o registro. Devolve um texto para a tela quando o cadastro faz algo além de apagar (produto já vendido é
-        guardado inativo, com o código liberado)."""
+        """Exclui o cadastro; os registros históricos de produtos são preservados separadamente."""
         ent = ENTIDADES[chave]
         if ent.excluir_fn:
             try:

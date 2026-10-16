@@ -29,10 +29,15 @@ class EstoqueController:
     def _mover(self, produto_id: int, delta: float, tipo: str, ref_tipo: str | None = None,
                ref_id: int | None = None) -> float:
         agora = fmt.agora()
+        tabela = "produtos" if self.produtos.por_id(produto_id) is not None else "produtos_historico"
+        if not self.banco.valor(f"SELECT 1 FROM {tabela} WHERE id = ?", (produto_id,)):
+            raise ErroNegocio("Produto do movimento de estoque não encontrado.")
         self.banco.executar(
-            "UPDATE produtos SET qt_atual = ROUND(qt_atual + ?, 4), ult_atualizacao = ? WHERE id = ?",
-            (delta, agora, produto_id))
-        apos = self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (produto_id,))
+            f"UPDATE {tabela} SET qt_atual = ROUND(qt_atual + ?, 4) WHERE id = ?",
+            (delta, produto_id))
+        if tabela == "produtos":
+            self.banco.executar("UPDATE produtos SET ult_atualizacao = ? WHERE id = ?", (agora, produto_id))
+        apos = self.banco.valor(f"SELECT qt_atual FROM {tabela} WHERE id = ?", (produto_id,))
         self.banco.inserir("movimentos_estoque", {
             "produto_id": produto_id, "tipo": tipo, "quantidade": fmt.arred_qtd(delta),
             "qt_apos": apos, "ref_tipo": ref_tipo, "ref_id": ref_id, "criado_em": agora})
@@ -138,7 +143,7 @@ class EstoqueController:
     def itens(self, lanc_id: int) -> list[dict]:
         return [dict(r) for r in self.banco.todos(
             """SELECT i.*, p.codigo, p.nome, u.abreviatura AS unidade FROM itens_estoque i
-               JOIN produtos p ON p.id = i.produto_id JOIN unidades u ON u.id = p.unidade_id
+               JOIN produtos_historico p ON p.id = i.produto_id JOIN unidades u ON u.id = p.unidade_id
                WHERE i.lancamento_id = ? ORDER BY i.id""", (lanc_id,))]
 
     def total_itens(self, lanc_id: int) -> int:
@@ -380,4 +385,3 @@ class EstoqueController:
         """Produtos a repor (sem estoque primeiro), para imprimir ou levar ao fornecedor."""
         falta = [p for p in self.painel() if p["repor"] > 0]
         return sorted(falta, key=lambda p: (p["situacao"] != "sem", p["nome"]))
-

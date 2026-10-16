@@ -1,7 +1,6 @@
 """Excluir todos os produtos de uma vez, para cadastrar a tabela de novo (Importar produtos).
 
-Protege o histórico: produto que já saiu em venda não se apaga (fica inativo e volta quando a planilha o traz de novo), e a
-operação faz backup antes e recusa com venda aberta."""
+O cadastro é removido, o histórico fica separado e a operação faz backup antes e recusa com venda aberta."""
 from __future__ import annotations
 
 import os
@@ -68,15 +67,15 @@ class TesteExcluirTodosOsProdutos(BaseExcluir):
             self.util.excluir_todos_produtos()
         self.assertIn("Não há produtos", str(e.exception))
 
-    def test_produto_ja_vendido_fica_guardado_inativo_e_o_historico_continua(self):
+    def test_produto_ja_vendido_sai_do_cadastro_e_o_historico_continua(self):
         vid = self.vender_e_fechar(self.skol)
         res = self.util.excluir_todos_produtos()
-        self.assertEqual((res["excluidos"], res["guardados"]), (1, 1))
-        self.assertEqual(self.banco.valor("SELECT nome FROM produtos"), "SKOL")                # só o vendido sobrou
-        self.assertEqual(self.banco.valor("SELECT ativo FROM produtos"), 0)
+        self.assertEqual((res["excluidos"], res["guardados"]), (2, 0))
+        self.assertEqual(self.produtos(), 0)
+        self.assertEqual(self.banco.valor("SELECT nome FROM produtos_historico WHERE id = ?", (self.skol,)), "SKOL")
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM itens_venda"), 1)
         self.assertIn("SKOL", ImpressaoController(self.banco).cupom(vid))                      # a reimpressão do cupom segue valendo
-        self.assertEqual(self.util.resumo_exclusao_produtos()["guardados"], 1)
+        self.assertEqual(self.util.resumo_exclusao_produtos()["guardados"], 0)
 
     def test_produto_inativo_nao_vende_no_caixa(self):
         self.vender_e_fechar(self.skol)
@@ -93,14 +92,15 @@ class TesteExcluirTodosOsProdutos(BaseExcluir):
         self.assertEqual(self.produtos(), 2)
         self.assertEqual(os.listdir(self.pasta.name), [])                                      # nem backup: nada foi feito
 
-    def test_estoque_e_composicoes_saem_junto(self):
+    def test_composicoes_saem_e_historico_de_estoque_continua(self):
         lanc = EstoqueController(self.banco, self.adm).criar_lancamento("inicial", descricao="teste")
         EstoqueController(self.banco, self.adm).adicionar_item(lanc, self.skol, 10)             # gera item e movimento de estoque
         self.assertTrue(self.banco.valor("SELECT COUNT(*) FROM movimentos_estoque") > 0)
         self.banco.executar("INSERT INTO composicoes(produto_id, insumo_id, quantidade) VALUES (?, ?, 1)", (self.agua, self.skol))
         self.util.excluir_todos_produtos()
-        for tabela in ("movimentos_estoque", "itens_estoque", "composicoes", "lancamentos_estoque"):
-            self.assertEqual(self.banco.valor(f"SELECT COUNT(*) FROM {tabela}"), 0, tabela)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM composicoes"), 0)
+        for tabela in ("movimentos_estoque", "itens_estoque", "lancamentos_estoque"):
+            self.assertGreater(self.banco.valor(f"SELECT COUNT(*) FROM {tabela}"), 0, tabela)
 
     def test_composicao_do_guardado_com_insumo_excluido_sai(self):
         self.vender_e_fechar(self.skol)                                                        # a SKOL fica guardada
@@ -131,19 +131,19 @@ class TesteCadastrarDeNovoDepoisDeExcluir(BaseExcluir):
         self.assertEqual((res["criados"], res["atualizados"]), (2, 0))
         self.assertEqual(self.banco.valor("SELECT nome FROM produtos WHERE codigo = ?", (codigo,)), "AGUA NOVA")
 
-    def test_produto_guardado_volta_a_ativo_quando_a_planilha_traz_o_mesmo_codigo(self):
+    def test_produto_excluido_vira_novo_cadastro_quando_planilha_traz_o_mesmo_codigo(self):
         self.vender_e_fechar(self.skol)
         codigo = self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (self.skol,))
         self.util.excluir_todos_produtos()
         previa, res = self.importar(self.tabela((str(int(codigo)), "SKOL", "9,00")))
         linha = previa.linhas[0]
-        self.assertEqual(linha.acao, "atualizar")
-        self.assertTrue(any("inativo" in a for a in linha.avisos), linha.avisos)
-        self.assertEqual((res["criados"], res["atualizados"]), (0, 1))
-        self.assertEqual(self.banco.um("SELECT ativo, preco_cent FROM produtos WHERE id = ?", (self.skol,))["ativo"], 1)
-        self.assertEqual(self.banco.valor("SELECT preco_cent FROM produtos WHERE id = ?", (self.skol,)), 900)
+        self.assertEqual(linha.acao, "criar")
+        self.assertEqual((res["criados"], res["atualizados"]), (1, 0))
+        novo = self.banco.valor("SELECT id FROM produtos WHERE codigo = ?", (codigo,))
+        self.assertNotEqual(novo, self.skol)
+        self.assertEqual(self.banco.valor("SELECT preco_cent FROM produtos WHERE id = ?", (novo,)), 900)
         vid = self.caixa.abrir_balcao()
-        self.caixa.adicionar_item(vid, self.skol, 1)                                            # e volta a vender
+        self.caixa.adicionar_item(vid, novo, 1)
 
     def test_importar_um_produto_ativo_nao_muda_nada_alem_do_que_a_planilha_traz(self):
         previa, res = self.importar(self.tabela((str(int(self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (self.agua,)))),
@@ -183,37 +183,39 @@ class TesteCodigosExatosDaPlanilha(BaseExcluir):
         self.assertEqual((preco("CAMPARI"), preco("COMBO 10 LATAS"), preco("MUSICA")), (4500, 12000, 100))
         self.assertAlmostEqual(self.banco.valor("SELECT comissao_pct FROM produtos WHERE nome = 'CAMPARI'"), 33.3333, places=3)
 
-    def test_guardado_cede_o_codigo_para_outro_produto_sem_mudar_de_nome(self):
+    def test_excluido_cede_o_codigo_sem_mudar_o_historico(self):
         self.vender_e_fechar(self.skol)                                  # a SKOL (código 1) fica guardada
         self.util.excluir_todos_produtos()
         previa, res = self.importar(("1", "FOGO PAULISTA"))
         linha = previa.linhas[0]
-        self.assertEqual((linha.acao, linha.liberar_id), ("criar", self.skol))
-        self.assertTrue(any("passa a ter outro código" in a for a in linha.avisos), linha.avisos)
+        self.assertEqual((linha.acao, linha.liberar_id), ("criar", None))
         self.assertEqual(res["criados"], 1)
         novo = self.banco.valor("SELECT id FROM produtos WHERE nome = 'FOGO PAULISTA'")
         self.assertEqual(self.codigo(novo), 1)                           # o código da planilha, exato
-        antigo = self.banco.um("SELECT nome, ativo, codigo FROM produtos WHERE id = ?", (self.skol,))
+        antigo = self.banco.um("SELECT nome, ativo, codigo FROM produtos_historico WHERE id = ?", (self.skol,))
         self.assertEqual((antigo["nome"], antigo["ativo"]), ("SKOL", 0))  # o histórico continua com o nome de antes
-        self.assertGreaterEqual(int(antigo["codigo"]), 10_000_000)
+        self.assertEqual(int(antigo["codigo"]), 1)
+        self.assertIsNone(self.banco.um("SELECT 1 FROM produtos WHERE id = ?", (self.skol,)))
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM itens_venda WHERE produto_id = ?", (self.skol,)), 1)
 
-    def test_guardado_que_a_planilha_traz_com_outro_codigo_assume_o_codigo_novo(self):
+    def test_excluido_que_planilha_traz_com_outro_codigo_cria_nova_identidade(self):
         self.vender_e_fechar(self.skol)
         self.util.excluir_todos_produtos()
         previa, res = self.importar(("5", "SKOL"))
-        self.assertEqual((previa.linhas[0].acao, previa.linhas[0].produto_id), ("atualizar", self.skol))
-        self.assertEqual((res["criados"], res["atualizados"]), (0, 1))
-        self.assertEqual(self.codigo(self.skol), 5)
-        self.assertEqual(self.banco.valor("SELECT ativo FROM produtos WHERE id = ?", (self.skol,)), 1)
+        self.assertEqual((previa.linhas[0].acao, previa.linhas[0].produto_id), ("criar", None))
+        self.assertEqual((res["criados"], res["atualizados"]), (1, 0))
+        self.assertEqual(int(self.banco.valor("SELECT codigo FROM produtos WHERE nome = 'SKOL'")), 5)
+        self.assertEqual(int(self.banco.valor("SELECT codigo FROM produtos_historico WHERE id = ?", (self.skol,))), 1)
 
     def test_dois_guardados_trocando_de_codigo_ao_mesmo_tempo(self):
         self.vender_e_fechar(self.skol)                                  # SKOL = código 1
         self.vender_e_fechar(self.agua)                                  # AGUA = código 2
         self.util.excluir_todos_produtos()
         previa, res = self.importar(("1", "AGUA"), ("2", "SKOL"))        # a planilha troca os dois
-        self.assertEqual([l.acao for l in previa.linhas], ["atualizar", "atualizar"])
-        self.assertEqual((self.codigo(self.agua), self.codigo(self.skol)), (1, 2))
+        self.assertEqual([l.acao for l in previa.linhas], ["criar", "criar"])
+        self.assertEqual((res["criados"], res["atualizados"]), (2, 0))
+        self.assertEqual(int(self.banco.valor("SELECT codigo FROM produtos WHERE nome = 'AGUA'")), 1)
+        self.assertEqual(int(self.banco.valor("SELECT codigo FROM produtos WHERE nome = 'SKOL'")), 2)
 
     def test_produto_ativo_nao_cede_o_codigo(self):
         previa, _ = self.importar(("1", "OUTRO NOME"))                   # o 1 é da SKOL, que está ativa: só o nome muda
@@ -226,9 +228,9 @@ class TesteCodigosExatosDaPlanilha(BaseExcluir):
         self.util.excluir_todos_produtos()
         previa, res = self.importar(("", "OUTRO"))
         self.assertIsNone(previa.linhas[0].liberar_id)
-        self.assertEqual(self.codigo(self.skol), 1)
-        self.assertNotEqual(self.banco.valor("SELECT codigo FROM produtos WHERE nome = 'OUTRO'"), self.banco.valor(
-            "SELECT codigo FROM produtos WHERE id = ?", (self.skol,)))
+        self.assertEqual(int(self.banco.valor("SELECT codigo FROM produtos_historico WHERE id = ?", (self.skol,))), 1)
+        novo = self.banco.valor("SELECT id FROM produtos WHERE nome = 'OUTRO'")
+        self.assertNotEqual(novo, self.skol)
 
 
 class TesteTelaExcluirTodosOsProdutos(BaseUI):
@@ -270,7 +272,7 @@ class TesteTelaExcluirTodosOsProdutos(BaseUI):
             self.assertEqual(self.total(), antes)
         self.assertEqual(os.listdir(self.pasta.name), [])                  # sem backup: nada foi feito
 
-    def test_aviso_diz_que_os_vendidos_ficam_guardados(self):
+    def test_aviso_diz_que_o_historico_e_preservado(self):
         self.ctx.turnos.abrir(self.ctx.operador_id, 1, 0)
         vid, _ = self.ctx.caixa.abrir_mesa(3, comanda=True)
         self.ctx.caixa.adicionar_item(vid, self.skol, 1)
@@ -279,10 +281,9 @@ class TesteTelaExcluirTodosOsProdutos(BaseUI):
         self.ctx.caixa.fechar(vid)
         feito, texto, fim = self.excluir("APAGAR")
         self.assertTrue(feito)
-        self.assertIn("Já foram vendidos: 1", texto)
-        self.assertIn("inativos", texto)
-        self.assertIn("Guardados como inativos (já vendidos): 1", fim)
-        self.assertEqual(self.total(), 1)
+        self.assertIn("Cupons, relatórios e movimentos antigos", texto)
+        self.assertIn("Histórico de vendas e estoque preservado", fim)
+        self.assertEqual(self.total(), 0)
 
     def test_venda_aberta_so_avisa_e_nao_pergunta(self):
         self.ctx.turnos.abrir(self.ctx.operador_id, 1, 0)

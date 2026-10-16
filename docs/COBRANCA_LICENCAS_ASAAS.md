@@ -44,7 +44,9 @@ Cliente paga Pix/boleto
                          |
 Asaas envia uma notificação HTTPS (webhook)
                          |
-Nossa API autentica e consulta a cobrança no Asaas
+Nossa API autentica e confirma o evento no inbox PostgreSQL (HTTP 200)
+                         |
+Worker durável consulta a cobrança no Asaas (retentativas + agenda)
                          |
 PostgreSQL guarda o pagamento e a validade da loja
                          |
@@ -55,7 +57,8 @@ PDV verifica a assinatura e continua trabalhando localmente
 
 - **Asaas:** recebe o dinheiro na sua conta, gera cobranças e informa os eventos.
 - **API WillPDV:** programa hospedado na internet, compartilhado por todas as lojas.
-- **PostgreSQL:** guarda vínculos, cobranças, eventos processados e datas pagas.
+- **PostgreSQL:** guarda vínculos, inbox, agenda, tentativas, cobranças e datas pagas.
+- **Worker:** processo do servidor que drena o inbox e concilia assinaturas a cada 6 horas.
 - **PDV instalado:** guarda vendas e verifica a licença; não recebe sua chave Asaas.
 - **WillPDV Licenças:** continua disponível para licenças manuais e atendimento excepcional.
 
@@ -98,6 +101,7 @@ domínio próprio não é obrigatório.
 | Item | Planejamento |
 | --- | --- |
 | API no Render | Confira o preço do menor serviço pago sempre ligado; não confunda plano do workspace com plano do serviço |
+| Worker | Processo separado sempre ligado ou comando periódico no servidor; hospedagem gerenciada pode cobrar outro serviço, veja seção 11 |
 | Banco no Neon | Plano gratuito pode atender o piloto, dentro das cotas; acompanhe uso e limites |
 | HTTPS | Usar o endereço HTTPS fornecido pela hospedagem |
 | Backups | Manter cópias externas; não presumir que o plano grátis inclui a retenção necessária |
@@ -198,13 +202,26 @@ O guia [NUVEM.md](NUVEM.md) explica o cadastro no Render e Neon. Para esta integ
 9. Publique a aplicação e consulte `https://SEU-SERVICO.onrender.com/v1/saude`.
    O resultado esperado é `{"status":"ok"}`.
 10. Confira os logs de inicialização e a criação das tabelas no banco.
+11. Configure e inicie o worker da seção 11; sem ele, o webhook apenas acumula
+    eventos e **não renova licenças**. Este blueprint não cria nem contrata worker.
 
 A saúde verifica o processo da API; **não comprova** a configuração do Asaas,
 a chave de assinatura ou a entrega de webhooks. O teste completo está na seção 9.
 
-As tabelas novas são `assinaturas_asaas`, `cobrancas_asaas` e `eventos_asaas`.
+As tabelas são `assinaturas_asaas`, `cobrancas_asaas`, `eventos_asaas`,
+`tarefas_asaas` (inbox e agenda) e `workers_asaas` (última batida).
 São criadas na inicialização pelo padrão SQLAlchemy já usado no backend.
-Não alteram o esquema local de vendas do PDV. Não apague essas tabelas para
+Para uma instalação existente, a migração operacional é aditiva: `create_all`
+cria somente as duas tabelas novas e seus índices; não altera nem apaga vínculos,
+eventos antigos, cobranças ou validades. Eventos já processados continuam
+idempotentes. Faça backup e execute, **antes de iniciar API e worker em paralelo**:
+
+```powershell
+python -c "import backend.main"
+```
+
+O usuário do banco precisa de permissão para criar tabelas/índices nessa etapa.
+Essas tabelas não alteram o esquema local de vendas do PDV. Não as apague para
 resolver uma falha: elas guardam o histórico necessário à conciliação.
 
 ## 6. Cadastrar a loja e a assinatura
@@ -308,15 +325,24 @@ Cancelar a assinatura no painel interrompe a recorrência, mas não apaga
 automaticamente o período que já foi pago.
 
 O conteúdo financeiro do webhook **não é usado como comprovante**:
-a API consulta `GET /payments/{id}` no Asaas e verifica cliente, assinatura,
+o worker consulta `GET /payments/{id}` no Asaas e verifica cliente, assinatura,
 valor, vencimento, meio de pagamento e estado atual.
 
-O processamento é síncrono e responde 200 **depois** do commit no banco.
-Em falha de consulta responde 503 para permitir nova tentativa; em dados
-incompatíveis responde 422 e registra o motivo. Isso é adequado ao piloto
-pequeno, mas depende de a consulta caber no prazo de entrega do provedor.
-Se o volume crescer ou houver timeouts, evolua para uma fila durável e trabalhador
-separado; não use tarefas em memória como garantia de processamento.
+O recebimento responde 200 com `situacao=enfileirado` **depois** do commit
+do inbox, sem nenhuma chamada HTTP ao Asaas. Só guarda ID do evento, tipo,
+assinatura e cobrança, não o payload financeiro ou dados pessoais.
+Reentrega do mesmo ID retorna `repetido`, sem criar segunda tarefa. ID repetido
+com identificadores diferentes é recusado (422). Token incorreto retorna 401;
+formato/IDs inválidos retornam 422. Falha do banco retorna 503 para o provedor
+reenviar; não há confirmação de um evento não persistido.
+
+HTTP 200 **não significa licença liberada**. Falha remota, credenciais inválidas,
+assinatura ainda não vinculada ou divergência financeira ficam no banco com erro,
+número de tentativas e próxima execução. O worker tenta novamente após
+60, 120, 240, 480, 960, 1920 segundos e depois no máximo a cada 3600 segundos,
+sem descartar silenciosamente eventos. Não há Redis, Celery nem fila em memória.
+Corrija a causa no servidor/Asaas; não altere valores ou assinatura no banco para
+contornar a validação. Veja os indicadores administrativos da seção 11.
 
 **Operação importante:** segundo a documentação consultada, 15 falhas consecutivas
 podem pausar a fila, e eventos são retidos por 14 dias. Monitore os alertas,
@@ -358,17 +384,27 @@ Com as dependências do backend instaladas:
 
 ```powershell
 python -m pip install httpx
-python -m unittest tests.test_cobrancas_asaas tests.test_licenca_nuvem tests.test_nuvem tests.test_licenca tests.test_atualizacoes
+python -m unittest tests.test_cobrancas_asaas tests.test_backend_operacao_asaas tests.test_licenca_nuvem tests.test_nuvem tests.test_licenca tests.test_atualizacoes
 ```
 
 Os testes simulam a API Asaas e não criam cobranças nem exigem sua chave real.
 Eles verificam autenticação, isolamento entre lojas, comparação de valores,
 idempotência, estado remoto, calendário, estorno, recuperação paginada e
-o recebimento de uma licença assinada pelo cliente PDV.
+o recebimento de uma licença assinada pelo cliente PDV, inbox sem HTTP,
+falhas de commit, backoff persistido, agenda e retomada após interrupção.
+Os testes unitários de operação usam SQLite em memória. O job Linux
+`Asaas / PostgreSQL 16` do CI sobe um service container exclusivo e executa também
+entregas concorrentes, `SKIP LOCKED`, eventos diferentes para uma assinatura,
+falhas de commit e retomada no driver PostgreSQL real.
+
+Para repetir em um PostgreSQL **descartável exclusivo de teste**, configure
+`PDV_TESTE_NUVEM_DB_URL` com a conexão e execute os dois módulos de cobrança.
+**Nunca aponte para dados reais:** os testes apagam tabelas de lojas e cobranças
+do banco indicado. Sem essa variável PostgreSQL, os testes concorrentes são pulados.
 
 ### Homologação de ponta a ponta no sandbox
 
-1. Publique a API de teste com banco persistente e segredos de sandbox.
+1. Publique API e worker de teste com banco persistente e segredos de sandbox.
 2. Cadastre uma loja de teste e uma assinatura mensal Asaas de teste.
 3. Vincule o ID `sub_` à loja, com o valor exato.
 4. Configure o webhook de teste e verifique o histórico de entregas.
@@ -376,7 +412,9 @@ o recebimento de uma licença assinada pelo cliente PDV.
 6. Simule o recebimento usando os recursos de sandbox documentados pelo Asaas.
    Não faça uma transferência real para tentar pagar uma cobrança de teste.
 7. Confira resposta HTTP 200 no histórico do webhook.
-8. Execute `python -m backend.lojas listar`: a validade deve ter avançado.
+8. Aguarde o worker e confira `pronto`, pendências e últimas execuções no endpoint
+   administrativo da seção 11. Execute `python -m backend.lojas listar`: a
+   validade deve ter avançado depois do processamento.
 9. Execute `python -m backend.lojas cobranca conciliar LOJA-TESTE`:
    a validade deve continuar igual, sem acrescentar outro mês.
 10. Ligue um PDV de teste à API e confirme a renovação da licença.
@@ -456,12 +494,101 @@ python -m backend.lojas cobranca listar
 Use o painel Asaas para consultar links, recebimentos, cobranças vencidas e
 contatos do cliente. Não há uma nova tela financeira no PDV.
 
+### Worker e agenda no servidor (obrigatórios para automatizar)
+
+Depois da migração e com as mesmas variáveis `PDV_NUVEM_DB_URL`,
+`ASAAS_AMBIENTE` e `ASAAS_API_KEY` da API, execute na raiz do projeto:
+
+```powershell
+python -m backend.worker_asaas
+```
+
+O comando fica em primeiro plano: configure reinício automático pelo gerenciador
+de processos da hospedagem/serviço do sistema. Não basta deixar um terminal do
+seu computador aberto. Ele verifica o banco a cada 5 segundos, processa até
+100 tarefas por lote e registra batida antes/depois do trabalho. `--pausa` e
+`--limite` ajustam esses números. Não inicia thread dentro do Uvicorn nem depende
+do tráfego HTTP. API sozinha nunca drena a fila.
+
+**Opção gerenciada:** um serviço de background worker com o mesmo repositório,
+build `pip install -r backend/requirements.txt` e comando acima.
+**Pode ter cobrança separada da API**: some o preço mensal dos dois serviços,
+banco, câmbio e impostos; o exemplo de R$ 38,50 da seção 3 cobre só a API.
+Nada é contratado ou provisionado pelo código/blueprint. O teto de R$ 50
+não é garantido. Não habilite outro serviço pago sem aprovação do custo.
+
+**Alternativa sem novo serviço contratado:** em servidor que você já administra
+e mantém ligado, use um processo supervisionado para API e outro para o worker.
+Compartilham o mesmo PostgreSQL e timezone; não compartilham estado em memória.
+Ou configure agendador do próprio servidor (por exemplo a cada minuto):
+
+```powershell
+python -m backend.worker_asaas --uma-vez --limite 100
+```
+
+Esse modo executa um lote, atualiza os indicadores e sai com código 0 se `pronto`,
+1 em falha/alerta. Repetir o comando é seguro; atraso do agendador/servidor é
+atraso de renovação. Não use a máquina da loja ou um PC desligável como scheduler.
+Monitorar o processo é necessário: o log não notifica ninguém sozinho.
+
+A primeira execução cria uma agenda imediata para cada assinatura do ambiente;
+depois de sucesso, próxima conciliação em **6 horas**. Datas ficam no banco e
+não reiniciam a contagem a cada deploy. Reexecuções recuperam webhook perdido
+mesmo sem notificações novas. Falha de conciliação recebe o mesmo backoff;
+todo o resultado daquela execução é transacional, sem licença parcial.
+
+Em PostgreSQL, cada tarefa fica sob lock transacional `FOR UPDATE SKIP LOCKED`
+enquanto consulta o Asaas; trabalhadores simultâneos não processam a mesma linha.
+O vínculo da assinatura também é bloqueado para serializar cobranças da mesma
+loja. Evento processado, cobrança, validade e conclusão do inbox são confirmados
+juntos. Morte/interrupção libera locks e deixa a tarefa pendente para retomada;
+nenhuma lease em memória precisa expirar. Em queda do banco, o erro persistido
+pode não ser gravável: haverá log e batida atrasada quando a consulta voltar.
+Uma falha com resultado de commit incerto pode levar a consulta remota repetida;
+o resultado de licença/evento continua idempotente.
+
+SQLite não oferece esses locks: serve a testes unitários/execução serial, não
+ao deployment concorrente. Conciliação grande mantém uma transação/conexão
+enquanto faz consultas (timeout de 10 segundos por chamada); acompanhe latência,
+limites do Asaas e tamanho do pool. Não é fila de alto volume.
+
+### Indicadores e alertas sem contratar notificações
+
+`GET /v1/admin/cobrancas/operacao`, com `Authorization: Bearer` do
+**`PDV_API_TOKEN`**, fornece JSON. Token de loja recebe 403; sem token, 401.
+Não use `/v1/saude` como prova de saúde do worker: ela continua verificando só HTTP.
+
+| Campo | Significado |
+| --- | --- |
+| `pronto` | `true` apenas sem alertas operacionais; não é aprovação comercial ou prova de licença |
+| `alertas` | Códigos estáveis `worker_sem_batida`, `tarefas_com_erro`, `fila_atrasada`, `conciliacao_atrasada` |
+| `worker_batida_em` | Última batida de algum worker; alerta após 5 minutos sem batida |
+| `eventos_pendentes`, `evento_mais_antigo_em` | Inbox ainda não concluído, incluindo retentativas; alerta depois de 15 minutos |
+| `tarefas_com_erro`, `tarefas_atrasadas` | Falhas consecutivas atuais e tarefas vencidas há mais de 15 minutos |
+| `assinaturas_sem_conciliacao_recente` | Nunca conciliadas ou último sucesso há mais de 6 horas + 15 minutos |
+| `ultimas_execucoes` | Até 50 tarefas recentes: última tentativa, fim, último sucesso, erro e próxima execução |
+| `falhas`, `pendencias` | Até 50 falhas atuais e pendências mais antigas; contadores não se limitam a 50 |
+
+O último erro e sua data ficam preservados mesmo depois da recuperação;
+`falhas_seguidas=0` indica recuperação. Não é um histórico ilimitado por tentativa:
+as colunas guardam a última execução/sucesso/erro de cada tarefa.
+Logs `ALERTA_ASAAS`, `ALERTA_ASAAS_OPERACAO`, `ALERTA_ASAAS_WORKER` e
+`ALERTA_ASAAS_INBOX` permitem coletar alertas existentes sem expor
+credenciais/SQL/payloads. Um monitor seu pode consultar `pronto` periodicamente.
+Não foi configurado envio de e-mail/SMS/WhatsApp, serviço pago ou monitor externo.
+Se o worker morrer, ele próprio não pode emitir o alerta: monitore a batida via API.
+
+As tabelas conservam inbox concluído e IDs de eventos para deduplicação.
+Não há limpeza automática; dimensione banco/backups e defina retenção futura
+antes de acumular alto volume. Ao restaurar backup, execute worker/conciliação
+para recuperar o intervalo ausente. Não altere manualmente estados para ocultar erro.
+
 ### Cliente pagou, mas ainda não renovou
 
 1. Confira ambiente e ID da assinatura.
 2. Confira o estado da cobrança no Asaas; comprovante enviado por mensagem não
    substitui a confirmação do provedor.
-3. Confira logs de webhook e resposta HTTP.
+3. Confira logs de webhook, resposta HTTP e estado do worker no endpoint admin.
 4. Execute, no mesmo banco do servidor:
 
 ```powershell
@@ -476,23 +603,24 @@ python -m backend.lojas listar
 A conciliação percorre todas as páginas de cobranças já geradas e consulta
 também as cobranças que o nosso banco já conhecia. Ela pode ser executada de novo:
 não soma meses. Não processa cobranças futuras ainda não geradas pelo Asaas.
-Se ocorrer falha no meio, os pagamentos anteriores já conciliados ficam
-persistidos, o comando retorna erro e você pode repeti-lo com segurança.
+No comando manual, se ocorrer falha no meio, pagamentos anteriores já conciliados
+ficam persistidos; o comando retorna erro e pode ser repetido. No worker,
+a conciliação completa de uma assinatura confirma ou reverte em uma transação.
 
-Como rotina inicial, confira diariamente o painel e os alertas. É possível
-agendar o mesmo comando por loja em um terminal administrativo protegido
-(por exemplo, Agendador de Tarefas do Windows), usando a mesma versão do código,
-diretório do projeto e variáveis secretas. O agendamento **não é instalado**
-automaticamente. Não dependa de um PC desligado como único mecanismo de recuperação.
+Como rotina inicial, confira diariamente painel, indicadores, batida do worker e
+alertas. A agenda persistente é executada pelo worker do servidor, não pelo PDV.
+Instalação/supervisão do processo ou agendador **não são feitas automaticamente**.
 
 ### Erros frequentes
 
 | Sintoma | Verificação |
 | --- | --- |
 | Webhook 401 | Segredo do webhook e cabeçalho corretos; não é API Key |
-| Webhook 503 | Configuração ausente, falha/timeout do Asaas ou credenciais da API |
-| Webhook 422 | Ver logs: valor, cliente, assinatura, ambiente ou formato divergente |
-| `nao_vinculada` | Assinatura ainda não vinculada; vincule e concilie |
+| Webhook 503 | Segredo não configurado ou banco/inbox indisponível; precisa reenviar |
+| Webhook 422 | Formato/IDs inválidos ou mesmo evento com identificadores divergentes |
+| Inbox em erro | Ver `ultimo_erro`: API indisponível, credenciais, valor, cliente, assinatura ou ambiente |
+| Assinatura não vinculada | Evento fica em retentativa e alerta; vincule corretamente e concilie |
+| `enfileirado` | Recebido com durabilidade; aguarde worker, não significa renovação concluída |
 | `repetido` | Evento já persistido; resposta normal, não é nova mensalidade |
 | Sem licença após vincular | Vincular não é pagar; confira recebimento |
 | API de licença 403 | Token administrativo no lugar de token da loja, ou loja desativada |
@@ -502,9 +630,11 @@ automaticamente. Não dependa de um PC desligado como único mecanismo de recupe
 | Loja/token sumiram após deploy | Banco estava em disco efêmero; restaure backup e configure PostgreSQL |
 | Fila Asaas pausada | Corrija o erro, reative no painel e concilie lojas afetadas |
 
-Cobrança de assinatura desconhecida é reconhecida com 200 e registrada como
-aviso, sem liberar nenhuma loja. Depois de fazer o vínculo correto, a conciliação
-recupera o estado. Isso permite usar a conta Asaas para outros recebimentos.
+Cobrança de assinatura desconhecida é recebida com 200 e fica em erro explícito
+no worker, sem liberar loja; depois do vínculo, a retentativa/conciliação recupera
+o estado. Pagamento avulso sem assinatura continua ignorado (`sem_assinatura`).
+Se a conta tiver assinaturas de outros produtos, esses eventos também geram
+pendências: restrinja o escopo do webhook/conta; não vincule uma loja indevida.
 
 ## 12. Backup, segurança e passagem para produção
 
@@ -513,6 +643,8 @@ Checklist antes da primeira loja real:
 - [ ] Homologação completa aprovada no sandbox.
 - [ ] Conta Asaas de produção regularizada e taxas conferidas.
 - [ ] API sempre ligada, HTTPS e orçamento conferidos.
+- [ ] Worker supervisionado ou scheduler do servidor ativo, custo aprovado e
+      indicador `pronto=true` após conciliação inicial.
 - [ ] PostgreSQL persistente, acesso restrito e conexão TLS.
 - [ ] Banco de produção separado do banco sandbox.
 - [ ] `ASAAS_AMBIENTE=producao`, API Key e webhook próprios de produção.
@@ -542,11 +674,15 @@ Você decide quando contratar e quando mudar para produção.
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `backend/cobrancas.py` | Modelos, consultas Asaas, vínculo, período pago, eventos e conciliação |
-| `backend/main.py` | Endpoint autenticado `/v1/webhooks/asaas` e emissão existente da licença |
+| `backend/main.py` | Webhook autenticado, indicador administrativo e emissão existente da licença |
+| `backend/operacao_asaas.py` | Inbox, agenda persistente, locks, backoff e indicadores |
+| `backend/worker_asaas.py` | Entrada CLI do worker ou lote único do scheduler |
 | `backend/lojas.py` | Comandos `cobranca vincular`, `cobranca listar`, `cobranca conciliar` |
 | `src/sync/licenca_nuvem.py` | Cliente existente: busca e aplicação de licença assinada |
 | `src/core/licenca.py` | Verificação offline, aviso, carência e bloqueio existentes |
 | `tests/test_cobrancas_asaas.py` | Testes automatizados da integração, sem conta real |
+| `tests/test_backend_operacao_asaas.py` | Operação em SQLite e concorrência/rollback/reinício PostgreSQL |
+| `.github/workflows/testes.yml` | Suíte usual e service container PostgreSQL exclusivo de testes |
 
 As consultas externas usam a biblioteca padrão Python. Não houve nova
 dependência de produção e nenhuma chave do Asaas foi colocada no PDV.

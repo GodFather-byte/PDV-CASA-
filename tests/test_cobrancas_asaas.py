@@ -17,7 +17,7 @@ from src.database.conexao import BancoDados
 from src.sync import licenca_nuvem
 
 if nuvem is not None:
-    from backend import cobrancas
+    from backend import cobrancas, operacao_asaas
 
 
 @unittest.skipIf(TestClient is None, "fastapi/httpx não instalados")
@@ -44,6 +44,8 @@ class TesteCobrancasAsaas(BaseChave):
         cobrancas.vincular(self.db, "LOJA-1", "sub_1", 9900)
 
     def limpar(self):
+        self.db.query(operacao_asaas.Tarefa).delete()
+        self.db.query(operacao_asaas.Worker).delete()
         self.db.query(cobrancas.Evento).delete()
         self.db.query(cobrancas.Cobranca).delete()
         self.db.query(cobrancas.Assinatura).delete()
@@ -57,13 +59,17 @@ class TesteCobrancasAsaas(BaseChave):
             return {"data": [{"id": self.dados["id"]}], "hasMore": False}
         return dict(self.dados)
 
-    def enviar(self, evento="evt_1", headers=None, **alteracoes):
+    def enviar(self, evento="evt_1", headers=None, processar=True, **alteracoes):
         dados = {"id": evento, "event": "PAYMENT_RECEIVED",
                  "payment": {"id": "pay_1", "subscription": "sub_1", "value": 999999,
                              "status": "RECEIVED"}}
         dados.update(alteracoes)
-        return self.http.post("/v1/webhooks/asaas", json=dados,
-                              headers={"asaas-access-token": "segredo-do-webhook"} if headers is None else headers)
+        resposta = self.http.post("/v1/webhooks/asaas", json=dados,
+                                  headers={"asaas-access-token": "segredo-do-webhook"} if headers is None else headers)
+        if processar and resposta.status_code == 200:
+            self.db.expire_all()
+            operacao_asaas.executar_uma(self.db)
+        return resposta
 
     def validade(self, chave="LOJA-1"):
         self.db.expire_all()
@@ -114,7 +120,9 @@ class TesteCobrancasAsaas(BaseChave):
             with self.subTest(campo=campo):
                 original = self.dados[campo]
                 self.dados[campo] = valor
-                self.assertEqual(self.enviar().status_code, 422)
+                self.assertEqual(self.enviar(f"evt_{campo}").status_code, 200)
+                self.db.expire_all()
+                self.assertEqual(self.db.get(operacao_asaas.Tarefa, f"evento:evt_{campo}").estado, "erro")
                 self.assertIsNone(self.validade())
                 self.dados[campo] = original
         self.assertEqual(self.enviar(event="SUBSCRIPTION_CREATED").status_code, 422)
@@ -122,17 +130,23 @@ class TesteCobrancasAsaas(BaseChave):
 
     def test_assinatura_desconhecida_e_avulsa_nao_liberam(self):
         resposta = self.enviar(payment={"id": "pay_1", "subscription": "sub_desconhecida"})
-        self.assertEqual(resposta.json()["situacao"], "nao_vinculada")
+        self.assertEqual(resposta.json()["situacao"], "enfileirado")
+        self.db.expire_all()
+        self.assertEqual(self.db.get(operacao_asaas.Tarefa, "evento:evt_1").estado, "erro")
         self.assertEqual(self.enviar(payment={"id": "pay_1"}).json()["situacao"], "sem_assinatura")
         self.assertIsNone(self.validade())
 
     def test_falha_remota_nao_marca_evento_e_permite_retentativa(self):
         self.remoto.side_effect = cobrancas.AsaasIndisponivel("Falha de teste")
-        self.assertEqual(self.enviar().status_code, 503)
+        self.assertEqual(self.enviar().status_code, 200)
         self.assertEqual(self.db.query(cobrancas.Evento).count(), 0)
         self.assertIsNone(self.validade())
         self.remoto.side_effect = self.resposta
+        tarefa = self.db.get(operacao_asaas.Tarefa, "evento:evt_1")
+        tarefa.proxima_em = "2000-01-01 00:00:00"
+        self.db.commit()
         self.assertEqual(self.enviar().status_code, 200)
+        self.assertEqual(self.validade(), "2026-11-15")
 
     def test_mes_calendario_ano_bissexto_e_dinheiro_exato(self):
         self.assertEqual(cobrancas.fim_periodo(date(2026, 1, 31)), date(2026, 2, 28))
@@ -190,7 +204,9 @@ class TesteCobrancasAsaas(BaseChave):
         with self.assertRaises(cobrancas.ErroCobranca):
             cobrancas.vincular(self.db, "LOJA-2", "sub_outra", 5000)
         with mock.patch.dict(os.environ, {"ASAAS_AMBIENTE": "producao"}):
-            self.assertEqual(self.enviar().status_code, 422)
+            self.assertEqual(self.enviar().status_code, 200)
+            self.db.expire_all()
+            self.assertEqual(self.db.get(operacao_asaas.Tarefa, "evento:evt_1").estado, "erro")
         self.assertIsNone(self.validade())
 
     def test_pagamento_chega_ao_pdv_pelo_fluxo_de_licenca_existente(self):

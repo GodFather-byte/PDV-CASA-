@@ -32,9 +32,25 @@ preços em massa ou levar o cardápio de outro sistema. O PDV **não traz produt
 * Produto que já existe (mesmo código, ou mesmo nome sem código) é **atualizado**; dá para desligar essa opção.
 * **Código repetido na planilha:** cada código é de um produto só (é o que o caixa usa para achar o item). Se a mesma linha de código
   aparecer duas vezes, a segunda é recusada na prévia ("aparece de novo na linha N"): dê um número livre a ela.
-* **Produto guardado** (já vendido e inativo, depois de *Excluir todos os produtos*): se a planilha traz o nome dele com outro código,
-  ele volta a valer **com o código da planilha**; se a planilha quer o código que ele ocupa para outro produto, ele cede o código
-  (passa para um código de arquivo, de 10.000.000 em diante) e **mantém o nome**, para o histórico das vendas não mudar.
+* **Produto excluído:** não participa da busca de cadastro nem da importação. A planilha cria um produto novo,
+  mesmo se trouxer o código ou o nome que já foi usado. O histórico continua ligado à identidade antiga, não à nova.
+* **Produto apenas inativo:** ainda é um cadastro. A prévia pode reativá-lo explicitamente; se outro produto precisar
+  do seu código, a exclusão do cadastro inativo preserva o histórico em separado. Produto ativo não cede código.
+
+## Excluir um produto e reutilizar seu código
+
+Em **Cadastros > Produtos**, selecione o produto e use **Excluir**, não apenas desmarque **Ativo**.
+O produto sai definitivamente do cadastro comercial. Nome, código, código de barras e atalho ficam livres.
+Por exemplo: exclua **Amarula (8)** e cadastre **Red Bull (8)**. As vendas antigas continuam mostrando Amarula;
+as novas apontam para Red Bull. Os totais e as quantidades não são transferidos entre eles.
+
+O banco mantém registros históricos separados, necessários para cupons, relatórios e estornos.
+Isso não é apagamento de vendas nem limpeza de movimento. Cancelar uma venda antiga movimenta a identidade
+antiga do estoque e não acrescenta mercadoria ao novo produto que reutilizou o código.
+
+A exclusão individual é recusada se o produto estiver em item/parte de venda aberta, em pedido de compra pendente
+ou for insumo de uma ficha técnica. Resolva essas dependências antes; elas não são removidas silenciosamente.
+Na exclusão total, as fichas técnicas do catálogo são removidas juntas, depois do backup.
 
 ## Começar do zero: excluir todos os produtos
 Para cadastrar a tabela inteira de novo, use **Excluir todos os produtos...** (botão no alto da janela de importação, ou
@@ -42,10 +58,17 @@ Para cadastrar a tabela inteira de novo, use **Excluir todos os produtos...** (b
 **APAGAR**.
 * Um **backup é feito antes** (o caminho aparece no fim); para desfazer, restaure esse backup em Utilitários > Restaurar backup.
 * Com mesa, comanda ou balcão **abertos com itens**, a exclusão é recusada: feche ou cancele antes.
-* **Produto que já foi vendido não é apagado**, porque o cupom, os relatórios e os estornos dependem dele. Ele fica **guardado como
-  inativo** (some do caixa e das listas) e volta a valer, com o preço novo, quando a planilha trouxer o mesmo código ou nome (a prévia
-  avisa "estava inativo"). Os demais são excluídos de verdade, com o estoque, os movimentos de estoque e as composições deles.
+* **Todos saem do cadastro**, inclusive os já vendidos. Os registros de cupons, vendas, compras e movimentos de estoque
+  permanecem no histórico. Uma nova importação cria novas identidades, sem alterar os produtos das vendas antigas.
+* Pedidos de compra pendentes devem ser concluídos ou ter seus itens removidos antes da exclusão.
 * Grupos, subgrupos e unidades **ficam**; os códigos dos produtos excluídos ficam livres para a planilha nova.
+
+### Atualização de banco existente
+
+O esquema v17 separa o cadastro comercial dos registros históricos, migra os relacionamentos e preserva IDs e movimentos.
+Antes de migrar um banco em arquivo, o programa cria uma cópia ao lado dele com nome
+`<banco>.antes-migracao-v<versao>-<identificador>.bak`. Não apague essa cópia antes de conferir a atualização.
+O programa antigo não deve ser usado para abrir um banco mais novo: a abertura agora é recusada.
 
 ## A tabela da casa (`docs/produtos_da_casa.csv`)
 Planilha pronta com os 31 produtos da folha de preços do salão, já com os **códigos da folha** (use *Usar o código da planilha*, que é o

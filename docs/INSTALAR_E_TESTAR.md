@@ -58,7 +58,26 @@ atalho na Área de Trabalho e no Menu Iniciar.
 - Os dados (banco, backups, licença, logs) ficam em `%LOCALAPPDATA%\WILL-PDV`, não na pasta do programa: atualizar ou
   desinstalar **não apaga as vendas**. Para atualizar, rode o instalador novo por cima (com o turno fechado).
 
-## 4. Primeira abertura: o código de licença
+## 4. Primeira abertura: banco e licença
+
+### Proteção do banco durante atualização e restauração
+
+- Antes de migrar um banco existente, o PDV gera e confere uma cópia SQLite ao lado dele
+  (`.antes-migracao-v<versao>-<identificador>.bak`). Falha na cópia impede a migração.
+- Uma versão antiga do PDV recusa banco de versão mais nova; não reinstale versões antigas para contornar erros.
+- A restauração prepara e valida uma cópia antes de substituir o banco. Em falha, o pedido é preservado,
+  o erro é mostrado e a abertura normal não pode criar um banco vazio no lugar do anterior.
+- Continue mantendo backup em outro disco/local. Uma cópia no mesmo disco não protege contra perda do equipamento.
+
+### Consulta de licença sem travar a entrada
+
+A tela consulta a rede em segundo plano e aplica o resultado na interface. Cliques repetidos não iniciam consultas
+duplicadas. Fechar a janela não deixa uma resposta tardia aplicar alterações por trás.
+Falhas de rede usam novas tentativas progressivas de 1 a 30 minutos; consultas concluídas mantêm o intervalo normal
+de seis horas. O painel mostra a validade, a última consulta bem-sucedida e eventual falha da nuvem.
+O vencimento, a carência e a proteção de turno recente permanecem iguais.
+
+### Ativar uma licença manualmente
 
 No programa instalado a licença é **sempre exigida**. Na tela de entrada, o botão **Código de licença...** pede um código que
 **você** gera no seu PC (o que tem a chave privada), com Python instalado, na pasta do projeto:

@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 log = logging.getLogger("pdv.protecao")
 PADRAO_BACKUP = "loja_offline-*.db"
@@ -20,8 +21,10 @@ PENDENTE = "restaurar.pendente"
 def verificar_arquivo(caminho: str | Path) -> str | None:
     """None se o banco está íntegro (ou ainda não existe); senão, o motivo. Abre só para leitura."""
     caminho = Path(caminho)
-    if not caminho.exists() or caminho.stat().st_size == 0:
+    if not caminho.exists():
         return None
+    if caminho.stat().st_size == 0:
+        return "O arquivo do banco está vazio."
     try:
         con = sqlite3.connect(f"file:{caminho.as_posix()}?mode=ro", uri=True, timeout=15)
         try:
@@ -94,19 +97,53 @@ def restaurar(caminho_db: str | Path, backup: str | Path) -> Path | None:
     caminho_db, backup = Path(caminho_db), Path(backup)
     if not backup_valido(backup):
         raise ValueError("O backup escolhido está danificado ou não é um banco do PDV.")
-    guardado = None
-    if caminho_db.exists():
-        guardado = caminho_db.with_name(f"{caminho_db.name}.antes-{datetime.now():%Y%m%d-%H%M%S}")
-        os.replace(caminho_db, guardado)
-    for sufixo in ("-wal", "-shm"):
-        lateral = Path(str(caminho_db) + sufixo)
-        if lateral.exists():
-            if guardado is not None:
-                os.replace(lateral, Path(str(guardado) + sufixo))
-            else:
-                lateral.unlink()
-    shutil.copyfile(backup, caminho_db)
-    return guardado
+    identificador = f"{datetime.now():%Y%m%d-%H%M%S}-{uuid4().hex}"
+    preparado = caminho_db.with_name(f"{caminho_db.name}.restaurando-{identificador}")
+    guardado = caminho_db.with_name(f"{caminho_db.name}.antes-{identificador}")
+    movidos = []
+    havia_banco = caminho_db.exists()
+    try:
+        # O backup SQLite inclui também transações que ainda estejam no WAL da origem.
+        origem = sqlite3.connect(f"file:{backup.as_posix()}?mode=ro", uri=True)
+        try:
+            destino = sqlite3.connect(preparado)
+            try:
+                origem.backup(destino)
+                destino.execute("PRAGMA journal_mode = DELETE")
+            finally:
+                destino.close()
+        finally:
+            origem.close()
+        if not backup_valido(preparado):
+            raise ValueError("A cópia preparada para restauração não é válida.")
+        with preparado.open("r+b") as arquivo:
+            os.fsync(arquivo.fileno())
+        if havia_banco:
+            shutil.copyfile(caminho_db, guardado)
+            with guardado.open("r+b") as arquivo:
+                os.fsync(arquivo.fileno())
+        for sufixo in ("-wal", "-shm"):
+            lateral = Path(str(caminho_db) + sufixo)
+            if lateral.exists():
+                salvo = Path(str(guardado) + sufixo)
+                os.replace(lateral, salvo)
+                movidos.append((lateral, salvo))
+        try:
+            os.replace(preparado, caminho_db)
+        except BaseException:
+            for lateral, salvo in reversed(movidos):
+                os.replace(salvo, lateral)
+            raise
+        return guardado if havia_banco else None
+    except BaseException:
+        # Também reverte quando a movimentação do segundo arquivo lateral falha.
+        for lateral, salvo in reversed(movidos):
+            if salvo.exists() and not lateral.exists():
+                os.replace(salvo, lateral)
+        raise
+    finally:
+        for sufixo in ("", "-wal", "-shm"):
+            Path(str(preparado) + sufixo).unlink(missing_ok=True)
 
 
 def pedir_restauracao(caminho_db: str | Path, backup: str | Path) -> None:
@@ -121,11 +158,9 @@ def aplicar_restauracao_pendente(caminho_db: str | Path) -> Path | None:
     marca = Path(str(caminho_db) + "." + PENDENTE)
     if not marca.exists():
         return None
-    try:
-        backup = Path(marca.read_text(encoding="utf-8").strip())
-    finally:
-        marca.unlink(missing_ok=True)
+    backup = Path(marca.read_text(encoding="utf-8").strip())
     restaurar(caminho_db, backup)
+    marca.unlink()
     return backup
 
 
@@ -143,15 +178,18 @@ def preparar_banco(caminho_db: str, perguntar) -> str:
     `perguntar(titulo, texto) -> bool` é a pergunta sim/não ao operador (nos testes, uma função)."""
     try:
         usado = aplicar_restauracao_pendente(caminho_db)
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, sqlite3.Error) as e:
         log.error("Restauração marcada falhou: %s", e)
-        usado = None
+        return "cancelado"
     problema = verificar_arquivo(caminho_db)
     if problema is None:
         return "restaurado" if usado else "ok"
     log.error("Banco com problema de integridade: %s", problema)
     backup = ultimo_backup_valido(_pastas_de_backup(caminho_db))
     if backup is None:
+        if Path(caminho_db).stat().st_size == 0:
+            log.error("Banco vazio sem backup válido; abertura cancelada.")
+            return "cancelado"
         return "ok" if perguntar(
             "Banco danificado",
             "O banco de dados está danificado e NÃO há backup válido nas pastas conhecidas.\n\n"
@@ -159,9 +197,11 @@ def preparar_banco(caminho_db: str, perguntar) -> str:
     if perguntar("Banco danificado",
                  f"O banco de dados está danificado ({problema[:120]}).\n\nRestaurar o último backup válido?\n{backup.name}\n\n"
                  "O banco danificado é guardado ao lado, sem apagar nada."):
-        restaurar(caminho_db, backup)
+        try:
+            restaurar(caminho_db, backup)
+        except (OSError, ValueError, sqlite3.Error) as e:
+            log.error("Restauração falhou: %s", e)
+            return "cancelado"
         log.warning("Banco restaurado do backup %s.", backup)
         return "restaurado"
     return "cancelado"
-
-

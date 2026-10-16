@@ -151,6 +151,85 @@ class TesteRenovacaoNoPDV(BaseTeste, BaseChave):
             with self.subTest(ruim=ruim):
                 self.assertFalse(licenca_nuvem.renovar(self.banco, HttpFalso(ruim), forcar=True))
 
+    def test_falha_de_rede_repete_em_minutos_progressivos_e_sucesso_reinicia_intervalo(self):
+        http = HttpFalso(OSError("sem rede"))
+        for intervalo in licenca_nuvem.RETENTATIVAS_MINUTOS:
+            self.assertFalse(licenca_nuvem.renovar(self.banco, http))
+            chamadas = len(http.chamadas)
+            self.assertEqual(self.banco.cfg(licenca_nuvem.CHAVE_CONSULTA), "")
+            self.assertTrue(self.banco.cfg(licenca_nuvem.CHAVE_TENTATIVA))
+            licenca_nuvem.renovar(self.banco, http)
+            self.assertEqual(len(http.chamadas), chamadas)
+            self.avancar(minutes=intervalo)
+        bom = self.http(self.codigo(30))
+        self.assertTrue(licenca_nuvem.renovar(self.banco, bom))
+        self.assertEqual(self.banco.cfg(licenca_nuvem.CHAVE_FALHAS), "0")
+        self.assertEqual(self.banco.cfg(licenca_nuvem.CHAVE_CONSULTA), self._hora["t"].strftime("%Y-%m-%d %H:%M:%S"))
+        self.avancar(hours=5)
+        self.assertFalse(licenca_nuvem.renovar(self.banco, bom))
+        self.assertEqual(len(bom.chamadas), 1)
+        self.avancar(hours=1)
+        self.assertFalse(licenca_nuvem.renovar(self.banco, bom))
+        self.assertEqual(len(bom.chamadas), 2)
+
+    def test_falha_nao_substitui_horario_do_sucesso_e_nao_espera_seis_horas(self):
+        bom = self.http(self.codigo(30))
+        licenca_nuvem.renovar(self.banco, bom)
+        ultimo_sucesso = self.banco.cfg(licenca_nuvem.CHAVE_CONSULTA)
+        self.avancar(minutes=1)
+        ruim = HttpFalso(OSError("sem rede"))
+        licenca_nuvem.renovar(self.banco, ruim, forcar=True)
+        self.assertEqual(self.banco.cfg(licenca_nuvem.CHAVE_CONSULTA), ultimo_sucesso)
+        self.avancar(minutes=1)
+        licenca_nuvem.renovar(self.banco, ruim)
+        self.assertEqual(len(ruim.chamadas), 2)
+
+    def test_sem_assinatura_e_consulta_bem_sucedida_mas_erro_servidor_nao(self):
+        for status in (404, 409):
+            with self.subTest(status=status):
+                http = HttpFalso(Resposta(status, {}))
+                self.assertFalse(licenca_nuvem.renovar(self.banco, http, forcar=True))
+                self.assertTrue(self.banco.cfg(licenca_nuvem.CHAVE_CONSULTA))
+                self.assertEqual(self.banco.cfg(licenca_nuvem.CHAVE_FALHAS), "0")
+                self.avancar(minutes=30)
+                self.assertFalse(licenca_nuvem.renovar(self.banco, http))
+                self.assertEqual(len(http.chamadas), 1)
+        http = HttpFalso(Resposta(503, {}))
+        licenca_nuvem.renovar(self.banco, http, forcar=True)
+        self.avancar(minutes=1)
+        licenca_nuvem.renovar(self.banco, http)
+        self.assertEqual(len(http.chamadas), 2)
+
+    def test_consultar_preserva_api_codigo_ou_none(self):
+        codigo = self.codigo(30)
+        self.assertEqual(licenca_nuvem.consultar("https://nuvem/v1", "tok", self.http(codigo)), codigo)
+        self.assertIsNone(licenca_nuvem.consultar("https://nuvem/v1", "tok", HttpFalso(OSError("sem rede"))))
+
+    def test_indicador_preserva_ultimo_sucesso_e_mostra_erro_ate_novo_sucesso(self):
+        licenca_nuvem.renovar(self.banco, self.http(self.codigo(30)))
+        sucesso = self.banco.cfg("licenca_nuvem_sucesso_em")
+        self.assertTrue(sucesso)
+        self.assertEqual(sucesso, self.banco.cfg(licenca_nuvem.CHAVE_CONSULTA))
+        self.assertEqual(self.banco.cfg("licenca_nuvem_erro"), "")
+        self.avancar(minutes=1)
+        licenca_nuvem.renovar(self.banco, HttpFalso(OSError("sem rede")), forcar=True)
+        self.assertEqual(self.banco.cfg("licenca_nuvem_sucesso_em"), sucesso)
+        self.assertIn("sem rede", self.banco.cfg("licenca_nuvem_erro"))
+        self.avancar(minutes=1)
+        licenca_nuvem.renovar(self.banco, HttpFalso(Resposta(503, {})))
+        self.assertEqual(self.banco.cfg("licenca_nuvem_erro"), "HTTP 503")
+        licenca_nuvem.renovar(self.banco, HttpFalso(Resposta(404, {})), forcar=True)
+        self.assertNotEqual(self.banco.cfg("licenca_nuvem_sucesso_em"), sucesso)
+        self.assertEqual(self.banco.cfg("licenca_nuvem_erro"), "")
+
+    def test_erros_de_gravacao_e_aplicacao_nao_sao_silenciados(self):
+        with mock.patch.object(self.banco, "cfg_set", side_effect=OSError("disco cheio")):
+            with self.assertRaisesRegex(OSError, "disco cheio"):
+                licenca_nuvem.renovar(self.banco, self.http(self.codigo(30)), forcar=True)
+        with mock.patch.object(licenca_nuvem, "aplicar", side_effect=RuntimeError("falha ao ativar")):
+            with self.assertRaisesRegex(RuntimeError, "falha ao ativar"):
+                licenca_nuvem.renovar(self.banco, self.http(self.codigo(30)), forcar=True)
+
     def test_a_sincronizacao_renova(self):
         self.banco.cfg_set("chave_loja", "LOJA-1")
         Sincronizador(self.banco, self.http(self.codigo(30))).iniciar_loop(rodadas=1, dormir=lambda s: None)

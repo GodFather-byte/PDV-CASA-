@@ -1,4 +1,4 @@
-"""Excluir um produto do cadastro: sem venda apaga de verdade; já vendido fica guardado inativo e libera o código."""
+"""Excluir do cadastro e liberar identificadores, preservando os registros históricos."""
 from __future__ import annotations
 
 from src.controllers.cadastro_controller import CadastroController
@@ -17,15 +17,14 @@ class TesteExcluirProdutoCadastrado(BaseExcluir):
         self.assertIsNone(self.prod.por_id(self.skol))
         self.assertIsNone(self.banco.um("SELECT 1 FROM produtos WHERE codigo = ?", (codigo,)))
 
-    def test_ja_vendido_fica_guardado_inativo_e_libera_o_codigo(self):
+    def test_ja_vendido_sai_do_cadastro_e_libera_o_codigo(self):
         antes = self.prod.por_id(self.skol)
         self.vender_e_fechar(self.skol)
         aviso = self.cad.excluir("produtos", self.skol)
-        self.assertIn("já foi vendido", aviso)
-        p = self.prod.por_id(self.skol)
-        self.assertEqual(p["ativo"], 0)
-        self.assertNotEqual(p["codigo"], antes["codigo"])
-        self.assertNotEqual(p["nome"], antes["nome"])
+        self.assertIsNone(aviso)
+        self.assertIsNone(self.prod.por_id(self.skol))
+        p = self.banco.um("SELECT * FROM produtos_historico WHERE id = ?", (self.skol,))
+        self.assertEqual((p["codigo"], p["nome"]), (antes["codigo"], antes["nome"]))
         # o código e o nome antigos já servem para um produto novo
         novo = self.novo_produto(antes["nome"], 500, codigo=antes["codigo"])
         self.assertEqual(self.prod.por_id(novo)["codigo"], antes["codigo"])
@@ -41,9 +40,10 @@ class TesteExcluirProdutoCadastrado(BaseExcluir):
             self.cad.excluir("produtos", self.skol)
         self.assertEqual(self.prod.por_id(self.skol)["ativo"], 1)
 
-    def test_apaga_tambem_o_estoque_dele(self):
+    def test_preserva_os_movimentos_do_estoque_dele(self):
+        antes = self.banco.valor("SELECT COUNT(*) FROM movimentos_estoque WHERE produto_id = ?", (self.skol,))
         self.cad.excluir("produtos", self.skol)
-        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_estoque WHERE produto_id = ?", (self.skol,)), 0)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_estoque WHERE produto_id = ?", (self.skol,)), antes)
 
 
 class TesteReusarCodigoDeProdutoGuardado(BaseExcluir):
@@ -59,15 +59,15 @@ class TesteReusarCodigoDeProdutoGuardado(BaseExcluir):
 
     def guardar_com_excluir_todos(self):
         self.vender_e_fechar(self.skol)
-        self.util.excluir_todos_produtos()                       # o vendido fica inativo, preso ao código e ao nome
-        return self.banco.um("SELECT codigo, nome FROM produtos WHERE id = ?", (self.skol,))
+        self.util.excluir_todos_produtos()
+        return self.banco.um("SELECT codigo, nome FROM produtos_historico WHERE id = ?", (self.skol,))
 
     def test_cadastrar_com_o_codigo_do_produto_guardado(self):
         velho = self.guardar_com_excluir_todos()
         novo = self.cad.salvar("produtos", self.valores(velho["codigo"], "CERVEJA NOVA"))
         self.assertEqual(self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (novo,)), velho["codigo"])
-        self.assertEqual(self.banco.valor("SELECT ativo FROM produtos WHERE id = ?", (self.skol,)), 0)
-        self.assertNotEqual(self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (self.skol,)), velho["codigo"])
+        self.assertIsNone(self.prod.por_id(self.skol))
+        self.assertEqual(self.banco.valor("SELECT codigo FROM produtos_historico WHERE id = ?", (self.skol,)), velho["codigo"])
 
     def test_cadastrar_com_o_nome_do_produto_guardado(self):
         velho = self.guardar_com_excluir_todos()

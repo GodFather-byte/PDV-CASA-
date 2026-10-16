@@ -8,6 +8,7 @@ import sys
 import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from src.core import formatacao as fmt
 from src.database import esquema, sementes
@@ -56,6 +57,7 @@ class BancoDados:
                     except FileNotFoundError:
                         pass
                 self.conexao = self._abrir()
+            self._guardar_antes_migracao()
             self._criar_esquema()
             if semear:
                 sementes.aplicar(self)
@@ -66,11 +68,20 @@ class BancoDados:
     # ------------------------------------------------------------- abertura
     def _abrir(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.caminho, isolation_level=None, timeout=15)
-        con.row_factory = sqlite3.Row
-        con.create_function("norm", 1, normalizar, deterministic=True)
-        con.execute("PRAGMA foreign_keys = ON")
-        if self.caminho != ":memory:":
-            con.execute("PRAGMA journal_mode = WAL")
+        try:
+            versao = con.execute("PRAGMA user_version").fetchone()[0]
+            if versao > esquema.VERSAO_ESQUEMA:
+                raise ValueError(
+                    f"Banco na versão {versao}, superior à suportada ({esquema.VERSAO_ESQUEMA}). "
+                    "Atualize o PDV antes de abrir este banco.")
+            con.row_factory = sqlite3.Row
+            con.create_function("norm", 1, normalizar, deterministic=True)
+            con.execute("PRAGMA foreign_keys = ON")
+            if self.caminho != ":memory:":
+                con.execute("PRAGMA journal_mode = WAL")
+        except BaseException:
+            con.close()
+            raise
         return con
 
     def _banco_legado(self) -> bool:
@@ -95,6 +106,33 @@ class BancoDados:
         finally:
             copia.close()
 
+    def _guardar_antes_migracao(self) -> None:
+        """Preserva um retrato consistente antes de qualquer DDL de atualização."""
+        versao = self.conexao.execute("PRAGMA user_version").fetchone()[0]
+        if self.caminho == ":memory:" or versao >= esquema.VERSAO_ESQUEMA:
+            return
+        if self.conexao.execute("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").fetchone() is None:
+            return
+        instante = fmt.agora().replace(":", "").replace(" ", "-")
+        destino = Path(f"{self.caminho}.antes-migracao-v{versao}-{instante}-{uuid4().hex}.bak")
+        try:
+            with destino.open("xb"):
+                pass
+            copia = sqlite3.connect(destino)
+            try:
+                self.conexao.backup(copia)
+                copia.execute("PRAGMA journal_mode = DELETE")
+                if [r[0] for r in copia.execute("PRAGMA quick_check")] != ["ok"]:
+                    raise sqlite3.DatabaseError("A cópia anterior à migração falhou na verificação de integridade.")
+            finally:
+                copia.close()
+            with destino.open("r+b") as arquivo:
+                os.fsync(arquivo.fileno())
+        except BaseException:
+            for sufixo in ("", "-wal", "-shm"):
+                Path(str(destino) + sufixo).unlink(missing_ok=True)
+            raise
+
     def _criar_esquema(self) -> None:
         versao = self.conexao.execute("PRAGMA user_version").fetchone()[0]
         novo = self.conexao.execute(
@@ -111,11 +149,9 @@ class BancoDados:
         """Aplica as migrações pendentes, da versão `de`+1 até a atual, cada uma em transação."""
         for versao in range(de + 1, esquema.VERSAO_ESQUEMA + 1):
             comandos = esquema.MIGRACOES.get(versao)
-            if not comandos:
-                continue
             self.conexao.execute("BEGIN")
             try:
-                for passo in comandos:
+                for passo in comandos or ():
                     if isinstance(passo, tuple):
                         # ("coluna", tabela, nome, definição): só adiciona se faltar (a tabela pode ter acabado
                         # de ser criada já na forma atual, em um banco antigo que não a tinha).
@@ -124,6 +160,7 @@ class BancoDados:
                             self.conexao.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")
                     else:
                         self.conexao.execute(passo)
+                self.conexao.execute(f"PRAGMA user_version = {versao}")
             except Exception:
                 self.conexao.execute("ROLLBACK")
                 raise

@@ -42,7 +42,7 @@ class CadernetaController:
     def produtos_da_venda(self, venda_id: int) -> list[dict]:
         return [dict(r) for r in self.banco.todos(
             """SELECT p.nome, i.quantidade, i.preco_unit_cent, i.total_cent FROM itens_venda i
-               JOIN produtos p ON p.id = i.produto_id WHERE i.venda_id = ? AND i.cancelado = 0 ORDER BY i.id""",
+               JOIN produtos_historico p ON p.id = i.produto_id WHERE i.venda_id = ? AND i.cancelado = 0 ORDER BY i.id""",
             (venda_id,))]
 
     def pagamentos_da_venda(self, venda_id: int) -> list[dict]:
@@ -54,7 +54,7 @@ class CadernetaController:
         """'Últimas Compras' da tela de caderneta/entrega: o que o cliente já consumiu."""
         return [dict(r) for r in self.banco.todos(
             """SELECT v.cupom, date(v.fechada_em) AS data, p.nome, i.quantidade, i.total_cent
-               FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos p ON p.id = i.produto_id
+               FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico p ON p.id = i.produto_id
                WHERE v.cliente_id = ? AND v.status = 'fechada' AND i.cancelado = 0
                ORDER BY v.id DESC, i.id LIMIT ?""", (cliente_id, limite))]
 

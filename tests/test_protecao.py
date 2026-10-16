@@ -114,6 +114,115 @@ class TesteBackup(BaseArquivo):
 
 
 class TesteRestauracao(BaseArquivo):
+    def _pedido_com_original(self):
+        backup = self.util.backup()
+        self.banco.cfg_set("nome_teste", "ORIGINAL")
+        self.banco.fechar()
+        protecao.pedir_restauracao(self.caminho, backup)
+        return Path(self.caminho).read_bytes(), Path(self.caminho + "." + protecao.PENDENTE)
+
+    def test_falha_na_copia_preserva_original_e_pedido_e_cancela_abertura(self):
+        original, pedido = self._pedido_com_original()
+        with mock.patch.object(protecao.shutil, "copyfile", side_effect=OSError("disco cheio")):
+            self.assertEqual(protecao.preparar_banco(self.caminho, mock.Mock()), "cancelado")
+        self.assertEqual(Path(self.caminho).read_bytes(), original)
+        self.assertTrue(pedido.exists())
+        self.assertFalse(list(self.pasta.glob("*.restaurando-*")))
+
+    def test_falha_na_validacao_da_copia_preserva_original_e_pedido(self):
+        original, pedido = self._pedido_com_original()
+        validar = protecao.backup_valido
+        with mock.patch.object(protecao, "backup_valido",
+                               side_effect=lambda p: False if ".restaurando-" in str(p) else validar(p)):
+            self.assertEqual(protecao.preparar_banco(self.caminho, mock.Mock()), "cancelado")
+        self.assertEqual(Path(self.caminho).read_bytes(), original)
+        self.assertTrue(pedido.exists())
+
+    def test_falha_na_substituicao_reverte_laterais_e_preserva_pedido(self):
+        original, pedido = self._pedido_com_original()
+        laterais = {}
+        for sufixo in ("-wal", "-shm"):
+            lateral = Path(self.caminho + sufixo)
+            lateral.write_bytes(sufixo.encode())
+            laterais[lateral] = lateral.read_bytes()
+        substituir = protecao.os.replace
+
+        def falhar(origem, destino):
+            if ".restaurando-" in str(origem):
+                raise OSError("arquivo bloqueado")
+            return substituir(origem, destino)
+
+        with mock.patch.object(protecao.os, "replace", side_effect=falhar):
+            self.assertEqual(protecao.preparar_banco(self.caminho, mock.Mock()), "cancelado")
+        self.assertEqual(Path(self.caminho).read_bytes(), original)
+        for lateral, conteudo in laterais.items():
+            self.assertEqual(lateral.read_bytes(), conteudo)
+        self.assertTrue(pedido.exists())
+
+    def test_falha_ao_mover_segundo_lateral_reverte_primeiro(self):
+        original, pedido = self._pedido_com_original()
+        for sufixo in ("-wal", "-shm"):
+            Path(self.caminho + sufixo).write_bytes(sufixo.encode())
+        substituir = protecao.os.replace
+
+        def falhar(origem, destino):
+            if str(origem) == self.caminho + "-shm":
+                raise OSError("lateral bloqueado")
+            return substituir(origem, destino)
+
+        with mock.patch.object(protecao.os, "replace", side_effect=falhar):
+            self.assertEqual(protecao.preparar_banco(self.caminho, mock.Mock()), "cancelado")
+        self.assertEqual(Path(self.caminho).read_bytes(), original)
+        self.assertEqual(Path(self.caminho + "-wal").read_bytes(), b"-wal")
+        self.assertEqual(Path(self.caminho + "-shm").read_bytes(), b"-shm")
+        self.assertTrue(pedido.exists())
+
+    def test_pedido_invalido_sem_banco_nao_permite_criar_banco_vazio(self):
+        self.banco.fechar()
+        Path(self.caminho).unlink()
+        pedido = Path(self.caminho + "." + protecao.PENDENTE)
+        pedido.write_text(str(self.pasta / "backup-ausente.db"), encoding="utf-8")
+        self.assertEqual(protecao.preparar_banco(self.caminho, mock.Mock()), "cancelado")
+        self.assertFalse(Path(self.caminho).exists())
+        self.assertTrue(pedido.exists())
+
+    def test_banco_vazio_sem_backup_nao_pode_ser_aberto(self):
+        self.banco.fechar()
+        Path(self.caminho).write_bytes(b"")
+        with mock.patch.object(protecao, "_pastas_de_backup", return_value=[]):
+            self.assertEqual(protecao.preparar_banco(self.caminho, lambda *a: True), "cancelado")
+
+    def test_falha_antes_da_substituicao_sem_original_nao_cria_banco(self):
+        backup = self.util.backup()
+        self.banco.fechar()
+        Path(self.caminho).unlink()
+        protecao.pedir_restauracao(self.caminho, backup)
+        pedido = Path(self.caminho + "." + protecao.PENDENTE)
+        with mock.patch.object(protecao.os, "replace", side_effect=OSError("sem permissão")):
+            self.assertEqual(protecao.preparar_banco(self.caminho, mock.Mock()), "cancelado")
+        self.assertFalse(Path(self.caminho).exists())
+        self.assertTrue(pedido.exists())
+
+    def test_restauracao_inclui_transacoes_no_wal_do_backup(self):
+        origem = BancoDados(str(self.pasta / "backup-aberto.db"))
+        self.addCleanup(origem.fechar)
+        origem.cfg_set("nome_teste", "NO WAL")
+        self.assertTrue(Path(origem.caminho + "-wal").exists())
+        self.banco.fechar()
+        protecao.restaurar(self.caminho, origem.caminho)
+        restaurado = BancoDados(self.caminho)
+        self.addCleanup(restaurado.fechar)
+        self.assertEqual(restaurado.cfg("nome_teste"), "NO WAL")
+
+    def test_restauracoes_seguidas_guardam_originais_distintos(self):
+        backup = self.util.backup()
+        self.banco.fechar()
+        primeiro = protecao.restaurar(self.caminho, backup)
+        segundo = protecao.restaurar(self.caminho, backup)
+        self.assertNotEqual(primeiro, segundo)
+        self.assertTrue(primeiro.exists())
+        self.assertTrue(segundo.exists())
+
     def test_restaurar_troca_o_banco_e_guarda_o_antigo(self):
         self.util.backup()
         self.banco.cfg_set("nome_teste", "DEPOIS")

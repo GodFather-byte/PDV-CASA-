@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
 from backend import cobrancas
+from backend import operacao_asaas
 from src.core import ed25519, licenca as licenca_pdv
 from src.versao import chave, mais_nova, valida      # a mesma regra de comparação de versões do PDV
 
@@ -146,15 +147,23 @@ def webhook_asaas(dados: dict = Body(...), asaas_access_token: Optional[str] = H
         return {"situacao": "sem_assinatura"}
     try:
         evento_id = cobrancas.identificador(dados.get("id"), "evt_")
-        return {"situacao": cobrancas.processar(db, pagamento["subscription"], pagamento.get("id"), evento_id)}
-    except cobrancas.AsaasIndisponivel as erro:
-        db.rollback()
-        log.error("Falha na consulta Asaas: %s", erro)
-        raise HTTPException(status_code=503, detail=str(erro)) from None
+        return {"situacao": operacao_asaas.receber(
+            db, evento_id, pagamento["subscription"], pagamento.get("id"), evento)}
     except cobrancas.ErroCobranca as erro:
         db.rollback()
         log.warning("Webhook Asaas recusado: %s", erro)
         raise HTTPException(status_code=422, detail=str(erro)) from None
+    except Exception:
+        db.rollback()
+        log.error("ALERTA_ASAAS_INBOX Falha ao persistir evento; provedor deve reenviar.")
+        raise HTTPException(status_code=503, detail="Inbox indisponível; reenvie o evento.") from None
+
+
+@app.get("/v1/admin/cobrancas/operacao")
+def admin_operacao_asaas(acesso: Acesso = Depends(autenticar), db: Session = Depends(get_db)):
+    if not acesso.admin:
+        raise HTTPException(status_code=403, detail="Só o administrador vê a operação de cobrança.")
+    return operacao_asaas.estado(db)
 
 
 @app.get("/v1/saude")

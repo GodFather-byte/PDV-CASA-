@@ -345,6 +345,8 @@ class App:
         self.aviso_backup = Aviso(avisos, wraplength=600)
         self.aviso_backup.pack(anchor="w")
         self.lbl_backup = self.aviso_backup.texto
+        self.aviso_licenca = Aviso(avisos, wraplength=600)
+        self.aviso_licenca.pack(anchor="w")
         self.aviso_versao = Aviso(avisos, clique=self.abrir_aviso_versao, wraplength=500)
         self.lbl_versao = self.aviso_versao.texto
 
@@ -493,10 +495,31 @@ class App:
         self.lbl_atualiz.configure(text=f"Última atualização:  {fmt.fmt_datahora(p['atualizado_em'])}")
         nivel, texto = self.ctx.utilitarios.situacao_backup()
         self.aviso_backup.definir(texto, PAL["verde"] if nivel == "ok" else PAL["vermelho"])
+        self.mostrar_situacao_licenca()
         self.mostrar_aviso_versao()
         self._relogio_id = self.root.after(30_000, self.atualizar_painel)
 
     # --------------------------------------------------------- atualizações
+    def mostrar_situacao_licenca(self) -> None:
+        from src.core import licenca
+        estado = licenca.estado(self.banco)
+        if estado.situacao == "desativada":
+            self.aviso_licenca.pack_forget()
+            return
+        texto = (f"Licença válida até {fmt.fmt_data(estado.expira_em.isoformat())}."
+                 if estado.expira_em else estado.mensagem)
+        if estado.mensagem and estado.expira_em:
+            texto = estado.mensagem
+        sucesso = self.banco.cfg("licenca_nuvem_sucesso_em")
+        texto += (f" Última consulta bem-sucedida: {fmt.fmt_datahora(sucesso)}."
+                  if sucesso else " Sem consulta bem-sucedida registrada nesta instalação.")
+        falha = self.banco.cfg("licenca_nuvem_erro")
+        if falha:
+            texto += f" Nuvem: {falha}"
+        cor = PAL["vermelho"] if estado.bloqueia else PAL["ambar"] if estado.avisa or falha else PAL["verde"]
+        self.aviso_licenca.definir(texto, cor)
+        self.aviso_licenca.pack(anchor="w")
+
     def mostrar_aviso_versao(self) -> None:
         """Aviso no topo da tela quando há versão nova (vermelho se for crítica). Clicar abre as notas."""
         from src.sync import atualizacoes

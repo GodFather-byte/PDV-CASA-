@@ -186,25 +186,16 @@ class UtilitarioController:
                 "backup": copia}
 
     # ------------------------------------------------------ excluir todos os produtos
-    # Produto que já saiu em alguma venda (inclusive as abertas) não pode ser apagado: o cupom, os relatórios e o estorno dependem
-    # dele. Esses ficam guardados, inativos, e voltam a valer quando a planilha trouxer o mesmo código ou nome.
-    _SEM_VENDA = ("NOT EXISTS (SELECT 1 FROM itens_venda i WHERE i.produto_id = produtos.id) "
-                  "AND NOT EXISTS (SELECT 1 FROM itens_venda_partes p WHERE p.produto_id = produtos.id)")
-
     def resumo_exclusao_produtos(self) -> dict:
-        """O que a exclusão total faria agora: `total` de produtos, quantos seriam `excluidos`, quantos já vendidos ficariam
-        `guardados` (inativos) e quantas `vendas_abertas` com itens impedem a operação."""
+        """Quantidade removida do cadastro; o histórico não ocupa códigos comerciais."""
         total = self.banco.valor("SELECT COUNT(*) FROM produtos", (), 0)
-        excluidos = self.banco.valor(f"SELECT COUNT(*) FROM produtos WHERE {self._SEM_VENDA}", (), 0)
         abertas = self.banco.valor(
             """SELECT COUNT(*) FROM vendas v WHERE v.status IN ('aberta','conta_enviada')
                AND EXISTS (SELECT 1 FROM itens_venda i WHERE i.venda_id = v.id AND i.cancelado = 0)""", (), 0)
-        return {"total": total, "excluidos": excluidos, "guardados": total - excluidos, "vendas_abertas": abertas}
+        return {"total": total, "excluidos": total, "guardados": 0, "vendas_abertas": abertas}
 
     def excluir_todos_produtos(self) -> dict:
-        """Apaga todos os produtos de uma vez, para cadastrar a tabela de novo (Importar produtos). Salvaguardas: backup antes e
-        recusa com mesa, comanda ou balcão abertos com itens. Os já vendidos viram inativos (ver acima). Grupos, subgrupos e
-        unidades ficam. Devolve {'excluidos', 'guardados', 'backup'}."""
+        """Remove o catálogo após backup, preservando vendas e movimentos no histórico."""
         r = self.resumo_exclusao_produtos()
         if not r["total"]:
             raise ErroNegocio("Não há produtos cadastrados.")
@@ -212,21 +203,21 @@ class UtilitarioController:
             raise ErroNegocio(f"Há {r['vendas_abertas']} venda(s), mesa(s) ou comanda(s) abertas com itens. Feche ou cancele "
                               "antes de excluir os produtos.")
         copia = self.backup()
-        alvo = f"(SELECT id FROM produtos WHERE {self._SEM_VENDA})"
         with self.banco.transacao():
-            lancamentos = [x[0] for x in self.banco.todos(
-                f"SELECT DISTINCT lancamento_id FROM itens_estoque WHERE produto_id IN {alvo}")]
-            self.banco.executar(f"DELETE FROM composicoes WHERE produto_id IN {alvo} OR insumo_id IN {alvo}")
-            self.banco.executar(f"DELETE FROM itens_estoque WHERE produto_id IN {alvo}")
-            self.banco.executar(f"DELETE FROM movimentos_estoque WHERE produto_id IN {alvo}")
-            for i in range(0, len(lancamentos), 500):         # lançamento de estoque que ficou sem nenhum item não serve mais
-                lote = lancamentos[i:i + 500]
+            if self.resumo_exclusao_produtos()["vendas_abertas"]:
+                raise ErroNegocio("Há vendas abertas com itens. Feche ou cancele antes de excluir os produtos.")
+            if self.banco.valor("""SELECT 1 FROM itens_estoque i JOIN lancamentos_estoque l ON l.id = i.lancamento_id
+                                   JOIN produtos p ON p.id = i.produto_id WHERE l.tipo = 'pedido' LIMIT 1"""):
+                raise ErroNegocio("Há produtos em pedidos de compra. Remova ou conclua os pedidos antes de excluir.")
+            from src.controllers.produto_controller import ProdutoController
+            produtos = ProdutoController(self.banco)
+            for (pid,) in self.banco.todos("SELECT id FROM produtos"):
                 self.banco.executar(
-                    f"DELETE FROM lancamentos_estoque WHERE id IN ({','.join('?' * len(lote))}) "
-                    "AND NOT EXISTS (SELECT 1 FROM itens_estoque e WHERE e.lancamento_id = lancamentos_estoque.id)", lote)
-            self.banco.executar(f"DELETE FROM produtos WHERE id IN {alvo}")
-            self.banco.executar("UPDATE produtos SET ativo = 0")                    # o que sobrou já foi vendido: some do caixa
-            self.banco.log("excluir_todos_produtos", f"{r['excluidos']} excluídos, {r['guardados']} guardados inativos",
+                    "UPDATE produtos_historico SET custo_cent = ?, ativo = 0, excluido_em = ? WHERE id = ?",
+                    (produtos.custo(pid), fmt.agora(), pid))
+            self.banco.executar("DELETE FROM composicoes")
+            self.banco.executar("DELETE FROM produtos")
+            self.banco.log("excluir_todos_produtos", f"{r['excluidos']} excluídos do cadastro; histórico preservado",
                            self.operador_id)
         return {"excluidos": r["excluidos"], "guardados": r["guardados"], "backup": copia}
 

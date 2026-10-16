@@ -80,7 +80,7 @@ class RelatoriosGestao:
                 f"""SELECT l.data, l.tipo, f.nome AS fornecedor, pr.nome, u.abreviatura AS un, i.quantidade,
                            i.preco_unit_cent, i.valor_cent, i.diferenca
                     FROM itens_estoque i JOIN lancamentos_estoque l ON l.id = i.lancamento_id
-                    JOIN produtos pr ON pr.id = i.produto_id JOIN unidades u ON u.id = pr.unidade_id
+                    JOIN produtos_historico pr ON pr.id = i.produto_id JOIN unidades u ON u.id = pr.unidade_id
                     LEFT JOIN fornecedores f ON f.id = l.fornecedor_id
                     WHERE {' AND '.join(onde)} ORDER BY l.data, l.id, i.id""", p):
             qt = r["diferenca"] if r["tipo"] == "contagem" else r["quantidade"]
@@ -100,7 +100,7 @@ class RelatoriosGestao:
                         [Coluna(t[:8], 8, "d") for t in tipos])
         for r in self.banco.todos(
                 f"""SELECT pr.nome, pr.qt_atual, {', '.join(f"COALESCE(SUM(CASE WHEN m.tipo = '{t}' THEN m.quantidade END),0) AS {t}" for t in tipos)}
-                    FROM produtos pr LEFT JOIN movimentos_estoque m ON m.produto_id = pr.id AND {' AND '.join(onde)}
+                    FROM produtos_historico pr LEFT JOIN movimentos_estoque m ON m.produto_id = pr.id AND {' AND '.join(onde)}
                     WHERE pr.controla_estoque = 1 GROUP BY pr.id ORDER BY pr.nome""", p):
             rel.add(r["nome"], Q(r["qt_atual"]), *[Q(r[t]) for t in tipos])
         return rel
@@ -118,7 +118,7 @@ class RelatoriosGestao:
                 f"""SELECT f.nome AS fornecedor, pr.nome, u.abreviatura AS un, SUM(i.quantidade) AS qt,
                            SUM(i.valor_cent - i.desconto_cent) AS tot
                     FROM itens_estoque i JOIN lancamentos_estoque l ON l.id = i.lancamento_id
-                    JOIN produtos pr ON pr.id = i.produto_id JOIN unidades u ON u.id = pr.unidade_id
+                    JOIN produtos_historico pr ON pr.id = i.produto_id JOIN unidades u ON u.id = pr.unidade_id
                     LEFT JOIN fornecedores f ON f.id = l.fornecedor_id WHERE {' AND '.join(onde)}
                     GROUP BY f.id, pr.id ORDER BY f.nome, pr.nome""", p):
             rel.add(r["fornecedor"], r["nome"], r["un"], Q(r["qt"]), M(fmt.dividir_cent(r["tot"], r["qt"])), M(r["tot"]))

@@ -277,7 +277,8 @@ class ImportacaoProdutos:
                     # O código está com um produto guardado (inativo, já vendido): o código vai para a planilha e o guardado
                     # passa para um código de arquivo, sem mudar o nome dele (o histórico das vendas continua certo).
                     p.liberar_id = dono["id"]
-                    p.avisos.append(f"O código {int(p.codigo)} estava com '{dono['nome']}' (guardado, inativo); ele passa a ter outro código.")
+                    p.avisos.append(f"O código {int(p.codigo)} estava com '{dono['nome']}' (inativo); "
+                                    "o cadastro antigo será excluído, preservando o histórico.")
                     dono = None
                 if nome_existente is not None and nome_existente["codigo"] != p.codigo and nome_existente["id"] in inativos \
                         and dono is None:
@@ -430,12 +431,11 @@ class ImportacaoProdutos:
         return {"criados": criados, "atualizados": atualizados, "estoque": len(com_estoque)}
 
     def _arquivar_codigo(self, produto_id: int) -> None:
-        """Dá a um produto guardado (inativo) um código de arquivo (10.000.000 em diante, que a numeração em sequência ignora),
-        para o código dele ficar livre para a planilha."""
-        n = 10_000_000 + produto_id
-        while self.banco.valor("SELECT 1 FROM produtos WHERE codigo = ?", (_cod13(str(n)),)):
-            n += 1
-        self.banco.executar("UPDATE produtos SET codigo = ? WHERE id = ?", (_cod13(str(n)), produto_id))
+        """Remove somente um cadastro ainda inativo; uma prévia antiga não pode apagar um produto reativado."""
+        produto = self.cad.obter("produtos", produto_id)
+        if produto is None or produto["ativo"]:
+            raise ErroNegocio("O cadastro mudou depois da prévia. Analise a planilha novamente.")
+        self.cad.excluir("produtos", produto_id)
 
     # ----------------------------------------------------- modelo e exportação
     @staticmethod

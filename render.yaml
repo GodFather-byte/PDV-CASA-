@@ -3,6 +3,8 @@
 # gratuito do Neon (neon.tech), informado em PDV_NUVEM_DB_URL.
 # Cobrança Asaas: docs/COBRANCA_LICENCAS_ASAAS.md. Em produção, escolha plano pago
 # sempre ligado e configure ASAAS_AMBIENTE, ASAAS_API_KEY e ASAAS_WEBHOOK_TOKEN no painel.
+# A API só enfileira eventos. Worker/agenda: python -m backend.worker_asaas
+# em processo supervisionado separado (não provisionado aqui; verificar custo no guia).
 services:
   - type: web
     name: willpdv-nuvem

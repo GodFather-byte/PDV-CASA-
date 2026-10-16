@@ -136,7 +136,8 @@ def fim_periodo(vencimento: date) -> date:
     return date(ano, mes, min(vencimento.day, calendar.monthrange(ano, mes)[1]))
 
 
-def processar(db: Session, assinatura_id: str, pagamento_id: str, evento_id: str | None = None) -> str:
+def processar(db: Session, assinatura_id: str, pagamento_id: str, evento_id: str | None = None,
+              *, confirmar: bool = True) -> str:
     from backend.main import Loja
     identificador(assinatura_id, "sub_")
     identificador(pagamento_id, "pay_")
@@ -185,13 +186,14 @@ def processar(db: Session, assinatura_id: str, pagamento_id: str, evento_id: str
     loja.licenca_ate = max(datas) if datas else None
     if evento_id:
         db.add(Evento(id=evento_id, cobranca=pagamento_id, recebido_em=agora()))
-    db.commit()
-    log.info("Cobrança %s conciliada: %s; loja %s.", pagamento_id, status, assinatura.chave_loja)
+    if confirmar:
+        db.commit()
+        log.info("Cobrança %s conciliada: %s; loja %s.", pagamento_id, status, assinatura.chave_loja)
     return "processado"
 
 
-def reconciliar(db: Session, chave: str) -> int:
-    assinatura = db.query(Assinatura).filter_by(chave_loja=chave).first()
+def reconciliar(db: Session, chave: str, *, confirmar: bool = True) -> int:
+    assinatura = db.query(Assinatura).filter_by(chave_loja=chave).with_for_update().first()
     if assinatura is None:
         raise ErroCobranca("Loja sem assinatura Asaas vinculada.")
     if assinatura.ambiente != ambiente():
@@ -216,7 +218,7 @@ def reconciliar(db: Session, chave: str) -> int:
     # Inclui as já conhecidas: cobranças removidas podem desaparecer da listagem.
     ids.update(c.id for c in db.query(Cobranca).filter_by(assinatura=assinatura_id))
     for pagamento_id in sorted(ids):
-        processar(db, assinatura_id, pagamento_id)
+        processar(db, assinatura_id, pagamento_id, confirmar=confirmar)
     return len(ids)
 
 

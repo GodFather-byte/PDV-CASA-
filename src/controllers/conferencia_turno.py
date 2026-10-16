@@ -59,7 +59,7 @@ def _produtos_vendidos(banco, turno_id: int) -> list[dict]:
     """O que saiu no turno: cada produto das vendas fechadas nele (itens não cancelados), do maior total ao menor."""
     return [dict(r) for r in banco.todos(
         """SELECT p.nome AS produto, SUM(i.quantidade) AS quantidade, SUM(i.total_cent) AS total_cent
-           FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos p ON p.id = i.produto_id
+           FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico p ON p.id = i.produto_id
            WHERE v.turno_id = ? AND v.status = 'fechada' AND i.cancelado = 0
            GROUP BY p.id ORDER BY total_cent DESC, p.nome""", (turno_id,))]
 
@@ -102,7 +102,7 @@ def _itens_cancelados(banco, inicio: str, fim: str) -> list[dict]:
         achou = re.search(r"item (\d+)", e["detalhe"] or "")
         r = banco.um(
             """SELECT i.quantidade, i.total_cent, p.codigo, p.nome, v.modalidade, v.comanda, v.posicao, v.cupom
-               FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos p ON p.id = i.produto_id
+               FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico p ON p.id = i.produto_id
                WHERE i.id = ?""", (int(achou.group(1)),)) if achou else None
         if r is None:                 # a venda já foi apagada (limpeza do movimento)
             continue

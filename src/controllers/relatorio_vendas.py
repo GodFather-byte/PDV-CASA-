@@ -114,7 +114,7 @@ class RelatoriosVendas:
     def cupom_detalhe(self, venda_id: int) -> dict:
         itens = [dict(r) for r in self.banco.todos(
             """SELECT p.codigo, p.nome, i.quantidade, i.preco_unit_cent, i.total_cent, i.cancelado
-               FROM itens_venda i JOIN produtos p ON p.id = i.produto_id WHERE i.venda_id = ? ORDER BY i.id""", (venda_id,))]
+               FROM itens_venda i JOIN produtos_historico p ON p.id = i.produto_id WHERE i.venda_id = ? ORDER BY i.id""", (venda_id,))]
         pagamentos = [dict(r) for r in self.banco.todos(
             """SELECT t.tipo, p.valor_cent, p.troco_cent FROM pagamentos_venda p
                JOIN tipos_pagamento t ON t.id = p.tipo_pagamento_id WHERE p.venda_id = ?""", (venda_id,))]
@@ -143,7 +143,7 @@ class RelatoriosVendas:
                 WHERE {onde} GROUP BY tp.id ORDER BY tp.ordem""", p)]
         t["por_subgrupo"] = [dict(x) for x in self.banco.todos(
             f"""SELECT g.nome AS grupo, s.nome AS subgrupo, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS total
-                FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos pr ON pr.id = i.produto_id
+                FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico pr ON pr.id = i.produto_id
                 JOIN subgrupos s ON s.id = pr.subgrupo_id JOIN grupos g ON g.id = s.grupo_id
                 WHERE i.cancelado = 0 AND {onde} GROUP BY s.id ORDER BY g.nome, s.nome""", p)]
         return t
@@ -180,7 +180,7 @@ class RelatoriosVendas:
                         criterios=self.criterios(f))
         for r in self.banco.todos(
                 f"""SELECT pr.codigo, pr.nome, u.abreviatura AS un, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS tot
-                    FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos pr ON pr.id = i.produto_id
+                    FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico pr ON pr.id = i.produto_id
                     JOIN unidades u ON u.id = pr.unidade_id WHERE i.cancelado = 0 AND {onde}
                     GROUP BY pr.id ORDER BY pr.nome""", p):
             rel.add(r["codigo"], r["nome"], r["un"], Q(r["qt"]), M(fmt.dividir_cent(r["tot"], r["qt"])), M(r["tot"]))
@@ -201,7 +201,7 @@ class RelatoriosVendas:
                                             Coluna("Total", 12, "d"), Coluna("%", 8, "d")], criterios=self.criterios(f))
         linhas = self.banco.todos(
             f"""SELECT g.nome AS grupo, pr.nome AS produto, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS tot
-                FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos pr ON pr.id = i.produto_id
+                FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico pr ON pr.id = i.produto_id
                 JOIN subgrupos s ON s.id = pr.subgrupo_id JOIN grupos g ON g.id = s.grupo_id
                 WHERE i.cancelado = 0 AND {onde} GROUP BY pr.id ORDER BY g.nome, pr.nome""", p)
         geral = sum(r["tot"] for r in linhas)
@@ -354,7 +354,7 @@ class RelatoriosVendas:
         grupos: dict = {}
         for r in self.banco.todos(
                 f"""SELECT g.nome AS grupo, pr.id, pr.codigo, pr.nome, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS tot
-                    FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos pr ON pr.id = i.produto_id
+                    FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico pr ON pr.id = i.produto_id
                     JOIN subgrupos s ON s.id = pr.subgrupo_id JOIN grupos g ON g.id = s.grupo_id
                     WHERE i.cancelado = 0 AND {onde} GROUP BY pr.id ORDER BY g.nome, pr.nome""", p):
             custo_un = prods.custo(r["id"])
@@ -384,7 +384,7 @@ class RelatoriosVendas:
         por_op: dict = {}
         for r in self.banco.todos(
                 f"""SELECT o.nome AS operador, pr.nome, SUM(i.quantidade) AS qt, SUM(i.total_cent) AS tot, SUM(i.comissao_cent) AS com
-                    FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos pr ON pr.id = i.produto_id
+                    FROM itens_venda i JOIN vendas v ON v.id = i.venda_id JOIN produtos_historico pr ON pr.id = i.produto_id
                     JOIN operadores o ON o.id = COALESCE(v.vendedor_id, v.operador_id)
                     WHERE i.cancelado = 0 AND o.recebe_comissao = 1 AND i.comissao_cent > 0 AND {onde}
                     GROUP BY o.id, pr.id ORDER BY o.nome, pr.nome""", p):

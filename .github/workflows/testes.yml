@@ -7,6 +7,35 @@ on:
   pull_request:
 
 jobs:
+  cobrancas-postgres:
+    name: Asaas / PostgreSQL 16
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pdv_teste
+          POSTGRES_PASSWORD: senha_apenas_ci
+          POSTGRES_DB: pdv_teste
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pdv_teste -d pdv_teste"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PDV_TESTE_NUVEM_DB_URL: postgresql+psycopg://pdv_teste:senha_apenas_ci@localhost:5432/pdv_teste
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt httpx
+      - name: Inbox, concorrência, retentativas e reinício (PostgreSQL e SQLite)
+        run: python -m unittest tests.test_cobrancas_asaas tests.test_backend_operacao_asaas
+
   testes:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}

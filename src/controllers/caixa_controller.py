@@ -49,14 +49,14 @@ class CaixaController:
 
     def itens(self, venda_id: int, cancelados: bool = False) -> list[dict]:
         sql = """SELECT i.*, p.codigo, p.nome, u.abreviatura AS unidade
-                 FROM itens_venda i JOIN produtos p ON p.id = i.produto_id
+                 FROM itens_venda i JOIN produtos_historico p ON p.id = i.produto_id
                  JOIN unidades u ON u.id = p.unidade_id WHERE i.venda_id = ?"""
         if not cancelados:
             sql += " AND i.cancelado = 0"
         linhas = [dict(r) for r in self.banco.todos(sql + " ORDER BY i.id", (venda_id,))]
         for ln in linhas:
             ln["partes_nomes"] = [r[0] for r in self.banco.todos(
-                "SELECT p.nome FROM itens_venda_partes x JOIN produtos p ON p.id = x.produto_id "
+                "SELECT p.nome FROM itens_venda_partes x JOIN produtos_historico p ON p.id = x.produto_id "
                 "WHERE x.item_id = ? ORDER BY x.id", (ln["id"],))]
         return linhas
 
