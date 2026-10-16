@@ -43,6 +43,7 @@ class Entidade:
     busca: tuple = ()
     antes_salvar: Callable | None = None   # (banco, dados, id_) -> dados
     antes_excluir: Callable | None = None  # (banco, id_) -> None
+    excluir_fn: Callable | None = None     # (banco, id_) -> texto|None: no lugar do DELETE simples; o texto vai para a tela
     msg_em_uso: str = "Este registro está em uso e não pode ser excluído."
     tem_ativo: bool = False
 
@@ -154,6 +155,40 @@ def _antes_excluir_garota(banco, id_):
         raise ErroNegocio("Esta garota tem comissões registradas. Desmarque 'Ativa' em vez de excluir.")
 
 
+def _excluir_produto(banco, id_):
+    """Excluir produto: sem uso em venda, apaga de verdade (com composição e estoque dele). Já vendido não pode sumir (cupom,
+    relatórios e estorno dependem dele): fica guardado, inativo, e o código, o nome, o atalho e o código de barras ficam livres
+    para outro produto. Recusa se o produto está numa mesa, comanda ou balcão aberto."""
+    p = banco.um("SELECT * FROM produtos WHERE id = ?", (id_,))
+    if p is None:
+        raise ErroNegocio("Produto não encontrado.")
+    aberto = banco.valor(
+        """SELECT COUNT(*) FROM itens_venda i JOIN vendas v ON v.id = i.venda_id
+           WHERE i.produto_id = ? AND i.cancelado = 0 AND v.status IN ('aberta','conta_enviada')""", (id_,), 0)
+    if aberto:
+        raise ErroNegocio("Este produto está em mesa, comanda ou venda aberta. Feche ou cancele antes de excluir.")
+    vendido = banco.valor("SELECT 1 FROM itens_venda WHERE produto_id = ? LIMIT 1", (id_,)) or \
+        banco.valor("SELECT 1 FROM itens_venda_partes WHERE produto_id = ? LIMIT 1", (id_,))
+    with banco.transacao():
+        lancamentos = [x[0] for x in banco.todos("SELECT DISTINCT lancamento_id FROM itens_estoque WHERE produto_id = ?", (id_,))]
+        banco.executar("DELETE FROM composicoes WHERE produto_id = ? OR insumo_id = ?", (id_, id_))
+        if vendido:
+            banco.executar(
+                "UPDATE produtos SET ativo = 0, codigo = ?, nome = ?, atalho = NULL, cbarra = NULL WHERE id = ?",
+                (f"{p['codigo']}~{id_}", f"{p['nome']} (excluído {id_})", id_))
+            banco.log("produto_excluido", f"produto {id_} ({p['codigo']}) guardado inativo, código liberado")
+            return (f"O produto '{p['nome']}' já foi vendido e não pode sumir dos relatórios. Ele ficou guardado, inativo, "
+                    f"e o código {p['codigo']} está livre para um produto novo.")
+        banco.executar("DELETE FROM itens_estoque WHERE produto_id = ?", (id_,))
+        banco.executar("DELETE FROM movimentos_estoque WHERE produto_id = ?", (id_,))
+        for lanc in lancamentos:
+            banco.executar("DELETE FROM lancamentos_estoque WHERE id = ? AND NOT EXISTS "
+                           "(SELECT 1 FROM itens_estoque e WHERE e.lancamento_id = lancamentos_estoque.id)", (lanc,))
+        banco.executar("DELETE FROM produtos WHERE id = ?", (id_,))
+        banco.log("produto_excluido", f"produto {id_} ({p['codigo']}) apagado")
+    return None
+
+
 # --------------------------------------------------------------- entidades
 _ENTIDADES = [
     Entidade("unidades", "Cadastro de Unidades", "unidades", "cad_unidades", [
@@ -225,7 +260,7 @@ _ENTIDADES = [
         Campo("aliquota_ipi", "Alíquota IPI %", "decimal", padrao=0, secao="Fiscal", na_grade=False),
         Campo("reducao_base", "Redução base cálc. subst. trib. %", "decimal", padrao=0, secao="Fiscal", na_grade=False),
     ], ordem="nome", busca=("nome", "codigo", "cbarra", "atalho"), antes_salvar=_antes_produto,
-        msg_em_uso="Este produto já foi vendido, movimentado ou usado em composição. "
+        excluir_fn=_excluir_produto, msg_em_uso="Este produto já foi vendido, movimentado ou usado em composição. "
                    "Desmarque 'Ativo' em vez de excluir.", tem_ativo=True),
 
     Entidade("observacoes", "Observações de Produtos", "observacoes", "cad_observacoes", [

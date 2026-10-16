@@ -246,8 +246,10 @@ class JanelaCadastro(tk.Toplevel):
         nome = self.cad.exibir(self.ent, self._por_id.get(self.id_atual) or {}).get(self.cols[0].nome, "")
         if not tema.confirmar(self, f"Excluir o registro '{nome}'?", "Excluir", padrao_sim=False):
             return
-        ok, _ = tema.tratar(self, self.cad.excluir, self.chave, self.id_atual)
+        ok, aviso = tema.tratar(self, self.cad.excluir, self.chave, self.id_atual)
         if ok:
+            if aviso:
+                tema.mensagem(self, aviso, "Produto guardado")
             indice = self.grade.indice()
             self.id_atual = None
             self.carregar()
