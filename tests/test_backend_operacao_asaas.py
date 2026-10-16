@@ -83,6 +83,32 @@ class CenarioOperacao:
 
 
 @unittest.skipIf(nuvem is None, "Dependências do backend ausentes")
+class TesteContratoInsercao(unittest.TestCase):
+    def test_inclusao_usa_returning_sem_depender_de_rowcount_do_driver(self):
+        from sqlalchemy.dialects import postgresql, sqlite
+        for nome, dialeto in (("postgresql", postgresql.dialect()), ("sqlite", sqlite.dialect())):
+            for retornado, esperado in (("evento:evt_contrato", True), (None, False)):
+                with self.subTest(dialeto=nome, retornado=retornado):
+                    db = mock.Mock()
+                    db.bind.dialect.name = nome
+                    # Sem rowcount no contrato: INSERT pode devolver -1 ou nem expô-lo.
+                    resultado = mock.Mock(spec_set=["scalar_one_or_none"])
+                    resultado.scalar_one_or_none.return_value = retornado
+                    db.execute.return_value = resultado
+                    registro = op.Tarefa(
+                        id="evento:evt_contrato", tipo="evento", assinatura="sub_op",
+                        pagamento="pay_op", evento="PAYMENT_RECEIVED",
+                        criada_em="2026-10-16 16:00:00", proxima_em="2026-10-16 16:00:00",
+                        estado="pendente")
+                    self.assertIs(op._inserir(db, registro), esperado)
+                    comando = db.execute.call_args.args[0]
+                    sql = str(comando.compile(dialect=dialeto))
+                    self.assertIn("ON CONFLICT (id) DO NOTHING RETURNING", sql)
+                    self.assertEqual(list(comando._returning), [op.Tarefa.__table__.c.id])
+                    resultado.scalar_one_or_none.assert_called_once_with()
+
+
+@unittest.skipIf(nuvem is None, "Dependências do backend ausentes")
 class TesteOperacaoSQLite(CenarioOperacao, unittest.TestCase):
     def test_webhook_persiste_sem_http_e_repeticao_nao_duplica(self):
         cliente = self.cliente()

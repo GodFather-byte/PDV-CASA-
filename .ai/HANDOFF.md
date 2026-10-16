@@ -29,6 +29,10 @@
   src/backend/tests passou.
   Runtime Python 3.12.10 + Tk 8.6 isolado na sessão, sem alterar Python/PATH global.
   Job CI novo: `Asaas / PostgreSQL 16` (`cobrancas-postgres`).
+- Primeiro CI: Linux Python 3.12 e instalador Windows passaram. PostgreSQL revelou
+  classificação incorreta de inserções pelo `rowcount` do psycopg; corrigida com
+  `ON CONFLICT DO NOTHING RETURNING id`, com teste de contrato dos dois dialetos.
+  Backend após correção: 42 testes, 32 aprovados e 10 PG pulados localmente.
 
 ## Pendências
 - Homologar a conta Asaas sandbox e webhook real; nenhum serviço contratado nem cobrança real feita.

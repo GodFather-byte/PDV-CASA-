@@ -60,9 +60,11 @@ def _inserir(db: Session, registro) -> bool:
         from sqlalchemy.dialects.sqlite import insert
     valores = {coluna.name: getattr(registro, coluna.name)
                for coluna in registro.__table__.columns if getattr(registro, coluna.name) is not None}
+    # INSERT não garante rowcount válido no psycopg/SQLAlchemy. RETURNING distingue
+    # inclusão de conflito pela linha retornada, inclusive entre entregas concorrentes.
     resultado = db.execute(insert(type(registro)).values(**valores).on_conflict_do_nothing(
-        index_elements=["id"]))
-    return resultado.rowcount == 1
+        index_elements=["id"]).returning(type(registro).id))
+    return resultado.scalar_one_or_none() is not None
 
 
 def receber(db: Session, evento: str, assinatura: str, pagamento: str, tipo: str) -> str:
