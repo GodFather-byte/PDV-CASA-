@@ -944,7 +944,7 @@ class TestePixNoAcertoDaGarotaNaTela(BaseNaTela):
             campos = entradas(w)
             if textos is not None:
                 textos.append(self.textos(w))
-            campos[-2].insert(0, valor)                          # o campo do Pix é o penúltimo (o último é o do vale)
+            campos[-1].insert(0, valor)                          # o campo do Pix é o último
             w.update()
             if textos is not None:
                 textos.append(self.textos(w))
@@ -969,38 +969,54 @@ class TestePixNoAcertoDaGarotaNaTela(BaseNaTela):
             self.assertIn(trecho, recibos[0])
         self.sem_travar()
 
-    def test_vale_e_descontado_so_do_pix(self):
+    def test_vale_e_descontado_do_total_e_nao_sai_do_caixa_de_novo(self):
         self.cadastrar(180, "MARIA")
         self.dar(180, 100)
+        esperado = self.ctx.turnos.resumo(self.turno)["esperado"]
         recibos, textos = [], []
         self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
 
         def acao(w):
-            campos = entradas(w)
-            campos[-2].insert(0, "60")                           # Pix (bruto)
-            campos[-1].insert(0, "20")                           # vale: sai do Pix
+            entradas(w)[-2].insert(0, "20")                      # vale; o Pix (último campo) fica vazio: tudo em dinheiro
             w.update()
             textos.append(self.textos(w))
             clicar(w, "Pagar")
         self.dialogos({"Pagar comissão": acao})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
-        self.assertIn("Dinheiro R$ 40,00  +  Pix R$ 40,00  (vale R$ 20,00 descontado)", textos[-1])
+        self.assertIn("Total R$ 100,00  -  vale R$ 20,00  =  R$ 80,00", textos[-1])
+        self.assertIn("Dinheiro R$ 80,00  +  Pix R$ 0,00", textos[-1])
         a = self.banco.um("SELECT total_cent, pix_cent, vale_cent FROM acertos_garotas")
-        self.assertEqual(tuple(a), (10000, 4000, 2000))
-        self.assertEqual(self.banco.valor("SELECT valor_cent FROM movimentos_caixa"), 4000)
-        for trecho in ("Vale (já recebido)", "20,00"):
+        self.assertEqual(tuple(a), (10000, 0, 2000))
+        self.assertEqual(self.banco.valor("SELECT valor_cent FROM movimentos_caixa"), 8000)      # só R$ 80 saem da gaveta
+        self.assertEqual(self.ctx.turnos.resumo(self.turno)["esperado"], esperado - 8000)
+        for trecho in ("Dinheiro (saiu do caixa)", "80,00", "Vale (já recebido)", "20,00"):
             self.assertIn(trecho, recibos[0])
         self.sem_travar()
 
-    def test_vale_maior_que_o_pix_nao_paga(self):
+    def test_vale_com_parte_no_pix(self):
+        self.cadastrar(180, "MARIA")
+        self.dar(180, 100)
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
+
+        def acao(w):
+            campos = entradas(w)
+            campos[-2].insert(0, "20")                           # vale
+            campos[-1].insert(0, "50")                           # Pix sobre os R$ 80 que sobram
+            clicar(w, "Pagar")
+        self.dialogos({"Pagar comissão": acao})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        a = self.banco.um("SELECT total_cent, pix_cent, vale_cent FROM acertos_garotas")
+        self.assertEqual(tuple(a), (10000, 5000, 2000))
+        self.assertEqual(self.banco.valor("SELECT valor_cent FROM movimentos_caixa"), 3000)
+
+    def test_vale_maior_que_o_total_nao_paga(self):
         self.dar(180, 100)
         erros = []
 
         def passou(w):
-            campos = entradas(w)
-            campos[-2].insert(0, "10")
-            campos[-1].insert(0, "20")
+            entradas(w)[-2].insert(0, "150")
             clicar(w, "Pagar")
             w.update()
             erros.append(self.textos(w))
@@ -1008,7 +1024,7 @@ class TestePixNoAcertoDaGarotaNaTela(BaseNaTela):
         self.dialogos({"Pagar comissão": passou})
         self.posicao("180")
         self.cx.pagar(); self.cx.update()
-        self.assertIn("o vale só se desconta do Pix", " ".join(erros[0]))
+        self.assertIn("maior que o total do acerto", " ".join(erros[0]))
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM acertos_garotas"), 0)
 
     def test_comprovante_da_saida_traz_so_o_dinheiro_e_nao_o_pix(self):
@@ -1046,7 +1062,7 @@ class TestePixNoAcertoDaGarotaNaTela(BaseNaTela):
         erros = []
 
         def passou(w):
-            entradas(w)[-2].insert(0, "30")
+            entradas(w)[-1].insert(0, "30")
             clicar(w, "Pagar")
             w.update()
             erros.append(self.textos(w))

@@ -421,7 +421,8 @@ class ImpressaoController:
                 linhas.append(_lr("Dinheiro" + (" (saiu do caixa)" if pag.get("tirou_do_caixa") else " (fora do caixa)"), M(dinheiro), w))
             if vale:
                 linhas.append(_lr("Vale (já recebido)", M(vale), w))
-            linhas.append(_lr("Pix", M(pix), w))
+            if pix:
+                linhas.append(_lr("Pix", M(pix), w))
         else:
             linhas.append("Saiu do dinheiro do caixa." if pag.get("tirou_do_caixa") else "Pago fora do caixa.")
         linhas += [f"Operador: {operador}", "", "", "_" * w, "Assinatura da garota".center(w), "=" * w]

@@ -154,8 +154,9 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
     (quantidade e valor de cada um; nada é contado sozinho). Devolve {"do_caixa", "shows", "valor_show_cent", "pix_cent",
     "vale_cent"} ou None.
     `do_caixa` True = o dinheiro sai da gaveta; False = pago fora do caixa. `pix_cent` é a parte paga por Pix (sem dinheiro no
-    caixa, ou só parte dele): o resto é dinheiro e o Pix nunca passa pela gaveta. `vale_cent` é o vale que a garota já pegou: sai
-    só da parte paga por Pix (o dinheiro do vale já tinha saído do caixa), então o campo só vale quando há Pix."""
+    caixa, ou só parte dele): o resto é dinheiro e o Pix nunca passa pela gaveta. `vale_cent` é o vale que a garota já pegou: é
+    descontado do total do acerto (dinheiro ou Pix), mas não sai do caixa de novo, pois aquele dinheiro já saiu quando ela o pegou.
+    O Pix digitado é sobre o que sobra depois do vale."""
     pede_shows = ctx.comissoes.pede_shows()
     dlg = tema.Dialogo(master, "Pagar comissão")
     ttk.Label(dlg.corpo, text=f"Garota {numero} {nome}".strip(), font=tema.FONTE_B).pack(anchor="w")
@@ -167,25 +168,26 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
     total_txt = tk.StringVar(master=dlg)
     pix = tk.StringVar(master=dlg)
     vale = tk.StringVar(master=dlg)
+    vale_txt = tk.StringVar(master=dlg)
     divisao_txt = tk.StringVar(master=dlg)
     msg = ttk.Label(dlg.corpo, text="", foreground=tema.COR["perigo"], wraplength=400)
     en_qtd = None
 
     def pix_digitado(total: int) -> int | None:
-        """O Pix em centavos (vazio = 0), ou None se o que foi digitado não é um valor entre 0 e o total."""
+        """O Pix em centavos (vazio = 0), ou None se o que foi digitado não é um valor entre 0 e o que há a pagar."""
         try:
             cent = fmt.para_centavos(pix.get()) if pix.get().strip() else 0
         except ValueError:
             return None
         return cent if 0 <= cent <= total else None
 
-    def vale_digitado(pix_bruto: int | None) -> int | None:
-        """O vale em centavos (vazio = 0), ou None se inválido ou maior que a parte paga por Pix (só o Pix desconta vale)."""
+    def vale_digitado(total: int) -> int | None:
+        """O vale em centavos (vazio = 0), ou None se inválido ou maior que o total do acerto."""
         try:
             cent = fmt.para_centavos(vale.get()) if vale.get().strip() else 0
         except ValueError:
             return None
-        return cent if pix_bruto is not None and 0 <= cent <= pix_bruto else None
+        return cent if 0 <= cent <= total else None
 
     def calcular(*_) -> tuple[int, int] | None:
         """(quantidade, valor) se o que está na tela é válido; atualiza o total e a divisão dinheiro/Pix. Sem shows, o total é
@@ -198,17 +200,14 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
         else:
             ok = (n, v)
         total = comissao_cent + n * v
-        total_txt.set(fmt.fmt_brl(total))
-        p = pix_digitado(total)
-        v = vale_digitado(p)
-        if p is None:
-            divisao_txt.set("Pix maior que o total ou inválido.")
-        elif v is None:
-            divisao_txt.set("O vale é inválido ou maior que a parte paga por Pix (vale só se desconta do Pix).")
-        elif v:
-            divisao_txt.set(f"Dinheiro {fmt.fmt_brl(total - p)}  +  Pix {fmt.fmt_brl(p - v)}  (vale {fmt.fmt_brl(v)} descontado)")
-        else:
-            divisao_txt.set(f"Dinheiro {fmt.fmt_brl(total - p)}  +  Pix {fmt.fmt_brl(p)}")
+        vl = vale_digitado(total)
+        a_pagar = total - (vl or 0)
+        total_txt.set(fmt.fmt_brl(a_pagar))
+        vale_txt.set("O vale é inválido ou maior que o total do acerto." if vl is None else
+                     f"Total {fmt.fmt_brl(total)}  -  vale {fmt.fmt_brl(vl)}  =  {fmt.fmt_brl(a_pagar)}" if vl else "")
+        p = pix_digitado(a_pagar)
+        divisao_txt.set("Pix maior que o total ou inválido." if p is None else
+                        f"Dinheiro {fmt.fmt_brl(a_pagar - p)}  +  Pix {fmt.fmt_brl(p)}")
         return ok
 
     if pede_shows:
@@ -226,9 +225,19 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
             ttk.Radiobutton(valores, text=fmt.fmt_brl(cent), value=cent, variable=valor_show).pack(side="left", padx=8)
         qtd.trace_add("write", calcular)
         valor_show.trace_add("write", calcular)
+    linha_vale = ttk.Frame(dlg.corpo)
+    linha_vale.pack(fill="x", pady=(10, 0))
+    ttk.Label(linha_vale, text="A garota pegou vale? Valor do vale (R$):").pack(side="left")
+    en_vale = ttk.Entry(linha_vale, textvariable=vale, width=10, font=("Segoe UI", 14, "bold"), justify="right")
+    en_vale.pack(side="left", padx=8)
+    ttk.Label(dlg.corpo, text="O vale é descontado do total (pago em dinheiro ou em Pix) e não sai do caixa de novo: aquele dinheiro já saiu "
+                              "quando ela o pegou. Deixe vazio se não tem vale.",
+              foreground=tema.COR["suave"], wraplength=400, justify="left").pack(anchor="w")
+    ttk.Label(dlg.corpo, textvariable=vale_txt, foreground=tema.COR["suave"]).pack(anchor="w")
     ttk.Label(dlg.corpo, text="TOTAL A PAGAR", style="Rotulo.TLabel").pack(anchor="w", pady=(10, 0))
     ttk.Label(dlg.corpo, textvariable=total_txt, font=("Georgia", 28, "bold"), foreground=tema.COR["total"]).pack(anchor="w")
-    # Sem dinheiro no caixa (ou só parte dele): a parte paga por Pix não sai da gaveta; o resto é dinheiro.
+    # Sem dinheiro no caixa (ou só parte dele): a parte paga por Pix não sai da gaveta; o resto é dinheiro. Tudo sobre o que sobra
+    # depois do vale.
     quadro_pix = ttk.LabelFrame(dlg.corpo, text="Pagamento", padding=8)
     quadro_pix.pack(fill="x", pady=(6, 0))
     linha_pix = ttk.Frame(quadro_pix)
@@ -242,17 +251,11 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
             n, v = ctx.comissoes.validar_shows(qtd.get(), valor_show.get())
         except ErroNegocio:
             n, v = 0, 0                                   # shows ainda incompletos: o Pix cobre ao menos a comissão
-        pix.set(fmt.fmt_num(comissao_cent + n * v))
+        total = comissao_cent + n * v
+        pix.set(fmt.fmt_num(total - (vale_digitado(total) or 0)))
         en_pix.focus_set()
 
     ttk.Button(linha_pix, text="Tudo no Pix", command=tudo_no_pix).pack(side="left")
-    linha_vale = ttk.Frame(quadro_pix)
-    linha_vale.pack(fill="x", pady=(6, 0))
-    ttk.Label(linha_vale, text="A garota pegou vale? Valor do vale (R$):").pack(side="left")
-    en_vale = ttk.Entry(linha_vale, textvariable=vale, width=10, font=("Segoe UI", 14, "bold"), justify="right")
-    en_vale.pack(side="left", padx=8)
-    ttk.Label(quadro_pix, text="O vale é descontado só da parte paga por Pix (o dinheiro dele já saiu do caixa). Deixe vazio se não tem vale.",
-              foreground=tema.COR["suave"], wraplength=400, justify="left").pack(anchor="w")
     ttk.Label(quadro_pix, textvariable=divisao_txt, foreground=tema.COR["suave"]).pack(anchor="w", pady=(4, 0))
     pix.trace_add("write", calcular)
     vale.trace_add("write", calcular)
@@ -276,15 +279,16 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
             if en_qtd is not None:
                 en_qtd.focus_set()
             return
-        p = pix_digitado(comissao_cent + n * v)
+        total = comissao_cent + n * v
+        vl = vale_digitado(total)
+        if vl is None:
+            msg.configure(text="O vale é inválido ou maior que o total do acerto.")
+            en_vale.focus_set()
+            return
+        p = pix_digitado(total - vl)
         if p is None:
             msg.configure(text="O valor do Pix é inválido ou maior que o total a pagar.")
             en_pix.focus_set()
-            return
-        vl = vale_digitado(p)
-        if vl is None:
-            msg.configure(text="O vale é inválido ou maior que a parte paga por Pix: o vale só se desconta do Pix.")
-            en_vale.focus_set()
             return
         dlg.ok({"do_caixa": bool(do_caixa.get()), "shows": n, "valor_show_cent": v, "pix_cent": p, "vale_cent": vl})
 

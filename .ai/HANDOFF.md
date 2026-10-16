@@ -1,15 +1,12 @@
 # HANDOFF
 
-## Último trabalho: vale da garota no acerto (desconto do Pix)
-- Janela *Pagar comissão* (`comissao_ui.dialogo_pagar`): campo "A garota pegou vale? Valor do vale (R$)". O vale sai só da parte
-  paga por Pix (o dinheiro dele já saiu do caixa antes); não pode passar do Pix. Dinheiro e gaveta não mudam.
-- `ComissaoController.pagar(..., pix_cent, vale_cent)`: `pix_cent` é a parte paga por Pix (bruta); o Pix que vai para ela é
-  `pix_cent - vale_cent` (devolvido e gravado como `pix_cent`), `vale_cent` fica em `acertos_garotas` (esquema v16). O fechamento
-  (`pix_do_turno`) soma o Pix líquido. Recibo: linha "Vale (já recebido)".
-- Testes: `TesteValeDaGarota` (test_acerto_garota_shows) e 2 de tela (test_comissao_na_tela). Suíte inteira: 1.239 OK.
-
-## Anteriores (já mesclados)
-Reusar número de produto guardado + fim do instalador de licenças no Actions (#52), excluir produto (#51), limite R$ 200 por comanda (#50).
+## Último trabalho: vale da garota vale para dinheiro e Pix
+- `ComissaoController.pagar(..., pix_cent, vale_cent)`: o vale (que já saiu do caixa quando a garota o pegou) é descontado do TOTAL
+  do acerto; `a_pagar = total - vale`; `pix_cent` é a parte de `a_pagar` paga por Pix e o resto é dinheiro (única parte que vira
+  sangria e comprovante de saída). Vale não pode passar do total. Vale gravado em `acertos_garotas.vale_cent` (esquema v16).
+- Janela *Pagar comissão*: campo do vale antes do total ("Total - vale = a pagar"); "Tudo no Pix" paga `total - vale`.
+- Recibo: "Vale (já recebido)"; sem Pix não mostra a linha do Pix. Substitui a regra anterior ("vale só do Pix", PR #53).
+- Testes: `TesteValeDaGarota` e 3 de tela. 
 
 ## Pendências
 Nenhuma.
