@@ -77,6 +77,6 @@ os nomes. Para regenerar os desenhos padrão: `pip install pillow` e `python -m 
 - Código em `licenciador/` (`nucleo.py` = regras, `tela.py` = janela, `autoteste.py`, `app.py` = entrada). Mesmo formato de chave e de
   código do `tools/gerar_licenca.py` (que continua funcionando).
 - Gerar localmente no Windows: `pip install pyinstaller` e `python build_licenciador.py` (precisa do Inno Setup 6; sem ele só o `.exe`).
-- No GitHub, o job "Programa de licenças" do workflow *Gerar instalador (Windows)* gera, testa (autoteste no `.exe`, instalação
-  silenciosa e atualização por cima com o programa aberto) e guarda o instalador como artifact. **Não** vai para a aba Releases.
+- O GitHub Actions **não** gera mais o instalador deste programa (o workflow *Gerar instalador (Windows)* cuida só do WillPDV);
+  gere na sua máquina com `python build_licenciador.py`. Ele nunca vai para a aba Releases.
 - Testes: `python -m unittest tests.test_licenciador`.

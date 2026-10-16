@@ -116,6 +116,7 @@ def _antes_produto(banco, d, id_):
         raise ErroValidacao("'Dividir em' deve estar entre 1 e 55.", {"partes": "inválido"})
     if d.get("promo_de") and d.get("promo_ate") and d["promo_de"] > d["promo_ate"]:
         raise ErroValidacao("Promoção: a data inicial é posterior à final.", {"promo_de": "inválido"})
+    _liberar_produtos_guardados(banco, d, id_)          # por último: só cede o número se o cadastro novo for valer
     return d
 
 
@@ -155,6 +156,25 @@ def _antes_excluir_garota(banco, id_):
         raise ErroNegocio("Esta garota tem comissões registradas. Desmarque 'Ativa' em vez de excluir.")
 
 
+def _guardar_produto(banco, p) -> None:
+    """Deixa o produto (já vendido ou inativo) guardado, sem prender nada: inativo, com o código, o nome, o atalho e o código de
+    barras livres para outro produto. O histórico das vendas continua apontando para ele."""
+    banco.executar("UPDATE produtos SET ativo = 0, codigo = ?, nome = ?, atalho = NULL, cbarra = NULL WHERE id = ?",
+                   (f"{p['codigo']}~{p['id']}", f"{p['nome']} (excluído {p['id']})", p["id"]))
+
+
+def _liberar_produtos_guardados(banco, d, id_) -> None:
+    """Cadastro novo (ou alterado) que pede um código, nome ou código de barras que só está preso a um produto INATIVO (os que
+    ficaram guardados por já terem sido vendidos, ou desmarcados): o inativo cede, para o número poder ser usado de novo. Produto
+    ativo continua bloqueando, com o aviso de sempre."""
+    for p in banco.todos("SELECT * FROM produtos WHERE ativo = 0 AND id <> ?", (id_ if id_ is not None else -1,)):
+        igual = (str(p["codigo"] or "") == str(d.get("codigo") or "~") or
+                 str(p["nome"] or "").lower() == str(d.get("nome") or "~").lower() or
+                 (d.get("cbarra") and p["cbarra"] == d["cbarra"]))
+        if igual:
+            _guardar_produto(banco, p)
+
+
 def _excluir_produto(banco, id_):
     """Excluir produto: sem uso em venda, apaga de verdade (com composição e estoque dele). Já vendido não pode sumir (cupom,
     relatórios e estorno dependem dele): fica guardado, inativo, e o código, o nome, o atalho e o código de barras ficam livres
@@ -173,9 +193,7 @@ def _excluir_produto(banco, id_):
         lancamentos = [x[0] for x in banco.todos("SELECT DISTINCT lancamento_id FROM itens_estoque WHERE produto_id = ?", (id_,))]
         banco.executar("DELETE FROM composicoes WHERE produto_id = ? OR insumo_id = ?", (id_, id_))
         if vendido:
-            banco.executar(
-                "UPDATE produtos SET ativo = 0, codigo = ?, nome = ?, atalho = NULL, cbarra = NULL WHERE id = ?",
-                (f"{p['codigo']}~{id_}", f"{p['nome']} (excluído {id_})", id_))
+            _guardar_produto(banco, p)
             banco.log("produto_excluido", f"produto {id_} ({p['codigo']}) guardado inativo, código liberado")
             return (f"O produto '{p['nome']}' já foi vendido e não pode sumir dos relatórios. Ele ficou guardado, inativo, "
                     f"e o código {p['codigo']} está livre para um produto novo.")

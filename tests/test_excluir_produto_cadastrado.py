@@ -44,3 +44,44 @@ class TesteExcluirProdutoCadastrado(BaseExcluir):
     def test_apaga_tambem_o_estoque_dele(self):
         self.cad.excluir("produtos", self.skol)
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_estoque WHERE produto_id = ?", (self.skol,)), 0)
+
+
+class TesteReusarCodigoDeProdutoGuardado(BaseExcluir):
+    """O número que ficou preso a um produto inativo (guardado por já ter sido vendido) volta a servir no cadastro."""
+    def setUp(self):
+        super().setUp()
+        self.cad = CadastroController(self.banco)
+
+    def valores(self, codigo, nome):
+        sub = self.banco.valor("SELECT id FROM subgrupos LIMIT 1")
+        un = self.banco.valor("SELECT id FROM unidades WHERE abreviatura = 'UN'")
+        return {"codigo": codigo, "nome": nome, "subgrupo_id": str(sub), "unidade_id": str(un), "preco_cent": "5,00"}
+
+    def guardar_com_excluir_todos(self):
+        self.vender_e_fechar(self.skol)
+        self.util.excluir_todos_produtos()                       # o vendido fica inativo, preso ao código e ao nome
+        return self.banco.um("SELECT codigo, nome FROM produtos WHERE id = ?", (self.skol,))
+
+    def test_cadastrar_com_o_codigo_do_produto_guardado(self):
+        velho = self.guardar_com_excluir_todos()
+        novo = self.cad.salvar("produtos", self.valores(velho["codigo"], "CERVEJA NOVA"))
+        self.assertEqual(self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (novo,)), velho["codigo"])
+        self.assertEqual(self.banco.valor("SELECT ativo FROM produtos WHERE id = ?", (self.skol,)), 0)
+        self.assertNotEqual(self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (self.skol,)), velho["codigo"])
+
+    def test_cadastrar_com_o_nome_do_produto_guardado(self):
+        velho = self.guardar_com_excluir_todos()
+        novo = self.cad.salvar("produtos", self.valores("9999", velho["nome"]))
+        self.assertEqual(self.banco.valor("SELECT nome FROM produtos WHERE id = ?", (novo,)), velho["nome"])
+
+    def test_produto_ativo_continua_bloqueando_o_codigo(self):
+        codigo = self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (self.skol,))
+        with self.assertRaises(ErroNegocio):
+            self.cad.salvar("produtos", self.valores(codigo, "OUTRO"))
+
+    def test_excluir_e_cadastrar_de_novo_com_o_mesmo_numero(self):
+        codigo = self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (self.skol,))
+        self.vender_e_fechar(self.skol)
+        self.cad.excluir("produtos", self.skol)
+        novo = self.cad.salvar("produtos", self.valores(codigo.lstrip("0"), "SKOL"))
+        self.assertEqual(self.banco.valor("SELECT codigo FROM produtos WHERE id = ?", (novo,)), codigo)
