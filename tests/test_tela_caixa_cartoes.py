@@ -239,21 +239,27 @@ class TesteDisposicaoResponsiva(BaseCartoes):
         p.definir_colunas(0)                                                 # nunca menos de uma coluna
         self.assertEqual(p.colunas, 1)
 
+    def redimensionar(self, largura):
+        """Simula a janela com essa largura sem depender do tamanho da tela de quem roda o teste (no Windows do CI o sistema
+        encolhe qualquer janela maior que o monitor)."""
+        from types import SimpleNamespace
+        self.cx._ao_redimensionar(SimpleNamespace(widget=self.cx, width=largura))
+        self.cx.update()
+
     def test_janela_pequena_reduz_as_colunas_do_painel(self):
-        self.cx.state("normal")
-        self.cx.geometry("1000x640"); self.cx.update()
+        self.redimensionar(1000)
         self.assertEqual(self.cx.painel_mesas.colunas, 1)
-        self.cx.geometry("1700x800"); self.cx.update()
+        self.redimensionar(1700)
         self.assertEqual(self.cx.painel_mesas.colunas, 3)
 
     def test_cartoes_quebram_em_linhas_conforme_as_colunas(self):
         for n in range(1, 10):
             self.comanda(n)
-        self.cx.state("normal"); self.cx.geometry("1700x800"); self.cx.update()
+        self.redimensionar(1700)
         self.cx.carregar_mesas(); self.cx.update()
         p = self.cx.painel_mesas
         self.assertEqual(p._por_linha, 3)
-        self.cx.geometry("1000x640"); self.cx.update()
+        self.redimensionar(1000)
         self.assertEqual(p._por_linha, 1)
 
 
