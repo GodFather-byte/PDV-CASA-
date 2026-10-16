@@ -33,6 +33,10 @@
   classificação incorreta de inserções pelo `rowcount` do psycopg; corrigida com
   `ON CONFLICT DO NOTHING RETURNING id`, com teste de contrato dos dois dialetos.
   Backend após correção: 42 testes, 32 aprovados e 10 PG pulados localmente.
+- Confirmação remota no commit `7a8f7fc`: 42 testes Asaas aprovados com PostgreSQL 16
+  real, sem skips (job 117146609356). Build, autotestes, instalador e publicação da
+  versão 1.3.0 aprovados (run 38952353826). Matriz geral Windows/Linux ainda em execução
+  ao registrar este estado (run 38952353837).
 
 ## Pendências
 - Homologar a conta Asaas sandbox e webhook real; nenhum serviço contratado nem cobrança real feita.
@@ -41,7 +45,8 @@
   Worker é obrigatório: sem ele o webhook fica gravado, mas a licença não é renovada.
   Não foi instalado agendador/worker em produção. Worker separado pode acrescentar custo;
   conferir orçamento de R$ 50/mês e backups antes de contratar.
-- Verificar CI PostgreSQL e build/instalador Windows após push. PostgreSQL não disponível localmente.
+- Acompanhar término da matriz geral Windows/Linux (run 38952353837). PostgreSQL
+  foi validado no CI; continua não disponível localmente.
 - Valores por loja continuam definidos no vínculo; troca de valor/plano/assinatura foi
   expressamente adiada pelo usuário. Pix/boleto por link, não débito automático.
 - Regras offline preservadas: validade paga + 5 dias de carência, proteção de turno recente;
