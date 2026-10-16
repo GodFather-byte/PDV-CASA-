@@ -86,6 +86,7 @@ CAMPOS_CONFIG = [
     ("imprimir_fechamento_ao_trocar", "Imprimir o fechamento ao trocar o turno (com a assinatura do caixa)", "sn", "Caixa"),
     ("vias_fechamento", "Vias do fechamento do turno (1 a 3)", "int", "Caixa"),
     ("consumacao_minima", "Consumação mínima por comanda (R$, 0 = desligada): na saída cobra a diferença até o mínimo", "int", "Mesas e serviço"),
+    ("limite_comanda", "Limite de consumo da comanda do cliente (R$, 0 = sem limite): ao chegar nele não lança mais, tem que acertar a comanda", "int", "Mesas e serviço"),
     ("consumacao_minima_de", "Consumação mínima vale a partir da comanda nº (0 = todas)", "int", "Mesas e serviço"),
     ("consumacao_minima_ate", "Consumação mínima vale até a comanda nº (0 = sem limite; deixe de fora as comandas das garotas)", "int", "Mesas e serviço"),
     ("limite_gaveta", "Avisar para fazer sangria quando o dinheiro da gaveta passar de (R$, 0 = não avisar)", "int", "Caixa"),
