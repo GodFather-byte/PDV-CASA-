@@ -389,14 +389,6 @@ class TestVendaQt(BaseCaixaQt):
 
     def test_operacoes_nao_migradas_sao_bloqueadas(self):
         j = self.janela()
-        codigo = self.ctx.comissoes.codigo()
-        if codigo:
-            self.lancar(j, codigo)
-            self.assertIn("não foi migrad", j.dialogos.avisos[-1])
-        saida = self.ctx.caixa.codigo_saida()
-        if saida:
-            self.lancar(j, saida)
-            self.assertIn("não foi migrad", j.dialogos.avisos[-1])
         self.banco.executar("UPDATE produtos SET partes = 2, composto = 1 WHERE id = ?", (self.skol,))
         self.lancar(j, "10")
         self.assertIn("caixa clássico", j.dialogos.avisos[-1])

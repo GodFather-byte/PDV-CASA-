@@ -583,8 +583,52 @@ def autoteste(pasta: Path) -> list[str]:
         if not all(janela is not None and janela.isVisible()
                    for janela in (app.principal, produtos, operadores)):
             raise RuntimeError("Uma das janelas Qt não abriu.")
+        from src.ui_qt.comissao import DialogoAcerto, DialogoComissao
+        for chave, valor in (("imprimir_via_comissao", "N"), ("comissao_na_linha", "S"),
+                             ("comissao_em_pontos", "N"), ("comissao_pede_shows", "N"),
+                             ("posicao_padrao", "comanda"), ("num_comandas", "300")):
+            banco.cfg_set(chave, valor)
+        # Cenário efêmero: não ativa licença nem altera a exigência do executável comercial.
+        from src.core.formatacao import agora
+        banco.inserir("turnos", {"numero": 1, "terminal": app.ctx.turnos.terminal,
+                                "operador_id": app.ctx.operador_id, "aberto_em": agora(),
+                                "valor_inicial_cent": 10000, "status": "aberto"})
+        caixa = app.principal.abrir_caixa()
+        if caixa is None or not caixa.isVisible():
+            raise RuntimeError("O caixa Qt não abriu.")
+        caixa.ent_pos.setText("180")
+        caixa.btn_chamar.click()
+        if caixa.venda_id is None:
+            raise RuntimeError("O caixa Qt não abriu a comanda de teste.")
+        caixa.ent_codigo.setText(app.ctx.comissoes.codigo())
+        caixa.btn_lancar.click()
+        if not caixa.modo_comissao or caixa.ent_codigo.text() != "180":
+            raise RuntimeError("O código de comissão não ativou o modo na linha.")
+        caixa.ent_qtd.setText("15,00")
+        caixa.btn_lancar.click()
+        if caixa.modo_comissao or app.ctx.comissoes.pendente(180) != 1500:
+            raise RuntimeError("A comissão Qt não foi gravada corretamente.")
+        painel = caixa.abrir_comissoes()
+        if not painel.isVisible() or not painel.selecionar_garota(180):
+            raise RuntimeError("A comissão não apareceu no painel Qt.")
+        dialogo = DialogoComissao(caixa, app.ctx, "180")
+        dialogo.ent_valor.setText("15,00")
+        dialogo.gravar()
+        if dialogo.resultado != (180, 1500):
+            raise RuntimeError("O diálogo Qt de comissão não converteu o valor.")
+        acerto = DialogoAcerto(caixa, app.ctx, 180, "", 1500, 1)
+        acerto.ent_pix.setText("15,00")
+        acerto.confirmar()
+        if acerto.resultado != {"do_caixa": False, "shows": 0, "valor_show_cent": 0, "pix_cent": 1500, "vale_cent": 0}:
+            raise RuntimeError("O diálogo Qt de acerto não validou o pagamento.")
+        caixa.liberar_saida()
+        if caixa.venda_id is not None or banco.cfg_int("ultimo_ticket_saida", 0) != 1:
+            raise RuntimeError("A saída Qt não liberou a comanda.")
+        if app.ctx.comissoes.pendente(180) != 1500:
+            raise RuntimeError("A saída alterou indevidamente a comissão pendente.")
         return ["Qt Widgets: menu principal e cadastros de produtos/operadores abrem; "
-                "banco em memória, sem rede nem serviços"]
+                "banco em memória, sem rede nem serviços",
+                "caixa Qt: comissão na linha, painel, diálogos de comissão/acerto e saída sem consumo conferidos"]
     finally:
         if app is not None:
             app.finalizar()

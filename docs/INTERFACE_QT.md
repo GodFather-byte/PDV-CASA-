@@ -50,6 +50,20 @@ sincronização contínua pelo painel Qt.
   turno permanece nessa janela e volta à abertura. Fechamento é recusado durante
   gravações; balcão com itens pede confirmação para manter a venda aberta;
   mesa/comanda vazia é descartada ao sair. O turno nunca é fechado sozinho.
+- Comissão das garotas no caixa Qt (`src/ui_qt/comissao.py`), pelos mesmos
+  `ComissaoController`, `ImpressaoController` e `AcessoController` do Tk:
+  código 50 na linha de entrada com `comissao_na_linha` ligada (Garota nº +
+  valor/pontos, Enter avança, Esc descarta) ou pela janela com ela desligada.
+  Mesmas senhas (`caixa_comissao`/`exigir_senha_comissao`, pagamento
+  `caixa_pagar_comissao`/`exigir_senha_sangria`, cancelamento
+  `caixa_cancelamento`/`exigir_senha_cancelamento`), mesmas perguntas (não
+  cadastrada, inativa, valor alto) e a via da garota (`imprimir_via_comissao`).
+  As comissões marcadas aparecem na comanda da garota; F12 ou "Pagar a garota"
+  abre o acerto (shows, vale, Pix, se sai da gaveta) com recibo e, se houve
+  sangria, comprovante de saída. Botão Comissões lista, lança, paga e cancela.
+- Saída sem consumo (código 1002): libera a comanda/mesa vazia (ou pergunta qual),
+  pelo `CaixaController.liberar_saida`, e emite o ticket de saída. Com consumo é
+  recusada sem alterar a venda.
 - Encerrar sessão fecha as janelas e volta ao login; um caixa que recusa fechamento
   impede o logout. Encerrar sessão ou programa não fecha o turno automaticamente.
 - Auditoria administrativa, somente leitura: acessível pelo menu para administrador
@@ -105,10 +119,11 @@ telas não foram migrados neste piloto. O menu os identifica como indisponíveis
 Para esses recursos, encerre o processo e inicie com `--tk`.
 
 No caixa Qt também estão bloqueados, com orientação ao caixa clássico:
-partes/montagem, comissão (código 50), saída 1002, desconto/serviço manual,
-observação, transferência, pré-conta, caderneta, entrega, sangria/repique,
-gaveta, balança, reimpressão e pagamento de comissão. Não homologue um fluxo
-que dependa desses recursos como se já estivesse migrado.
+partes/montagem, desconto/serviço manual, observação, transferência, pré-conta,
+caderneta, entrega, sangria/repique, gaveta, balança e reimpressão. Não homologue
+um fluxo que dependa desses recursos como se já estivesse migrado. Da comissão
+ficam só no Tk a consulta de comanda (que mostra a comissão pendente) e o modo
+"cancelar" com senha única para várias linhas.
 
 Não há configuração de nuvem, loja, impressoras ou visual pelo Qt nesta etapa:
 prepare esses dados pelo Tk antes da homologação. O tema do piloto é escuro fixo;
@@ -123,19 +138,25 @@ motivo para pular silenciosamente:
 
 ```powershell
 $env:QT_QPA_PLATFORM = "offscreen"
-python -m unittest tests.test_qt_app
+python -m unittest tests.test_qt_app tests.test_qt_caixa tests.test_qt_comissao
 ```
 
 Há cobertura de autenticação, troca obrigatória, bloqueio por licença,
 isenção de turno, consulta não bloqueante/cancelamento, formulários, centavos,
 permissões, sessões, integração de janela de caixa, proteções iniciais e ciclo
 de backup/serviços. Banco de teste é em memória e não usa a loja.
+Comissão e saída cobrem os modos na linha/janela, conversão pontos/reais,
+autorizações de supervisor, confirmações de cadastro/valor, acerto com shows,
+vale e Pix, cancelamento, F12 e preservação dos registros quando a impressão falha.
 Homologue também teclado, escala de tela, leitores, impressoras e os fluxos
 operacionais efetivamente disponíveis no caixa.
 
 Para integração com `--autoteste`, `src.ui_qt.app.autoteste(pasta: Path) -> list[str]`
 reaproveita `QApplication` quando existente, abre menu e os dois cadastros reais,
-fecha tudo e processa destruições pendentes. O banco efêmero é em memória; a pasta
+confere comissão na linha, painel, diálogos de comissão/acerto e saída sem consumo,
+fecha tudo e processa destruições pendentes. O turno é um cenário inserido somente
+no banco em memória: não ativa licença nem modifica a exigência de produção.
+O banco efêmero é em memória; a pasta
 é aceita pelo protocolo do autoteste, mas não recebe arquivos. Não inicia rede,
 periféricos, serviços nem o bootstrap sobre o banco de loja. Falhas levantam exceção;
 sucesso devolve mensagens para o relatório do chamador.

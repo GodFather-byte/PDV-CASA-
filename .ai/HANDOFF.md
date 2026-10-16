@@ -1,67 +1,65 @@
 # HANDOFF
 
-## Último trabalho: WillPDV 1.4.0 — backup seguro, auditoria e início da migração Qt
-- Decisões confirmadas: um caixa por boate; manter SQLite local e PostgreSQL na nuvem;
-  backup em pasta escolhida pelo operador e sincronizada pelo OneDrive/Google Drive;
-  migrar para PySide6/Qt; painel web fica para depois. Sem contratar serviços.
-- Backup externo em `src/core/backup_seguro.py` e `UtilitarioController`: AES-256-GCM
-  em blocos, scrypt, arquivo `.pdvbkp`, gravação atômica e recuperação conferida antes
-  da publicação. Senha automática protegida por DPAPI do usuário Windows em
-  `<banco>.backup.key`, nunca no SQLite. Guardar a senha original fora do computador.
-- Configuração/geração/verificação/restauração em Utilitários no Tk e na prévia Qt.
-  Cada backup normal também gera cópia externa se configurada; erro externo preserva
-  cópia local e avisa no painel/log. Retenção padrão 60 arquivos próprios.
-  O PDV NÃO confirma upload: isso depende do sincronizador. Pasta/conta real não
-  foram configuradas e nenhum dado do cliente foi enviado por este trabalho.
-- Esquema v18: `auditoria_eventos`, gatilhos transacionais e identidade da sessão
-  via `BancoDados.definir_operador_auditoria` / setter `Contexto.operador`.
-  Eventos de cadastro/preço/exclusão/venda/desconto/cancelamento/estoque/permissão,
-  antes/depois por lista permitida sem senhas/hashes/tokens.
-  Consulta somente leitura por `Contexto.auditoria`, nível 4 e `rel_auditoria`.
-- Tk: Relatórios > Caixa > Alterações e auditoria detalhada.
-  Qt: Auditoria na navegação. Filtros e paginação de 100 com detalhe JSON.
-- `python -m src.app --qt`: prévia Qt, sem fallback Tk no mesmo processo.
-  Padrão e `--tk` continuam a interface completa. Mesma trava de instância e banco.
-  Qt tem login/licença assíncrona/troca obrigatória de senha, principal, produtos,
-  operadores, auditoria, backup e caixa mínimo usando os controllers existentes.
-- Caixa Qt: turno, balcão/mesa/comanda, produtos/quantidades, pagamento/troco,
-  fechamento/cancelamento com permissões e supervisor. Sair preserva venda aberta;
-  fechamento recusado impede logout. Não cria outro fluxo de venda.
-- NÃO anunciar migração completa: comissões (código 50), saída 1002, partes/montagem,
-  desconto/serviço manual, transferência, entrega/caderneta, sangria/repique,
-  equipamentos e demais módulos ainda exigem Tk. Recursos não migrados são
-  explicitamente bloqueados no piloto; conferir `docs/INTERFACE_QT.md`.
-- Dependências: PySide6-Essentials (sem WebEngine), cryptography e integrações em
-  requirements.txt. Build onedir inclui avisos e textos LGPL/GPL e metadados.
-  Instalador ganha atalho opcional de uso `WillPDV Qt (prévia)` no Menu Iniciar,
-  sem mudar o atalho padrão. CI testa Qt empacotado e instalado separadamente.
-- Docs: BACKUP_EXTERNO, AUDITORIA, INTERFACE_QT, TERCEIROS_QT; README,
-  INSTALAR_E_TESTAR e MAPA atualizados. Prévia fictícia na pasta da sessão.
-- Validação: auditoria/Tk/migração 61 testes; base/auditoria Qt 48; caixa Qt 19;
-  integração inicial 71; último seletor backup/módulos/instalador 39, todos aprovados.
-  Build PyInstaller Windows real gerado. Autotestes do executável final Tk (88
-  módulos e telas) e Qt + criptografia + DPAPI + recuperação real aprovados.
-  Suíte inteira: 1465 testes, 1454 passaram, 10 pulados (PostgreSQL local ausente)
-  e uma falha na rota direta do novo relatório de auditoria. Dispatcher corrigido;
-  seletor final de 159 testes (fumaça Tk, auditoria, Qt, caixa, backup, integração
-  e instalador) passou inteiro, sem skips. Não confundir logs de falhas simuladas
-  do autoteste com falhas da suíte. Conferir matriz CI após push.
-- Runtime isolado Python 3.12.10 + Tk 8.6 + Qt 6.12, sem mudar Python/PATH global.
-  Qt instalado em pasta temporária curta por limite de caminhos do Windows,
-  referenciada por .pth no runtime da sessão, mantida para próximas validações.
+## Último trabalho: comissão/acerto/saída Qt integrados e validados
+- Base: 1.4.0, commit 96be2a1. Validação integrada concluída em 2026-10-16.
+  Usuário autorizou commit e push em 2026-10-16 após a validação.
+  Entrega na própria `main`; remoto conferido na mesma base, sem merge necessário.
+- Divisão combinada (um escritor por arquivo): Claude = `src/ui_qt/comissao.py` (novo),
+  edição pontual em `src/ui_qt/caixa.py`, `docs/INTERFACE_QT.md` e este arquivo.
+  Após Claude liberar os arquivos, Copilot integrou testes, autoteste e documentação.
+  Controllers, esquema, regras de licença e Tk intocados.
+- Reuso: `ComissaoController` (lançar/pagar/cancelar), `CaixaController.liberar_saida`,
+  `ImpressaoController` (via, recibo, comprovante de saída, ticket), `AcessoController`
+  via `JanelaCaixa._autorizar`; `entregar_via` importado de `src/ui/comissao_ui.py`.
+- `comissao_na_linha` preservada: ligada = modo na linha (`modo_comissao`, `lbl_cod_titulo`
+  "Garota nº:", `lbl_qtd_titulo` = rótulo do valor/pontos, `lbl_comissao_nome`, `btn_lancar`
+  "Lançar comissão"; Enter no código avança, Enter no valor/botão grava, Esc descarta);
+  desligada = janela (`_dialogo_comissao`). Comissões marcadas aparecem na tabela com
+  `Qt.UserRole = "c<id>"`; Cancelar item nelas cancela o lançamento (só na linha).
+- F12 na comanda da garota: só comissão → acerto; consumo + comissão → escolher; comanda
+  vazia de garota ativa com shows → acerto só de shows (como `CaixaUI.pagar`).
+- `tests/test_qt_comissao.py`: 35 testes com banco real em memória, modos linha/janela,
+  pontos/reais, supervisor, cadastro/valor alto, shows/vale/Pix, gaveta, cancelamento,
+  painel, F12, saída 1002 e falhas de impressão sem desfazer registros.
+  Corrigidas fixtures: turno retorna inteiro, comanda precisa estar no intervalo,
+  serviço integra o total; venda vazia cancelada é excluída pelo controller existente.
+  Senha de comissão explicitamente habilitada nos testes de autorização (padrão N).
+- `src/autoteste.py`: módulo Qt de comissão registrado. `src/ui_qt/app.py.autoteste`:
+  comissão pela entrada, painel e diálogos reais, saída preservando comissão.
+  O executável exige licença para abrir turno; o autoteste insere SOMENTE um turno
+  fictício em seu banco em memória. Nenhuma proteção de produção foi alterada.
+- Validação final: 245 testes, todos aprovados, sem skips:
+  `python -m unittest tests.test_qt_app tests.test_qt_caixa tests.test_qt_comissao
+  tests.test_autoteste tests.test_comissao_garotas tests.test_comissao_na_tela`
+  com `QT_QPA_PLATFORM=offscreen`. Mensagens de falha simulada do autoteste são
+  esperadas pelos testes negativos, não falhas desta execução. `git diff --check` OK.
+- Build Windows `build_pdv.py --sem-instalador` concluído. Executável
+  `dist/WillPDV/WillPDV.exe`: `--autoteste-qt` e `--autoteste` aprovados, incluindo
+  criptografia/recuperação e DPAPI no Qt. Nenhum banco real usado.
+- O runtime isolado EXISTE e funcionou (Python 3.12.10, PySide6 6.12.0):
+  `C:\Users\ITAUTEC\.copilot\session-state\1346668e-9aaf-42b5-bd54-7b7ad43bf97b\files\python-runtime\python.exe`.
+  `python` no PATH continua sendo somente o atalho da Store.
+  Relatórios na mesma sessão, pasta `files`: `comissao-validacao-final.log`,
+  `comissao-empacotado-qt-final.txt`, `comissao-empacotado-tk-final.txt`,
+  `comissao-build-qt-final.log`.
 
 ## Pendências
-- Finalizar migração Qt dos recursos usados nas boates, sobretudo comissão das garotas;
-  homologar em cópia do banco antes de substituir Tk em operação.
-- Escolher pasta real/senha no computador do caixa, confirmar sincronização pelo site
-  do provedor e ensaiar recuperação em outra máquina. Backup local antigo continua
-  sem criptografia; não pôr o banco em uso nem os backups abertos na pasta sincronizada.
+- Conferir CI após publicar. Instalador não foi gerado nesta rodada;
+  executável permanece 1.4.0.
+- Homologar comissão/acerto/saída em cópia do banco e periféricos reais antes do uso
+  comercial. Testes offscreen não confirmam impressão física, gaveta ou ergonomia.
+- Restante da migração Qt: partes/montagem, desconto/serviço manual, transferência,
+  caderneta/entrega, sangria/repique, gaveta, balança, consulta de comanda; homologar em
+  cópia do banco antes de substituir o Tk em operação.
+- Escolher pasta real/senha do backup externo no computador do caixa, confirmar sincronização
+  pelo site do provedor e ensaiar recuperação em outra máquina. Backup local antigo segue sem
+  criptografia; não pôr o banco em uso nem os backups abertos na pasta sincronizada.
 - Painel web e múltiplos caixas fora desta etapa; múltiplos caixas não são necessários.
-- Asaas anterior preservado: homologar sandbox/credenciais/webhook real e hospedar API
-  mais `python -m backend.worker_asaas` supervisionado (ou scheduler `--uma-vez`).
-  Inicializar tabelas com `python -c "import backend.main"` antes de API/worker paralelos.
-  Mesmo PostgreSQL/ambiente/chave/timezone. Sem worker não renova. Nenhum deploy
-  contratado. Orçamento alvo até R$50/mês, confirmar preços antes de contratar.
+- Asaas: homologar sandbox/credenciais/webhook real e hospedar API mais
+  `python -m backend.worker_asaas` supervisionado (ou scheduler `--uma-vez`). Inicializar
+  tabelas com `python -c "import backend.main"` antes de API/worker paralelos. Mesmo
+  PostgreSQL/ambiente/chave/timezone. Sem worker não renova. Nenhum deploy contratado.
+  Orçamento alvo até R$50/mês, confirmar preços antes de contratar.
 - Troca de valor/plano/assinatura adiada; Pix/boleto por link, não débito automático.
   Offline mantém validade paga + 5 dias de carência e proteção de turno recente;
   estorno não revoga imediatamente licença assinada já entregue.

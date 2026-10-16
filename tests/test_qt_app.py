@@ -317,6 +317,7 @@ class TestAppQt(BaseQt):
         janelas_antes = set(self.aplicacao.topLevelWidgets())
         resultado = autoteste(Path.cwd())
         self.assertIn("Qt Widgets", resultado[0])
+        self.assertIn("comissão na linha", resultado[1])
         self.assertFalse(any(j.isVisible() for j in set(self.aplicacao.topLevelWidgets()) - janelas_antes))
 
     def test_banco_memoria_e_qapplication_existente_sem_servicos(self):
