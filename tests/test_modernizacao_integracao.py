@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from importlib.metadata import distribution
 from pathlib import Path
 from unittest import mock
 
@@ -24,7 +25,15 @@ class TesteDistribuicaoModerna(unittest.TestCase):
             manifesto = (licencas / "DEPENDENCIAS.txt").read_text(encoding="utf-8")
             for nome in ("PySide6-Essentials", "shiboken6", "cryptography", "cffi"):
                 self.assertIn(nome, manifesto)
-                self.assertTrue(list((licencas / "pacotes" / nome).iterdir()))
+                arquivos_licenca = {
+                    Path(arquivo).name
+                    for arquivo in distribution(nome).files or ()
+                    if ".dist-info" in str(arquivo)
+                    and ("license" in str(arquivo).lower() or "copying" in str(arquivo).lower())
+                }
+                pasta_pacote = licencas / "pacotes" / nome
+                copiados = {arquivo.name for arquivo in pasta_pacote.iterdir()} if pasta_pacote.exists() else set()
+                self.assertEqual(copiados, arquivos_licenca, nome)
 
     def test_instalador_tem_previa_sem_trocar_atalho_padrao(self):
         texto = (RAIZ / "instalador" / "WillPDV.iss").read_text(encoding="utf-8-sig")
