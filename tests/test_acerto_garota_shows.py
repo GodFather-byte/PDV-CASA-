@@ -212,39 +212,56 @@ class TesteConferenciaDaMaquininha(BaseComissao):
 
 
 class TesteValeDaGarota(BaseComissao):
-    """Vale que a garota já pegou: descontado só da parte do acerto paga por Pix (o dinheiro dele já saiu antes)."""
+    """Vale que a garota já pegou: descontado do total do acerto (dinheiro ou Pix) e sem sair do caixa de novo."""
 
-    def test_vale_sai_do_pix_e_nao_mexe_no_dinheiro(self):
+    def setUp(self):
+        super().setUp()
         self.garota(180, "MARIA")
-        self.lancar(180, 25)
-        p = self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, pix_cent=30000, vale_cent=10000)
-        self.assertEqual((p["total_cent"], p["pix_cent"], p["vale_cent"], p["dinheiro_cent"]), (52500, 20000, 10000, 22500))
+        self.lancar(180, 25)                       # comissão R$ 25 + 10 shows de R$ 50 = R$ 525
+
+    def pagar(self, **kw):
+        return self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, **kw)
+
+    def test_vale_em_dinheiro_so_tira_do_caixa_o_que_sobra(self):
+        esperado = self.turnos.resumo(self.turno)["esperado"]
+        p = self.pagar(vale_cent=5000)
+        self.assertEqual((p["total_cent"], p["vale_cent"], p["pix_cent"], p["dinheiro_cent"]), (52500, 5000, 0, 47500))
+        self.assertEqual(self.banco.valor("SELECT valor_cent FROM movimentos_caixa"), 47500)     # não 52500
+        self.assertEqual(self.turnos.resumo(self.turno)["esperado"], esperado - 47500)
         a = self.banco.um("SELECT total_cent, pix_cent, vale_cent FROM acertos_garotas")
-        self.assertEqual(tuple(a), (52500, 20000, 10000))
-        self.assertEqual(self.banco.valor("SELECT valor_cent FROM movimentos_caixa"), 22500)     # a gaveta só paga o dinheiro
+        self.assertEqual(tuple(a), (52500, 0, 5000))
+        self.assertEqual(self.com.pendente(180), 0)
+
+    def test_vale_com_pix_e_dinheiro(self):
+        p = self.pagar(pix_cent=30000, vale_cent=10000)          # sobram 425: 300 no Pix e 125 em dinheiro
+        self.assertEqual((p["pix_cent"], p["vale_cent"], p["dinheiro_cent"]), (30000, 10000, 12500))
+        self.assertEqual(self.banco.valor("SELECT valor_cent FROM movimentos_caixa"), 12500)
+        self.assertEqual(self.com.pix_do_turno(self.turno), 30000)                                # fechamento: o Pix que saiu
 
     def test_tudo_no_pix_com_vale_paga_so_a_diferenca(self):
-        self.garota(180, "MARIA")
-        self.lancar(180, 25)
-        p = self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, pix_cent=52500, vale_cent=10000)
-        self.assertEqual((p["pix_cent"], p["vale_cent"], p["dinheiro_cent"]), (42500, 10000, 0))
-        self.assertEqual(self.com.pix_do_turno(self.turno), 42500)                                # fechamento: o Pix que saiu
+        p = self.pagar(pix_cent=47500, vale_cent=5000)
+        self.assertEqual((p["pix_cent"], p["dinheiro_cent"], p["movimento_id"]), (47500, 0, None))
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)
 
-    def test_vale_nao_pode_passar_do_pix(self):
-        self.garota(180, "MARIA")
-        self.lancar(180, 25)
-        with self.assertRaises(ErroNegocio):
-            self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, pix_cent=5000, vale_cent=5001)
-        with self.assertRaises(ErroNegocio):
-            self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, vale_cent=100)    # sem Pix não há de onde descontar
-        with self.assertRaises(ErroNegocio):
-            self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, pix_cent=5000, vale_cent=-1)
+    def test_vale_do_valor_inteiro_nao_move_o_caixa(self):
+        p = self.pagar(vale_cent=52500)
+        self.assertEqual((p["dinheiro_cent"], p["pix_cent"], p["movimento_id"]), (0, 0, None))
+        self.assertEqual(self.com.pendente(180), 0)
+
+    def test_vale_e_pix_invalidos(self):
+        for kw in ({"vale_cent": 52501}, {"vale_cent": -1}, {"pix_cent": 47501, "vale_cent": 5000}):
+            with self.assertRaises(ErroNegocio, msg=kw):
+                self.pagar(**kw)
         self.assertEqual(self.com.pendente(180), 2500)                                            # nada foi pago
 
     def test_recibo_mostra_o_vale(self):
-        self.garota(180, "MARIA")
-        self.lancar(180, 25)
-        p = self.com.pagar(180, self.turno, self.adm, shows=10, valor_show_cent=5000, pix_cent=30000, vale_cent=10000)
+        p = self.pagar(pix_cent=30000, vale_cent=10000)
         recibo = ImpressaoController(self.banco).recibo_comissao(p, "ADM")
-        for trecho in ("Dinheiro", "225,00", "Vale (já recebido)", "100,00", "Pix", "200,00", "TOTAL PAGO", "525,00"):
+        for trecho in ("Dinheiro", "125,00", "Vale (já recebido)", "100,00", "Pix", "300,00", "TOTAL PAGO", "525,00"):
             self.assertIn(trecho, recibo)
+
+    def test_recibo_com_vale_e_sem_pix_nao_mostra_linha_de_pix(self):
+        p = self.pagar(vale_cent=5000)
+        recibo = ImpressaoController(self.banco).recibo_comissao(p, "ADM")
+        self.assertIn("Vale (já recebido)", recibo)
+        self.assertNotIn("Pix", recibo)

@@ -228,9 +228,9 @@ class ComissaoController:
         `pix_cent` é a parte do total paga por Pix (sem dinheiro no caixa, ou só parte dele): o Pix nunca passa pela gaveta, então
         só o restante em dinheiro (`dinheiro_cent`) vira sangria. Sem `tirar_do_caixa` o dinheiro é só registrado, como antes.
 
-        `vale_cent` é o vale que a garota já pegou antes (o dinheiro já saiu): é descontado da parte paga por Pix, então o Pix
-        que de fato vai para ela é `pix_cent - vale_cent` (devolvido como `pix_cent`). Não mexe no dinheiro nem na gaveta, e
-        não pode passar da parte paga por Pix."""
+        `vale_cent` é o vale que a garota já pegou antes (o dinheiro já saiu do caixa): é descontado do total do acerto, então só
+        `total - vale` é pago agora, em dinheiro ou em Pix. O vale não sai do caixa de novo. `pix_cent` é a parte do que sobra
+        (total - vale) paga por Pix; o resto é dinheiro (e a sangria). O vale não pode passar do total."""
         n = self.validar_numero(garota)
         shows, valor_show_cent = self.validar_shows(shows, valor_show_cent)
         pix_cent = int(pix_cent or 0)
@@ -239,9 +239,6 @@ class ComissaoController:
             raise ErroNegocio("O valor pago por Pix não pode ser negativo.")
         if vale_cent < 0:
             raise ErroNegocio("O vale não pode ser negativo.")
-        if vale_cent > pix_cent:
-            raise ErroNegocio(f"O vale ({fmt.fmt_brl(vale_cent)}) só pode ser descontado da parte paga por Pix "
-                              f"({fmt.fmt_brl(pix_cent)}).")
         with self.banco.transacao():
             itens = self.lancamentos(n, "pendente")
             if not itens and not shows:
@@ -249,18 +246,21 @@ class ComissaoController:
             comissao = sum(i["valor_cent"] for i in itens)
             shows_cent = shows * valor_show_cent
             total = comissao + shows_cent
-            if pix_cent > total:
-                raise ErroNegocio(f"O Pix ({fmt.fmt_brl(pix_cent)}) não pode ser maior que o total a pagar ({fmt.fmt_brl(total)}).")
-            dinheiro = total - pix_cent                  # o vale sai só do Pix: o dinheiro não muda
-            pix_cent -= vale_cent                         # daqui em diante é o Pix que de fato vai para ela
+            if vale_cent > total:
+                raise ErroNegocio(f"O vale ({fmt.fmt_brl(vale_cent)}) não pode ser maior que o total do acerto ({fmt.fmt_brl(total)}).")
+            a_pagar = total - vale_cent                   # o vale já saiu do caixa quando ela o pegou: só isto é pago agora
+            if pix_cent > a_pagar:
+                raise ErroNegocio(f"O Pix ({fmt.fmt_brl(pix_cent)}) não pode ser maior que o total a pagar ({fmt.fmt_brl(a_pagar)}).")
+            dinheiro = a_pagar - pix_cent
             nome = self.nome(n)
             movimento, descricao = None, ""
             if tirar_do_caixa and dinheiro > 0:
                 if turno_id is None:
                     raise ErroNegocio("Abra o turno do caixa para pagar com o dinheiro do caixa.")
                 rotulo = "Acerto" if shows else "Comissão"
-                parte_pix = f" (resto no Pix: {fmt.fmt_brl(pix_cent + vale_cent)})" if pix_cent + vale_cent else ""
-                descricao = f"{rotulo} garota {n}{' ' + nome if nome else ''}{parte_pix}"
+                parte_pix = f" (resto no Pix: {fmt.fmt_brl(pix_cent)})" if pix_cent else ""
+                parte_vale = f" (vale descontado: {fmt.fmt_brl(vale_cent)})" if vale_cent else ""
+                descricao = f"{rotulo} garota {n}{' ' + nome if nome else ''}{parte_pix}{parte_vale}"
                 movimento = TurnoController(self.banco).movimentar(turno_id, operador_id, "saida", dinheiro, descricao)
             tirou = movimento is not None
             agora = fmt.agora()
