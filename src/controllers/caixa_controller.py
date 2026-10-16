@@ -264,6 +264,7 @@ class CaixaController:
             raise ErroNegocio(f"'{p['nome']}' não aceita quantidade fracionada.")
         if v["modalidade"] == "caderneta" and v["cliente_id"] is None:
             raise ErroNegocio("Selecione o cliente da caderneta antes de lançar itens.")
+        self._conferir_limite_comanda(v)
 
         if partes:
             qtd_partes = len(partes)
@@ -297,6 +298,26 @@ class CaixaController:
                 "UPDATE vendas SET ultimo_lancamento_em = ?, status = 'aberta' WHERE id = ?", (agora, venda_id))
             self.recalcular(venda_id)
         return item_id
+
+    LIMITE_COMANDA_PADRAO = 200
+
+    def _conferir_limite_comanda(self, v: dict) -> None:
+        """Limite de consumo da comanda do cliente (Configurações > Mesas e serviço, padrão R$ 200,00; 0 = sem limite): quando o
+        consumo chega ao limite, não deixa lançar mais nada até a comanda ser acertada. Vale só para comanda (não para mesa, balcão
+        ou caderneta) e na mesma faixa de números da consumação mínima, para deixar de fora as comandas das garotas."""
+        if v["modalidade"] != "mesa" or not v.get("comanda"):
+            return
+        limite = self.banco.cfg_int("limite_comanda", self.LIMITE_COMANDA_PADRAO) * 100
+        if limite <= 0:
+            return
+        de, ate = self.banco.cfg_int("consumacao_minima_de", 0), self.banco.cfg_int("consumacao_minima_ate", 0)
+        if v["posicao"] < de or (ate and v["posicao"] > ate):
+            return
+        consumo = self.banco.valor("SELECT COALESCE(SUM(total_cent), 0) FROM itens_venda WHERE venda_id = ? AND cancelado = 0",
+                                   (v["id"],))
+        if consumo >= limite:
+            raise ErroNegocio(f"A comanda chegou ao limite de {fmt.fmt_brl(limite)}. "
+                              "Não dá para lançar mais: é preciso acertar a comanda.")
 
     def cancelar_item(self, item_id: int, motivo: str = "") -> None:
         motivo = (motivo or "").strip()
