@@ -17,8 +17,6 @@
   `git diff --check` limpo.
 
 ## Pendências
-- Revisar `git status` e diff para preservar mudanças de terceiros, depois
-  commitar a continuação com trailer `Co-authored-by` obrigatório.
 - Homologar o piloto em cópia do banco com teclado/escala e periféricos reais,
   especialmente impressão, gaveta, balança, entrega e recuperação após falhas.
 - Backup: escolher pasta e senha, confirmar sincronização no provedor e ensaiar
