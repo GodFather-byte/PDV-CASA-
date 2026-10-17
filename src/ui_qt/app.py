@@ -184,7 +184,11 @@ class JanelaPrincipal(QMainWindow):
             ("inicio", "Visão geral", self.atualizar),
             ("caixa", "Abrir caixa", self.abrir_caixa),
             ("produtos", "Produtos", lambda: self.abrir_cadastro("produtos")),
+            ("estoque", "Estoque • consulta", self.abrir_estoque),
+            ("relatorio_vendas", "Vendas • relatório", self.abrir_relatorio_vendas),
             ("operadores", "Operadores", lambda: self.abrir_cadastro("operadores")),
+            ("configuracoes", "Configurações gerais", self.abrir_configuracoes),
+            ("importar_produtos", "Importar produtos", self.abrir_importacao_produtos),
             ("auditoria", "Auditoria • somente leitura", self.abrir_auditoria),
             ("backup", "Backup externo cifrado", self.abrir_backup),
             ("outros", "Outros módulos • indisponíveis", self.mostrar_limites),
@@ -218,7 +222,7 @@ class JanelaPrincipal(QMainWindow):
             self.indicadores[chave] = rotulo
             conteudo.addWidget(cartao)
         conteudo.addWidget(tema.texto(
-            "Demais relatórios, estoque, financeiro, configurações, importação, assistência e demais cadastros "
+            "Demais relatórios, financeiro, assistência e demais cadastros "
             "ainda não estão disponíveis neste piloto. Feche o programa e inicie com --tk para usá-los. "
             "Não abra duas instâncias sobre o mesmo banco.", "aviso"))
         self.mensagem = tema.texto("", "aviso")
@@ -245,6 +249,12 @@ class JanelaPrincipal(QMainWindow):
         for chave in ("produtos", "operadores"):
             modulo = f"cad_{chave}"
             self.botoes[chave].setEnabled(modulo not in desligados and self.ctx.pode(modulo))
+        self.botoes["estoque"].setEnabled(self.ctx.pode("lanc_estoque"))
+        self.botoes["relatorio_vendas"].setEnabled(self.ctx.pode("rel_vendas"))
+        self.botoes["configuracoes"].setEnabled(
+            self.ctx.pode("cfg_loja") or self.ctx.pode("cfg_configuracoes"))
+        self.botoes["importar_produtos"].setEnabled(
+            "cad_produtos" not in desligados and self.ctx.pode("cad_produtos"))
         self.botoes["backup"].setEnabled(self.ctx.pode("util_backup"))
         self.botoes["auditoria"].setEnabled(
             operador.nivel == 4 and self.ctx.pode("rel_auditoria") and "rel_auditoria" not in desligados)
@@ -277,7 +287,9 @@ class JanelaPrincipal(QMainWindow):
 
     def mostrar_limites(self):
         self.mensagem.setText(
-            "Disponível neste menu: caixa, produtos, operadores, auditoria administrativa e backup externo cifrado "
+            "Disponível neste menu: caixa, produtos, consulta de estoque, relatório de vendas, operadores, "
+            "configurações gerais, importação de produtos e auditoria administrativa "
+            "e backup externo cifrado "
             "(conforme permissão). "
             "Demais módulos: indisponíveis no piloto. Encerre e use --tk; não há fallback para Tk.")
 
@@ -304,6 +316,52 @@ class JanelaPrincipal(QMainWindow):
         except Exception as erro:
             logging.getLogger("pdv.qt").exception("Falha ao abrir o caixa Qt.")
             self.mensagem.setText(f"Não foi possível abrir o caixa Qt: {erro}. Sem fallback; use --tk.")
+
+    def abrir_estoque(self):
+        try:
+            from src.ui_qt.estoque import JanelaEstoque
+            janela = self.janelas.get("estoque")
+            if janela is not None and not janela.atualizar():
+                return None
+            return self._unica("estoque", lambda: JanelaEstoque(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_relatorio_vendas(self):
+        try:
+            from src.ui_qt.relatorio_vendas import JanelaRelatorioVendas
+            janela = self.janelas.get("relatorio_vendas")
+            if janela is not None and not janela.atualizar():
+                return None
+            return self._unica(
+                "relatorio_vendas", lambda: JanelaRelatorioVendas(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_configuracoes(self):
+        try:
+            from src.ui_qt.configuracoes import JanelaConfiguracoes
+            return self._unica(
+                "configuracoes", lambda: JanelaConfiguracoes(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_importacao_produtos(self):
+        try:
+            from src.ui_qt.importar_produtos import JanelaImportarProdutos
+            janela = self.janelas.get("importar_produtos")
+            if janela is not None:
+                janela._exigir_acesso()
+            return self._unica(
+                "importar_produtos",
+                lambda: JanelaImportarProdutos(self.ctx, self, ao_importar=self._atualizar_produtos))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def _atualizar_produtos(self):
+        janela = self.janelas.get("produtos")
+        if janela is not None:
+            janela.atualizar()
 
     def abrir_cadastro(self, chave):
         try:

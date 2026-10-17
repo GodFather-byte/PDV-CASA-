@@ -387,11 +387,11 @@ class TestVendaQt(BaseCaixaQt):
         v = self.ctx.caixa.obter(mesa_id)
         self.assertEqual((v["status"], v["garcom_id"]), ("fechada", self.operador_adm()))
 
-    def test_operacoes_nao_migradas_sao_bloqueadas(self):
+    def test_desistir_da_montagem_nao_abre_venda(self):
         j = self.janela()
         self.banco.executar("UPDATE produtos SET partes = 2, composto = 1 WHERE id = ?", (self.skol,))
+        j.dialogos.textos = [None]
         self.lancar(j, "10")
-        self.assertIn("caixa clássico", j.dialogos.avisos[-1])
         self.assertEqual(self.contar("vendas"), 0)
         self.assertEqual(self.contar("itens_venda"), 0)
 

@@ -22,6 +22,10 @@ from src.ui.contexto import Contexto
 from src.ui_qt.app import App, JanelaBackupExterno, JanelaPrincipal, autoteste, preparar_inicio
 from src.ui_qt.cadastros import FormularioCadastro, JanelaCadastro
 from src.ui_qt.auditoria import JanelaAuditoria
+from src.ui_qt.configuracoes import JanelaConfiguracoes
+from src.ui_qt.estoque import JanelaEstoque
+from src.ui_qt.importar_produtos import JanelaImportarProdutos
+from src.ui_qt.relatorio_vendas import JanelaRelatorioVendas
 from src.ui_qt.login import JanelaLogin, TrocaSenha
 
 
@@ -654,6 +658,74 @@ class TestAuditoriaQt(BaseQt):
         self.assertIs(app.principal.abrir_auditoria(), janela)
         self.assertTrue(app.encerrar_sessao())
         self.assertFalse(janela.isVisible())
+
+    def test_menu_admin_abre_consulta_estoque_unica_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["estoque"].isEnabled())
+        janela = app.principal.abrir_estoque()
+        self.assertIsInstance(janela, JanelaEstoque)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_estoque(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_estoque_revalida_permissao_na_abertura(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        app.ctx.operador = None
+        self.assertIsNone(app.principal.abrir_estoque())
+        self.assertNotIn("estoque", app.principal.janelas)
+        self.assertIn("operador", app.principal.mensagem.text())
+
+    def test_menu_admin_abre_relatorio_vendas_unico_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["relatorio_vendas"].isEnabled())
+        janela = app.principal.abrir_relatorio_vendas()
+        self.assertIsInstance(janela, JanelaRelatorioVendas)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_relatorio_vendas(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_admin_abre_configuracoes_unica_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["configuracoes"].isEnabled())
+        janela = app.principal.abrir_configuracoes()
+        self.assertIsInstance(janela, JanelaConfiguracoes)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_configuracoes(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_admin_abre_importacao_unica_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["importar_produtos"].isEnabled())
+        janela = app.principal.abrir_importacao_produtos()
+        self.assertIsInstance(janela, JanelaImportarProdutos)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_importacao_produtos(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_importacao_revalida_permissao_na_reabertura(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        janela = app.principal.abrir_importacao_produtos()
+        self.assertIsNotNone(janela)
+        app.ctx.operador = None
+        self.assertIsNone(app.principal.abrir_importacao_produtos())
+        self.assertIs(app.principal.janelas["importar_produtos"], janela)
+        self.assertIn("Entre no sistema", app.principal.mensagem.text())
 
     def test_menu_nao_admin_desabilita_e_chamada_direta_nao_contorna(self):
         id_ = self.ctx.cadastros.salvar("operadores", {"nome": "SUP", "senha": "Segura123", "nivel": 3})

@@ -43,6 +43,23 @@ sincronização contínua pelo painel Qt.
   centavos, validações, hashing e salvaguardas continuam no `CadastroController`.
   Edição de operador com senha vazia mantém a senha. Permissões são conferidas
   novamente antes de salvar/excluir, inclusive se o nível mudou com a tela aberta.
+- Estoque somente para consulta: busca por nome/código, situação e grupo, resumo
+  pelos métodos existentes de `EstoqueController` e até 30 movimentos recentes
+  do produto selecionado. Não permite entrada, baixa, ajuste ou pedido; a tela e
+  o controlador revalidam o acesso.
+- Relatório de vendas por período operacional: produtos de vendas fechadas e
+  totalizações fornecidas pelo relatório existente, com valores em reais somente
+  para exibição. Datas, virada do dia, autorização `rel_vendas` e consulta ficam
+  no controlador; a janela é somente leitura.
+- Configurações gerais: identificação/contatos da loja e preferências de venda/
+  caixa em abas salvas separadamente. Usa `ConfigController` e permissões
+  específicas; não expõe senhas, nuvem, licenças, periféricos, módulos ou regras
+  financeiras. Reabra o caixa para que preferências visuais/operacionais sejam
+  relidas.
+- Importação de produtos por CSV ou Excel: modelo/exportação, prévia com ações e
+  linhas recusadas, opções de atualização/código e confirmação antes de gravar.
+  Leitura, validação, centavos e transação pertencem a `ImportacaoProdutos`;
+  cancelamento não grava. Exclusão em massa continua apenas no Tk.
 - Caixa aberto por `JanelaCaixa(ctx, parent)` em janela Qt não bloqueante,
   com referência conservada pelo menu. Seu escopo operacional é incremental;
   consulte os avisos da própria tela durante a homologação.
@@ -64,6 +81,43 @@ sincronização contínua pelo painel Qt.
 - Saída sem consumo (código 1002): libera a comanda/mesa vazia (ou pergunta qual),
   pelo `CaixaController.liberar_saida`, e emite o ticket de saída. Com consumo é
   recusada sem alterar a venda.
+- **Operações do caixa** reúne os fluxos complementares, sem abrir Tk:
+  - Produto dividido/montagem: número de partes, escolha dos componentes e opção
+    sem divisão; preço, elegibilidade, fracionamento e estoque pelo controlador.
+    Desistir antes de lançar não cria uma venda vazia.
+  - Desconto em centavos ou percentual (módulo `usar_desconto`, autorização
+    `caixa_desconto`/`exigir_senha_desconto`), serviço manual, zero ou retorno ao
+    automático em mesa/comanda. Recalcula os totais e mantém as regras de pagamento.
+  - Observação do item: cadastro ou texto livre quando não há opções, somente em
+    produto habilitado; reenvia o item à impressora remota.
+  - Transferência total, várias origens e quantidade parcial de item, entre mesas
+    e comandas na notação da loja. Mesclagem, pagamentos e arredondamento continuam
+    nas APIs existentes; comissão não é transferida como se fosse consumo.
+  - Pré-conta (F8), sem encerrar a venda; em entrega, F8 emite o pedido.
+    Falha de impressão mantém o estado gravado e mostra o documento quando possível.
+  - Caderneta (F5, módulo `usar_caderneta`): pesquisa/confirmação/inclusão de cliente,
+    venda a prazo com confirmação e limite, recebimento sem itens, escolha entre
+    crédito e troco para excedente, consulta de devedores, últimas compras, extrato
+    e detalhes dos débitos/créditos. Não se recebe pagamento em venda a prazo com
+    itens. Inclusão reutiliza o formulário Qt e as permissões do cadastro existente.
+  - Entrega (F6, módulo `usar_delivery`): cliente, taxa por bairro/padrão, troco,
+    mensagem, entregador opcional, emissão, pendentes com tempo/endereço, atribuição
+    de entregador/saída, retomada para receber e cancelamento autorizado.
+    Troca de modalidade não abandona itens nem pagamentos da venda atual.
+  - Sangria/suprimento com autorização `caixa_sangria`/`exigir_senha_sangria`,
+    comprovante e solicitação da gaveta; repique associado à posição pelo
+    `TurnoController`. Movimento gravado não é repetido quando a impressão falha.
+  - Gaveta manual com autorização `caixa_gaveta`/`exigir_senha_gaveta` e registro
+    da tentativa; indisponibilidade não é anunciada como abertura bem-sucedida.
+    Captura de peso pela API da balança ou peso manual explícito quando indisponível,
+    sem lançamento automático; quantidade continua validada pelo controlador.
+  - Reimpressão de último cupom ou por número, fechado/cancelado, como segunda via,
+    sem novo pagamento nem abertura de gaveta.
+  - Consulta de comanda sem trocar a venda da tela: paga, aberta/conta enviada,
+    vazia, cancelada ou sem registro, incluindo comissão pendente da garota.
+    O modo de cancelamento permite selecionar linhas com Enter após autorização
+    única para a venda/operador atual; Esc ou troca de posição descarta a autorização.
+    Comissão paga continua não cancelável, e comissão nunca vira item de consumo.
 - Encerrar sessão fecha as janelas e volta ao login; um caixa que recusa fechamento
   impede o logout. Encerrar sessão ou programa não fecha o turno automaticamente.
 - Auditoria administrativa, somente leitura: acessível pelo menu para administrador
@@ -113,17 +167,15 @@ sem segurar o processo. Não se usa `terminate()` inseguro.
 
 ## Limites assumidos
 
-Demais relatórios, estoque, financeiro, configurações, demais
-cadastros, importação, restauração local sem cifragem, assistência de impressão e outras
-telas não foram migrados neste piloto. O menu os identifica como indisponíveis.
-Para esses recursos, encerre o processo e inicie com `--tk`.
+Demais relatórios, financeiro, demais cadastros, restauração local sem cifragem,
+assistência de impressão e outras telas não foram migrados neste piloto. O menu
+os identifica como indisponíveis. Para esses recursos, encerre o processo e
+inicie com `--tk`.
 
-No caixa Qt também estão bloqueados, com orientação ao caixa clássico:
-partes/montagem, desconto/serviço manual, observação, transferência, pré-conta,
-caderneta, entrega, sangria/repique, gaveta, balança e reimpressão. Não homologue
-um fluxo que dependa desses recursos como se já estivesse migrado. Da comissão
-ficam só no Tk a consulta de comanda (que mostra a comissão pendente) e o modo
-"cancelar" com senha única para várias linhas.
+Os fluxos de caixa listados acima estão disponíveis no piloto; isso não substitui
+homologação em cópia do banco. Impressão, gaveta e balança precisam de homologação
+com os periféricos reais. Cancelar a entrada manual de peso não simula uma leitura;
+sem configuração/driver/dispositivo, a interface informa a limitação.
 
 Não há configuração de nuvem, loja, impressoras ou visual pelo Qt nesta etapa:
 prepare esses dados pelo Tk antes da homologação. O tema do piloto é escuro fixo;
@@ -138,7 +190,7 @@ motivo para pular silenciosamente:
 
 ```powershell
 $env:QT_QPA_PLATFORM = "offscreen"
-python -m unittest tests.test_qt_app tests.test_qt_caixa tests.test_qt_comissao
+python -m unittest tests.test_qt_app tests.test_qt_caixa tests.test_qt_comissao tests.test_qt_caixa_operacoes tests.test_qt_estoque tests.test_qt_relatorio_vendas tests.test_qt_configuracoes tests.test_qt_importar_produtos
 ```
 
 Há cobertura de autenticação, troca obrigatória, bloqueio por licença,
@@ -148,6 +200,11 @@ de backup/serviços. Banco de teste é em memória e não usa a loja.
 Comissão e saída cobrem os modos na linha/janela, conversão pontos/reais,
 autorizações de supervisor, confirmações de cadastro/valor, acerto com shows,
 vale e Pix, cancelamento, F12 e preservação dos registros quando a impressão falha.
+`test_qt_caixa_operacoes` cobre montagem, desconto/serviço, observações,
+transferências, pré-conta, caderneta (débito/crédito/troco/limite/consulta),
+entrega completa, movimentos financeiros, autorizações, cancelamento de entradas,
+gaveta indisponível, captura/manual de peso, segunda via, consulta com comissão,
+modo cancelar e recusa das operações sem turno/durante gravação.
 Homologue também teclado, escala de tela, leitores, impressoras e os fluxos
 operacionais efetivamente disponíveis no caixa.
 
