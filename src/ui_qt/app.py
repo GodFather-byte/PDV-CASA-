@@ -9,6 +9,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
     QLineEdit, QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QScrollArea,
 )
 
 from src.controllers.config_controller import modulos_desligados
@@ -165,6 +166,14 @@ class JanelaBackupExterno(QDialog):
 
 
 class JanelaPrincipal(QMainWindow):
+    CADASTROS_QT = (
+        ("unidades", "Unidades"), ("grupos", "Grupos"), ("subgrupos", "Subgrupos"),
+        ("observacoes", "Observações"), ("cargos", "Cargos"), ("fornecedores", "Fornecedores"),
+        ("clientes", "Clientes"), ("garotas", "Garotas"), ("bairros", "Bairros e taxas de entrega"),
+        ("tipos_pagamento", "Tipos de pagamento"), ("planos_contas", "Plano de contas"),
+        ("subplanos", "Subplanos"), ("aliquotas", "Alíquotas"),
+    )
+
     def __init__(self, app):
         super().__init__()
         self.app, self.ctx = app, app.ctx
@@ -186,11 +195,18 @@ class JanelaPrincipal(QMainWindow):
             ("produtos", "Produtos", lambda: self.abrir_cadastro("produtos")),
             ("estoque", "Estoque • consulta", self.abrir_estoque),
             ("relatorio_vendas", "Vendas • relatório", self.abrir_relatorio_vendas),
+            ("relatorios", "Mais relatórios", self.abrir_relatorios),
+            ("contas", "Contas a pagar / receber", self.abrir_contas),
             ("operadores", "Operadores", lambda: self.abrir_cadastro("operadores")),
+            ("mais_cadastros", "Mais cadastros", self.escolher_cadastro_adicional),
             ("configuracoes", "Configurações gerais", self.abrir_configuracoes),
             ("importar_produtos", "Importar produtos", self.abrir_importacao_produtos),
             ("auditoria", "Auditoria • somente leitura", self.abrir_auditoria),
             ("backup", "Backup externo cifrado", self.abrir_backup),
+            ("restaurar", "Restaurar backup local", self.abrir_restaurar_backup),
+            ("impressora", "Assistente de impressora", self.abrir_assistente_impressora),
+            ("fila_impressao", "Fila de impressão", self.abrir_fila_impressao),
+            ("composicao", "Composição / ficha técnica", self.abrir_composicao),
             ("outros", "Outros módulos • indisponíveis", self.mostrar_limites),
         ):
             botao = QPushButton(titulo)
@@ -203,7 +219,13 @@ class JanelaPrincipal(QMainWindow):
         sair = QPushButton("Encerrar sessão")
         sair.clicked.connect(lambda: self.app.encerrar_sessao(confirmar=True))
         lateral.addWidget(sair)
-        layout.addLayout(lateral, 1)
+        lateral_widget = QWidget()
+        lateral_widget.setLayout(lateral)
+        self.lateral_scroll = QScrollArea()
+        self.lateral_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.lateral_scroll.setWidgetResizable(True)
+        self.lateral_scroll.setWidget(lateral_widget)
+        layout.addWidget(self.lateral_scroll, 1)
         conteudo = QVBoxLayout()
         conteudo.setContentsMargins(24, 12, 12, 12)
         conteudo.addWidget(tema.texto("Sua operação, em foco", "titulo"))
@@ -222,8 +244,8 @@ class JanelaPrincipal(QMainWindow):
             self.indicadores[chave] = rotulo
             conteudo.addWidget(cartao)
         conteudo.addWidget(tema.texto(
-            "Demais relatórios, financeiro, assistência e demais cadastros "
-            "ainda não estão disponíveis neste piloto. Feche o programa e inicie com --tk para usá-los. "
+            "Outras telas ainda estão sendo migradas. Consulte os avisos de cada módulo "
+            "e use --tk para operações ainda indisponíveis. "
             "Não abra duas instâncias sobre o mesmo banco.", "aviso"))
         self.mensagem = tema.texto("", "aviso")
         conteudo.addWidget(self.mensagem)
@@ -249,13 +271,23 @@ class JanelaPrincipal(QMainWindow):
         for chave in ("produtos", "operadores"):
             modulo = f"cad_{chave}"
             self.botoes[chave].setEnabled(modulo not in desligados and self.ctx.pode(modulo))
+        self.botoes["mais_cadastros"].setEnabled(bool(self._cadastros_disponiveis()))
         self.botoes["estoque"].setEnabled(self.ctx.pode("lanc_estoque"))
         self.botoes["relatorio_vendas"].setEnabled(self.ctx.pode("rel_vendas"))
+        self.botoes["contas"].setEnabled(self.ctx.pode("lanc_contas"))
+        self.botoes["relatorios"].setEnabled(any(
+            spec.modulo not in desligados and self.ctx.pode(spec.modulo)
+            for spec in self._catalogo_relatorios().values()))
         self.botoes["configuracoes"].setEnabled(
             self.ctx.pode("cfg_loja") or self.ctx.pode("cfg_configuracoes"))
         self.botoes["importar_produtos"].setEnabled(
             "cad_produtos" not in desligados and self.ctx.pode("cad_produtos"))
         self.botoes["backup"].setEnabled(self.ctx.pode("util_backup"))
+        self.botoes["restaurar"].setEnabled(self.ctx.pode("util_backup"))
+        self.botoes["impressora"].setEnabled(self.ctx.pode("cfg_maquinas"))
+        self.botoes["fila_impressao"].setEnabled(self.ctx.pode("util_fila_impressao"))
+        self.botoes["composicao"].setEnabled(
+            "cad_composicao" not in desligados and self.ctx.pode("cad_composicao"))
         self.botoes["auditoria"].setEnabled(
             operador.nivel == 4 and self.ctx.pode("rel_auditoria") and "rel_auditoria" not in desligados)
         turno = self.ctx.turnos.atual()
@@ -287,11 +319,10 @@ class JanelaPrincipal(QMainWindow):
 
     def mostrar_limites(self):
         self.mensagem.setText(
-            "Disponível neste menu: caixa, produtos, consulta de estoque, relatório de vendas, operadores, "
-            "configurações gerais, importação de produtos e auditoria administrativa "
-            "e backup externo cifrado "
+            "Disponível neste menu, conforme acesso: caixa, cadastros, consulta de estoque, relatórios, "
+            "configurações gerais, importação, ficha técnica, assistência/fila de impressão, backup e restauração "
             "(conforme permissão). "
-            "Demais módulos: indisponíveis no piloto. Encerre e use --tk; não há fallback para Tk.")
+            "Outros módulos: indisponíveis no piloto. Encerre e use --tk; não há fallback para Tk.")
 
     def _unica(self, chave, criar):
         janela = self.janelas.get(chave)
@@ -327,6 +358,16 @@ class JanelaPrincipal(QMainWindow):
         except ErroNegocio as erro:
             self.mensagem.setText(str(erro))
 
+    def abrir_contas(self):
+        try:
+            from src.ui_qt.contas import JanelaContas
+            janela = self.janelas.get("contas")
+            if janela is not None:
+                janela._exigir_acesso()
+            return self._unica("contas", lambda: JanelaContas(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
     def abrir_relatorio_vendas(self):
         try:
             from src.ui_qt.relatorio_vendas import JanelaRelatorioVendas
@@ -335,6 +376,40 @@ class JanelaPrincipal(QMainWindow):
                 return None
             return self._unica(
                 "relatorio_vendas", lambda: JanelaRelatorioVendas(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    @staticmethod
+    def _catalogo_relatorios():
+        from src.ui_qt.relatorios import SPECS
+        return SPECS
+
+    def abrir_relatorios(self):
+        from PySide6.QtWidgets import QInputDialog
+        desligados = modulos_desligados(self.ctx.banco)
+        disponiveis = [
+            (chave, spec) for chave, spec in self._catalogo_relatorios().items()
+            if spec.modulo not in desligados and self.ctx.pode(spec.modulo)
+        ]
+        if not disponiveis:
+            self.mensagem.setText("Seu acesso não permite os relatórios disponíveis.")
+            return None
+        rotulos = [spec.titulo for _, spec in disponiveis]
+        escolhido, aceito = QInputDialog.getItem(
+            self, "Relatórios", "Escolha um relatório:", rotulos, 0, False)
+        if not aceito:
+            return None
+        chave = next(chave for chave, spec in disponiveis if spec.titulo == escolhido)
+        try:
+            from src.ui_qt.relatorios import JanelaRelatorios
+            janela = self.janelas.get("relatorios")
+            if janela is not None:
+                janela.selecao.setCurrentIndex(janela.selecao.findData(chave))
+                if not janela.atualizar():
+                    return None
+                return self._unica("relatorios", lambda: janela)
+            return self._unica(
+                "relatorios", lambda: JanelaRelatorios(self.ctx, self, chave=chave))
         except ErroNegocio as erro:
             self.mensagem.setText(str(erro))
 
@@ -371,9 +446,68 @@ class JanelaPrincipal(QMainWindow):
         except ErroNegocio as erro:
             self.mensagem.setText(str(erro))
 
+    def _cadastros_disponiveis(self):
+        desligados = modulos_desligados(self.ctx.banco)
+        disponiveis = []
+        for chave, rotulo in self.CADASTROS_QT:
+            entidade = self.ctx.cadastros.entidade(chave)
+            if entidade.modulo not in desligados and self.ctx.pode(entidade.modulo):
+                disponiveis.append((chave, rotulo))
+        return disponiveis
+
+    def escolher_cadastro_adicional(self):
+        from PySide6.QtWidgets import QInputDialog
+        disponiveis = self._cadastros_disponiveis()
+        if not disponiveis:
+            self.mensagem.setText("Seu acesso não permite outros cadastros.")
+            return None
+        rotulos = [rotulo for _, rotulo in disponiveis]
+        escolhido, aceito = QInputDialog.getItem(
+            self, "Mais cadastros", "Escolha um cadastro:", rotulos, 0, False)
+        if not aceito:
+            return None
+        chave = next(chave for chave, rotulo in disponiveis if rotulo == escolhido)
+        return self.abrir_cadastro(chave)
+
     def abrir_backup(self):
         try:
             return self._unica("backup", lambda: JanelaBackupExterno(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_assistente_impressora(self):
+        try:
+            from src.ui_qt.assistente_impressora import JanelaAssistenteImpressora
+            return self._unica(
+                "assistente_impressora",
+                lambda: JanelaAssistenteImpressora(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_restaurar_backup(self):
+        try:
+            from src.ui_qt.restaurar_backup import JanelaRestaurarBackup
+            janela = self.janelas.get("restaurar")
+            if janela is not None and not janela.carregar():
+                return None
+            return self._unica(
+                "restaurar", lambda: JanelaRestaurarBackup(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_fila_impressao(self):
+        try:
+            from src.ui_qt.fila_impressao import JanelaFilaImpressao
+            return self._unica(
+                "fila_impressao", lambda: JanelaFilaImpressao(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_composicao(self):
+        try:
+            from src.ui_qt.composicao import JanelaComposicao
+            return self._unica(
+                "composicao", lambda: JanelaComposicao(self.ctx, parent=self))
         except ErroNegocio as erro:
             self.mensagem.setText(str(erro))
 

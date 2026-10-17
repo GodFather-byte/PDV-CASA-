@@ -1,32 +1,30 @@
 # HANDOFF
 
 ## Último trabalho
-- Modernização gradual da interface Qt opt-in concluída para esta etapa. O caixa Qt
-  agora inclui montagem, desconto/serviço, observação, transferência, pré-conta,
-  caderneta, entrega, sangria/suprimento, repique, gaveta, balança, reimpressão e
-  consulta de comanda/comissão. A lista de entregas pendentes não descarta nem
-  substitui a venda atual ao atribuir/cancelar; retomar exige venda atual vazia.
-- Integradas ao menu Qt telas de consulta de estoque, relatório de vendas por período,
-  configurações gerais e importação de produtos. Operações usam os controladores
-  existentes; telas de consulta são somente leitura. Exclusão em massa, outros
-  relatórios/financeiro, demais cadastros e assistência de impressão continuam no Tk.
-- Atualizada `docs/INTERFACE_QT.md`. Homologar em cópia dos dados antes de operação;
-  impressora, gaveta e balança ainda exigem teste físico.
-- Validação: 195 testes Qt passaram; 356 testes direcionados de controladores e
-  periféricos passaram; `git diff --check` limpo. Revisão do fluxo Qt encontrou e
-  levou à correção da interferência entre lista de entregas e venda ativa; testes
-  de regressão adicionados.
+- Ampliação do piloto opt-in Qt: caixa e operações complementares, cadastros,
+  estoque, relatórios, configurações, importação, contas a pagar/receber,
+  composição, fila/assistente de impressão e backup/restauração.
+- A tela financeira usa `ContasController`, revalida `lanc_contas`, e permite
+  cadastro/edição/cancelamento, filtros, repetição mensal, quitação e reversão.
+- Documentação do piloto em `docs/INTERFACE_QT.md`; autoteste de distribuição
+  acompanha os novos módulos Qt em `src/autoteste.py`.
+- Validação: 288 testes Qt passaram; 19 testes de contas, permissões e autoteste
+  passaram; os 5 testes de autoteste passaram após instalar `cryptography`
+  (dependência já declarada em `requirements.txt`). Quatro testes direcionados
+  do assistente Tk também passaram após tratar stdout indisponível e bytes fora
+  de UTF-8 do comando `sc`.
+- Suíte completa passou: 1687 testes, 62 skipped, no Python 3.15 do ambiente.
+  `git diff --check` limpo.
 
 ## Pendências
-- Confirmar a conclusão do job Windows Python 3.12 do workflow de testes:
-  https://github.com/GodFather-byte/PDV-CASA-/actions/runs/38983842283
-- Homologar a migração Qt em cópia do banco, com teclado/escala e periféricos reais,
+- Revisar `git status` e diff para preservar mudanças de terceiros, depois
+  commitar a continuação com trailer `Co-authored-by` obrigatório.
+- Homologar o piloto em cópia do banco com teclado/escala e periféricos reais,
   especialmente impressão, gaveta, balança, entrega e recuperação após falhas.
-- Backup: escolher pasta e senha no caixa, confirmar sincronização no provedor e
-  ensaiar recuperação em outra máquina; não sincronizar banco em uso nem cópias abertas.
-- Asaas: homologar sandbox/credenciais/webhook e hospedar API e
-  `python -m backend.worker_asaas` sob supervisão; validar custos antes de contratar.
-  Troca de plano/valor e cobrança automática por débito seguem adiadas; cobrança por
-  Pix/boleto via link. Sem worker supervisionado, não há renovação.
-- Painel web e múltiplos caixas seguem fora de escopo. Usar cópias de dados em toda
-  homologação; hardware, provedor e credenciais dependem do titular.
+- Backup: escolher pasta e senha, confirmar sincronização no provedor e ensaiar
+  recuperação em outra máquina; não sincronizar banco em uso nem cópias abertas.
+- Asaas: homologar sandbox/credenciais/webhook, hospedar API e
+  `python -m backend.worker_asaas` sob supervisão e validar custos antes de
+  contratar. Troca de plano/valor e cobrança automática por débito seguem adiadas.
+- Painel web e múltiplos caixas seguem fora de escopo; hardware, provedor e
+  credenciais dependem do titular.

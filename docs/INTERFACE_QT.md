@@ -43,6 +43,15 @@ sincronização contínua pelo painel Qt.
   centavos, validações, hashing e salvaguardas continuam no `CadastroController`.
   Edição de operador com senha vazia mantém a senha. Permissões são conferidas
   novamente antes de salvar/excluir, inclusive se o nível mudou com a tela aberta.
+- Mais cadastros: unidades, grupos, subgrupos, observações, cargos, fornecedores,
+  clientes, garotas, bairros, tipos de pagamento, plano/subplanos de contas e
+  alíquotas usam o formulário genérico Qt e o `CadastroController`; a lista só
+  oferece entidades habilitadas e autorizadas. Composição continua exigindo sua
+  tela especializada Qt.
+- Composição/ficha técnica: busca de produto, consulta da composição e inclusão/
+  exclusão de insumos pelas APIs de produto existentes, com acesso `cad_composicao`.
+  Quantidades usam a unidade cadastrada do insumo; não há conversão nem alteração
+  de estoque nesta tela.
 - Estoque somente para consulta: busca por nome/código, situação e grupo, resumo
   pelos métodos existentes de `EstoqueController` e até 30 movimentos recentes
   do produto selecionado. Não permite entrada, baixa, ajuste ou pedido; a tela e
@@ -51,6 +60,14 @@ sincronização contínua pelo painel Qt.
   totalizações fornecidas pelo relatório existente, com valores em reais somente
   para exibição. Datas, virada do dia, autorização `rel_vendas` e consulta ficam
   no controlador; a janela é somente leitura.
+- Contas a pagar/receber: cadastro, edição e cancelamento, filtros por datas,
+  situação, previsão e busca, saldo/resumo, repetição mensal, quitação e reversão
+  pelos métodos existentes de `ContasController`. O acesso `lanc_contas` é
+  revalidado ao abrir e antes das operações; quitação só muda pelos botões próprios.
+- Catálogo de outros relatórios: os 23 relatórios genéricos que já existiam no Tk
+  usam `ctx.relatorios`, filtros equivalentes, as permissões de cada módulo e
+  exportação CSV da estrutura comum. A auditoria detalhada continua em sua tela
+  própria; vendas por cupom e estoque atual usam telas Qt dedicadas.
 - Configurações gerais: identificação/contatos da loja e preferências de venda/
   caixa em abas salvas separadamente. Usa `ConfigController` e permissões
   específicas; não expõe senhas, nuvem, licenças, periféricos, módulos ou regras
@@ -60,6 +77,14 @@ sincronização contínua pelo painel Qt.
   linhas recusadas, opções de atualização/código e confirmação antes de gravar.
   Leitura, validação, centavos e transação pertencem a `ImportacaoProdutos`;
   cancelamento não grava. Exclusão em massa continua apenas no Tk.
+- Assistente de impressora: lista e sugere dispositivos do Windows, mostra
+  diagnóstico, configura a selecionada e envia uma página de teste somente após
+  autorização `cfg_maquinas`; confirma com a pessoa se o papel saiu. Não instala
+  driver nem limpa/destrava filas. Enviar o teste sem erro não comprova impressão.
+- Fila de impressão: consulta manual dos 300 registros mais recentes, reenvio,
+  cancelamento e limpeza de enviados/cancelados com confirmação e acesso
+  `util_fila_impressao`. Página de teste requer confirmação. A interface não
+  processa a fila em background e status de envio não comprova saída física.
 - Caixa aberto por `JanelaCaixa(ctx, parent)` em janela Qt não bloqueante,
   com referência conservada pelo menu. Seu escopo operacional é incremental;
   consulte os avisos da própria tela durante a homologação.
@@ -138,6 +163,10 @@ sincronização contínua pelo painel Qt.
   a senha na hora e exige uma pasta previamente configurada no controlador.
   A cópia cifrada não prova upload para a nuvem. Restauração exige digitar
   `RESTAURAR`, é apenas preparada e acontece no próximo início protegido.
+- Restauração local (permissão `util_backup`): consulta até 60 backups válidos,
+  permite selecionar um e, após confirmação das consequências, marca a restauração
+  pela API protegida existente. O banco aberto não é substituído; a operação só se
+  conclui no próximo início.
 
 ## Proteções e ciclo de vida
 
@@ -167,8 +196,8 @@ sem segurar o processo. Não se usa `terminate()` inseguro.
 
 ## Limites assumidos
 
-Demais relatórios, financeiro, demais cadastros, restauração local sem cifragem,
-assistência de impressão e outras telas não foram migrados neste piloto. O menu
+Financeiro além de contas a pagar/receber e outras telas
+não foram migrados neste piloto. O menu
 os identifica como indisponíveis. Para esses recursos, encerre o processo e
 inicie com `--tk`.
 
@@ -190,7 +219,7 @@ motivo para pular silenciosamente:
 
 ```powershell
 $env:QT_QPA_PLATFORM = "offscreen"
-python -m unittest tests.test_qt_app tests.test_qt_caixa tests.test_qt_comissao tests.test_qt_caixa_operacoes tests.test_qt_estoque tests.test_qt_relatorio_vendas tests.test_qt_configuracoes tests.test_qt_importar_produtos
+python -m unittest discover -s tests -p "test_qt_*.py"
 ```
 
 Há cobertura de autenticação, troca obrigatória, bloqueio por licença,
@@ -205,6 +234,8 @@ transferências, pré-conta, caderneta (débito/crédito/troco/limite/consulta),
 entrega completa, movimentos financeiros, autorizações, cancelamento de entradas,
 gaveta indisponível, captura/manual de peso, segunda via, consulta com comissão,
 modo cancelar e recusa das operações sem turno/durante gravação.
+`test_qt_contas` cobre os fluxos financeiros e `test_qt_app` cobre a integração
+da janela ao menu, janela única e revalidação do acesso.
 Homologue também teclado, escala de tela, leitores, impressoras e os fluxos
 operacionais efetivamente disponíveis no caixa.
 

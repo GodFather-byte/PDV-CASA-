@@ -1441,6 +1441,14 @@ class TesteSeletorDeImpressoras(BaseUI):
             a.update()
         return a
 
+    def test_spooler_nao_quebra_com_saida_indisponivel_e_substitui_bytes_invalidos(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        with mock.patch.object(self.so, "_WINDOWS", True), \
+                mock.patch("subprocess.run", return_value=SimpleNamespace(stdout=None)) as executar:
+            self.assertIsNone(self.so.servico_spooler_rodando())
+        self.assertEqual(executar.call_args.kwargs["errors"], "replace")
+
     def test_assistente_marca_a_elgin_configura_o_caixa_e_atualiza_a_janela_de_maquinas(self):
         from unittest import mock
         elgin = self.so.ImpressoraWindows("Elgin i9", "USB001", "Elgin i9 Series", termica_provavel=True)

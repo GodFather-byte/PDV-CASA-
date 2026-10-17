@@ -43,7 +43,10 @@ MODULOS = [
     "src.ui.estoque_ui", "src.ui.importar_produtos_ui", "src.ui.inicializacao", "src.ui.lancamentos_ui", "src.ui.login", "src.ui.menu_widgets", "src.ui.paleta", "src.ui.painel_mesas",
     "src.ui.relatorios_ui", "src.ui.telegram_ui", "src.ui.tema", "src.ui.utilitarios_ui", "src.ui.visualizador",
     "src.ui_qt.app", "src.ui_qt.tema", "src.ui_qt.login", "src.ui_qt.cadastros", "src.ui_qt.caixa", "src.ui_qt.auditoria",
-    "src.ui_qt.comissao",
+    "src.ui_qt.comissao", "src.ui_qt.assistente_impressora", "src.ui_qt.composicao",
+    "src.ui_qt.configuracoes", "src.ui_qt.estoque", "src.ui_qt.fila_impressao",
+    "src.ui_qt.importar_produtos", "src.ui_qt.relatorio_vendas", "src.ui_qt.relatorios",
+    "src.ui_qt.restaurar_backup", "src.ui_qt.contas",
 ]
 
 
