@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QLineEdit
 from src.core.erros import ErroNegocio, ErroPermissao
 from src.ui.contexto import Contexto
 from src.ui_qt.configuracoes import (
-    CHAVES_LOJA, CHAVES_PREFERENCIAS, JanelaConfiguracoes,
+    SECOES, CHAVES_LOJA, CHAVES_PREFERENCIAS, JanelaConfiguracoes,
 )
 from src.ui_qt.tema import aplicar
 from tests.base import BaseTeste
@@ -259,7 +259,7 @@ class TestConfiguracoesQt(BaseTeste):
             self.assertFalse(janela.salvar())
             salvar.assert_not_called()
         self.assertEqual(janela.campos["loja"]["telefone"].text(), "")
-        self.assertEqual(janela._originais, {"loja": {}, "preferencias": {}})
+        self.assertEqual(janela._originais, {secao: {} for secao in SECOES})
         self.assertFalse(janela.btn_salvar.isEnabled())
 
     def test_inativacao_ou_logout_com_janela_aberta_bloqueia_recarga_e_gravacao(self):
@@ -308,7 +308,7 @@ class TestConfiguracoesQt(BaseTeste):
         janela.show()
         self.aplicacao.processEvents()
         self.assertFalse(janela.btn_salvar.isEnabled())
-        self.assertEqual(janela._originais, {"loja": {}, "preferencias": {}})
+        self.assertEqual(janela._originais, {secao: {} for secao in SECOES})
 
     def test_falha_de_recarga_apos_salvar_informa_que_gravacao_ocorreu(self):
         janela = self.janela()
@@ -320,3 +320,99 @@ class TestConfiguracoesQt(BaseTeste):
         with patch.object(self.ctx.config, "salvar_loja") as salvar:
             self.assertTrue(janela.salvar())
             salvar.assert_not_called()
+
+    def test_campos_completos_do_controller_sem_duplicar_telegram(self):
+        from src.controllers.config_controller import CAMPOS_CONFIG, CAMPOS_LOJA
+        janela = self.janela()
+        reais = {chave for secao in SECOES if secao != "loja"
+                 for chave in janela.campos[secao]}
+        self.assertEqual(reais, {c[0] for c in CAMPOS_CONFIG if c[3] != "Telegram"})
+        self.assertEqual(set(janela.campos["loja"]), {c[0] for c in CAMPOS_LOJA})
+
+    def test_parametros_modulos_financeiro_e_validacao_atomica(self):
+        janela = self.janela()
+        janela.abas.setCurrentIndex(SECOES.index("parametros"))
+        self.definir(janela, "parametros", "usar_contas", True)
+        self.definir(janela, "parametros", "servico_pct", "12,5")
+        self.definir(janela, "parametros", "num_mesas", "0")
+        antes = self.ctx.config.todas()
+        self.assertFalse(janela.salvar())
+        self.assertEqual(self.ctx.config.todas(), antes)
+        self.definir(janela, "parametros", "num_mesas", "30")
+        self.assertTrue(janela.salvar())
+        self.assertTrue(self.banco.cfg_bool("usar_contas"))
+        self.assertEqual(self.banco.cfg("servico_pct"), "12.5")
+        self.assertEqual(self.banco.cfg_int("num_mesas"), 30)
+
+    def test_token_oculto_so_substituido_ou_apagado_explicitamente(self):
+        self.ctx.config.salvar_config({"api_token": "token-anterior"})
+        janela = self.janela()
+        token = janela.campos["nuvem"]["api_token"]
+        self.assertEqual(token.echoMode(), QLineEdit.EchoMode.Password)
+        self.assertEqual(token.text(), "")
+        self.assertNotIn("token-anterior", repr(janela._originais))
+        janela.abas.setCurrentIndex(SECOES.index("nuvem"))
+        self.definir(janela, "nuvem", "api_url", "https://exemplo.invalid")
+        self.assertTrue(janela.salvar())
+        self.assertEqual(self.banco.cfg("api_token"), "token-anterior")
+        token.setText("token-substituto")
+        self.assertTrue(janela.salvar())
+        self.assertEqual(self.banco.cfg("api_token"), "token-substituto")
+        self.assertEqual(token.text(), "")
+        janela.apagar_token.setChecked(True)
+        self.assertTrue(janela.salvar())
+        self.assertEqual(self.banco.cfg("api_token"), "")
+
+    def test_revogacao_limpa_token_digitado_e_impede_salvar(self):
+        id_ = self.operador(4)
+        janela = self.janela()
+        janela.abas.setCurrentIndex(SECOES.index("nuvem"))
+        janela.campos["nuvem"]["api_token"].setText("nao-gravar")
+        self.ctx.cadastros.salvar("operadores", {"nivel": "1"}, id_)
+        self.assertFalse(janela.salvar())
+        self.assertEqual(janela.campos["nuvem"]["api_token"].text(), "")
+        self.assertEqual(self.banco.cfg("api_token"), "")
+
+    def test_tema_claro_e_escuro_aplicados_sem_trocar_regras(self):
+        from src.ui_qt import tema
+        janela = self.janela()
+        janela.abas.setCurrentIndex(SECOES.index("parametros"))
+        self.definir(janela, "parametros", "tema_visual", "claro")
+        self.assertTrue(janela.salvar())
+        self.assertIn("#f3f6fa", self.aplicacao.styleSheet())
+        self.assertNotIn("#101827", self.aplicacao.styleSheet())
+        tema.aplicar(self.aplicacao, "escuro")
+        self.assertEqual(self.aplicacao.styleSheet(), tema.ESTILO)
+
+    def test_primeiro_cadastro_exige_nome_sem_bloquear_adiamento(self):
+        from src.ui_qt.configuracoes import JanelaCadastroLoja
+        from PySide6.QtWidgets import QDialog
+        janela = JanelaCadastroLoja(self.ctx)
+        self.janelas.append(janela)
+        self.assertFalse(janela.salvar())
+        self.assertIn("nome", janela.mensagem.text())
+        self.assertFalse(self.ctx.config.loja_cadastrada())
+        self.definir(janela, "loja", "nome_fantasia", "Minha casa")
+        self.assertTrue(janela.salvar())
+        self.assertEqual(janela.result(), QDialog.DialogCode.Accepted)
+        self.assertTrue(self.ctx.config.loja_cadastrada())
+
+    def test_primeiro_cadastro_revoga_acesso_antes_de_gravar(self):
+        from src.ui_qt.configuracoes import JanelaCadastroLoja
+        id_ = self.operador(3)
+        janela = JanelaCadastroLoja(self.ctx)
+        self.janelas.append(janela)
+        self.definir(janela, "loja", "nome_fantasia", "Nao gravar")
+        self.ctx.cadastros.salvar("operadores", {"nivel": "1"}, id_)
+        self.assertFalse(janela.salvar())
+        self.assertFalse(self.ctx.config.loja_cadastrada())
+
+    def test_token_nao_fica_no_retrato_se_recarga_falhar(self):
+        janela = self.janela()
+        janela.abas.setCurrentIndex(SECOES.index("nuvem"))
+        janela.campos["nuvem"]["api_token"].setText("segredo-digitado")
+        with patch.object(self.ctx.config, "todas", side_effect=ErroNegocio("Falha ao reler")):
+            self.assertTrue(janela.salvar())
+        self.assertNotIn("segredo-digitado", repr(janela._originais))
+        self.assertEqual(janela.campos["nuvem"]["api_token"].text(), "")
+        self.assertEqual(self.banco.cfg("api_token"), "segredo-digitado")

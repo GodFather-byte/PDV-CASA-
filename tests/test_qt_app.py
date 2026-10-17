@@ -407,6 +407,72 @@ class TestAppQt(BaseQt):
         self.assertIsNone(app.principal.abrir_contas())
         self.assertIn("acesso", app.principal.mensagem.text().lower())
 
+    def test_menu_novas_configuracoes_utilitarios_e_janelas_unicas(self):
+        from src.ui_qt.acessos import JanelaAcessos
+        from src.ui_qt.maquinas import JanelaMaquinas
+        from src.ui_qt.telegram import JanelaTelegram
+        from src.ui_qt.utilitarios import JanelaUtilitarios
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        for chave, classe in (("maquinas", JanelaMaquinas), ("acessos", JanelaAcessos),
+                              ("telegram", JanelaTelegram), ("utilitarios", JanelaUtilitarios)):
+            with self.subTest(tela=chave):
+                self.assertTrue(app.principal.botoes[chave].isEnabled())
+                abrir = getattr(app.principal, f"abrir_{chave}")
+                janela = abrir()
+                self.assertIsInstance(janela, classe)
+                self.assertIs(abrir(), janela)
+                self.assertTrue(janela.isVisible())
+        self.assertTrue(app.principal.fechar_filhos())
+        self.assertEqual(app.principal.janelas, {})
+
+    def test_menu_novas_telas_revalida_inativacao_ao_reabrir(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        for chave in ("maquinas", "acessos", "telegram", "utilitarios"):
+            abrir = getattr(app.principal, f"abrir_{chave}")
+            with self.subTest(tela=chave):
+                self.banco.executar("UPDATE operadores SET ativo = 1 WHERE id = ?", (app.ctx.operador_id,))
+                self.assertIsNotNone(abrir())
+                self.banco.executar("UPDATE operadores SET ativo = 0 WHERE id = ?", (app.ctx.operador_id,))
+                self.assertIsNone(abrir())
+                self.assertIn("inativo", app.principal.mensagem.text().lower())
+
+    def test_aplicativo_aplica_tema_claro_persistido_ao_iniciar(self):
+        self.banco.cfg_set("tema_visual", "claro")
+        app = self.app()
+        app.iniciar(servicos=False)
+        self.assertIn("#f3f6fa", self.aplicacao.styleSheet())
+        from src.ui_qt import tema
+        tema.aplicar(self.aplicacao)
+
+    def test_convite_cadastro_loja_adia_sem_gravar_e_nao_reabre_ja_cadastrada(self):
+        from src.ui_qt.configuracoes import JanelaCadastroLoja
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        janela = app.principal.oferecer_cadastro_loja()
+        self.assertIsInstance(janela, JanelaCadastroLoja)
+        janela.close()
+        self.assertFalse(app.ctx.config.loja_cadastrada())
+        app.ctx.config.cadastrar_loja({"nome_fantasia": "Casa"})
+        self.assertIsNone(app.principal.oferecer_cadastro_loja())
+
+    def test_atualizacoes_janela_reutilizada_e_cancelada_no_logout(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        with patch("src.ui_qt.atualizacoes.atualizacoes.consultar") as rede:
+            janela = app.principal.abrir_atualizacoes()
+            self.assertIs(app.principal.abrir_atualizacoes(), janela)
+            app.principal.consultar_atualizacoes()
+            rede.assert_not_called()
+        self.assertTrue(app.principal.fechar_filhos())
+        self.assertIsNone(janela._solicitacao)
+        self.assertFalse(janela.isVisible())
+
     def test_caixa_import_local_nao_bloqueante_e_referencia_retida(self):
         import types
         app = self.app()

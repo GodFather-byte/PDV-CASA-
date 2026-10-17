@@ -47,6 +47,8 @@ MODULOS = [
     "src.ui_qt.configuracoes", "src.ui_qt.estoque", "src.ui_qt.fila_impressao",
     "src.ui_qt.importar_produtos", "src.ui_qt.relatorio_vendas", "src.ui_qt.relatorios",
     "src.ui_qt.restaurar_backup", "src.ui_qt.contas",
+    "src.ui_qt.maquinas", "src.ui_qt.acessos", "src.ui_qt.telegram", "src.ui_qt.utilitarios",
+    "src.ui_qt.atualizacoes", "src.ui_qt.visualizador",
 ]
 
 

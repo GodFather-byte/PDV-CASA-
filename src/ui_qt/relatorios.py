@@ -24,8 +24,9 @@ from PySide6.QtWidgets import (
 
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio, ErroPermissao
-from src.core.relatorio import para_csv
+from src.core.relatorio import para_csv, para_texto
 from src.ui_qt.tema import texto
+from src.ui_qt.visualizador import JanelaVisualizador
 
 
 FILTROS = {
@@ -204,7 +205,9 @@ class JanelaRelatorios(QDialog):
         self.limpar_botao.clicked.connect(self.limpar)
         self.csv_botao = QPushButton("Exportar CSV")
         self.csv_botao.clicked.connect(lambda: self.exportar_csv())
-        for botao in (self.aplicar, self.limpar_botao, self.csv_botao):
+        self.visualizar_botao = QPushButton("Pré-visualizar texto")
+        self.visualizar_botao.clicked.connect(self.visualizar)
+        for botao in (self.aplicar, self.limpar_botao, self.visualizar_botao, self.csv_botao):
             barra.addWidget(botao)
         layout.addLayout(barra)
         self.criterios = texto("", "suave")
@@ -254,6 +257,7 @@ class JanelaRelatorios(QDialog):
             grade.setColumnCount(0)
         self.criterios.clear()
         self.csv_botao.setEnabled(False)
+        self.visualizar_botao.setEnabled(False)
 
     def _alterado(self, *_):
         self._descartar()
@@ -334,6 +338,7 @@ class JanelaRelatorios(QDialog):
                         rel.colunas, rel.estilos)
         self._preencher(self.totais, ["Indicador", "Valor"], rel.rodape)
         self.csv_botao.setEnabled(True)
+        self.visualizar_botao.setEnabled(True)
         self.mensagem.setText("Nada encontrado para os critérios." if rel.vazio() else "")
         return True
 
@@ -358,4 +363,16 @@ class JanelaRelatorios(QDialog):
         except (ErroNegocio, ValueError, KeyError, OSError, sqlite3.Error) as erro:
             return self._falhar(erro)
         self.mensagem.setText("CSV exportado.")
+        return True
+
+    def visualizar(self):
+        """Abre cópia textual da consulta exibida, sem imprimir automaticamente."""
+        try:
+            self._exigir_resultado()
+            janela = JanelaVisualizador(
+                self.ctx, self.rel.titulo, para_texto(self.rel, 100), parent=self,
+                modulo=self.spec.modulo, nome=self.chave, tipo="relatorio")
+        except (ErroNegocio, ValueError, KeyError, sqlite3.Error) as erro:
+            return self._falhar(erro)
+        janela.exec()
         return True

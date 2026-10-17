@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication, QAbstractItemView
 
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio, ErroPermissao
-from src.core.relatorio import para_csv
+from src.core.relatorio import para_csv, para_texto
 from src.ui.contexto import Contexto
 from src.ui_qt.relatorios import FILTROS, SPECS, JanelaRelatorios
 from tests.base import BaseTeste
@@ -375,6 +375,35 @@ class TestRelatoriosQt(BaseTeste):
         self.assertNotIn(b"\r\r\n", conteudo)
         self.assertIn("10,53", esperado)
 
+    def test_visualizacao_textual_usa_conversor_e_modulo_de_cada_relatorio(self):
+        janela = self.janela()
+        for chave, spec in SPECS.items():
+            with self.subTest(chave=chave):
+                self.selecionar(janela, chave)
+                self.assertTrue(janela.visualizar_botao.isEnabled())
+                with patch("src.ui_qt.relatorios.JanelaVisualizador") as visualizador, patch.object(
+                        self.ctx.impressao, "enviar") as enviar:
+                    janela.visualizar_botao.click()
+                    visualizador.assert_called_once_with(
+                        self.ctx, janela.rel.titulo, para_texto(janela.rel, 100),
+                        parent=janela, modulo=spec.modulo, nome=chave, tipo="relatorio")
+                    visualizador.return_value.exec.assert_called_once_with()
+                    enviar.assert_not_called()
+
+    def test_visualizacao_bloqueia_filtros_pendentes_e_permissao_revogada(self):
+        janela = self.janela()
+        janela.painel.campos["de"].setText("")
+        self.assertFalse(janela.visualizar_botao.isEnabled())
+        with patch("src.ui_qt.relatorios.JanelaVisualizador") as visualizador:
+            self.assertFalse(janela.visualizar())
+            visualizador.assert_not_called()
+        self.assertTrue(janela.atualizar())
+        self.banco.executar("UPDATE operadores SET ativo = 0 WHERE nome = 'ADM'")
+        with patch("src.ui_qt.relatorios.JanelaVisualizador") as visualizador:
+            self.assertFalse(janela.visualizar())
+            visualizador.assert_not_called()
+        self.assertFalse(janela.visualizar_botao.isEnabled())
+
     def test_exportacao_revalida_revogacao_inativacao_e_troca_sessao(self):
         janela = self.janela()
         for estado in ("sem_sessao", "inativo", "rebaixado", "modulo", "outra_sessao"):
@@ -440,12 +469,16 @@ from PySide6.QtWidgets import QApplication
 from src.database.conexao import BancoDados
 from src.ui.contexto import Contexto
 from src.ui_qt.relatorios import JanelaRelatorios
+from src.ui_qt.visualizador import JanelaVisualizador
+from unittest.mock import patch
 app = QApplication([])
 banco = BancoDados(':memory:')
 ctx = Contexto(banco)
 ctx.operador = ctx.acesso.operador(banco.valor('SELECT id FROM operadores LIMIT 1'))
 janela = JanelaRelatorios(ctx)
 assert janela.rel is not None, janela.mensagem.text()
+with patch.object(JanelaVisualizador, 'exec', return_value=0):
+    assert janela.visualizar()
 janela.close()
 banco.fechar()
 """

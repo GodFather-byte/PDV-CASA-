@@ -1,11 +1,11 @@
-"""Configurações gerais Qt, sem integração ao menu.
+"""Configurações Qt pelos mesmos campos e validações do controlador.
 
 JanelaConfiguracoes(ctx, parent) usa as APIs do ConfigController e os acessos
 cfg_loja/cfg_configuracoes. Cada aba grava separadamente, apenas alterações.
-As listas explícitas excluem impressão, segurança, módulos e regras financeiras.
+Equipamentos, acessos e Telegram possuem janelas próprias.
 """
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit,
+    QApplication, QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLineEdit,
     QPushButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -14,19 +14,20 @@ from src.core.erros import ErroNegocio, ErroPermissao
 from src.ui_qt.tema import texto
 
 
-CHAVES_LOJA = (
-    "razao_social", "nome_fantasia", "cnpj", "ie", "endereco", "complemento",
-    "bairro", "cidade", "uf", "cep", "telefone", "email",
-)
+CHAVES_LOJA = tuple(c[0] for c in CAMPOS_LOJA)
 CHAVES_PREFERENCIAS = (
     "posicao_padrao", "tempo_inatividade_min", "pergunta_pessoas",
     "painel_mesas_fixo", "painel_mostra_garotas",
 )
-SECOES = ("loja", "preferencias")
-MODULOS = {"loja": "cfg_loja", "preferencias": "cfg_configuracoes"}
+SECOES = ("loja", "preferencias", "parametros", "nuvem")
+MODULOS = {secao: "cfg_loja" if secao == "loja" else "cfg_configuracoes"
+           for secao in SECOES}
 CAMPOS = {
-    "loja": tuple(c for c in CAMPOS_LOJA if c[0] in CHAVES_LOJA),
+    "loja": tuple(CAMPOS_LOJA),
     "preferencias": tuple(c for c in CAMPOS_CONFIG if c[0] in CHAVES_PREFERENCIAS),
+    "parametros": tuple(c for c in CAMPOS_CONFIG
+                        if c[0] not in CHAVES_PREFERENCIAS and c[3] not in ("Nuvem", "Telegram")),
+    "nuvem": tuple(c for c in CAMPOS_CONFIG if c[3] == "Nuvem"),
 }
 
 
@@ -44,14 +45,16 @@ class JanelaConfiguracoes(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(texto("Configurações gerais da loja", "titulo"))
         layout.addWidget(texto(
-            "Cada aba é salva separadamente. Somente identificação, contatos e "
-            "preferências operacionais; não altera preços, serviço, permissões, "
-            "módulos, nuvem, licença ou equipamentos. As preferências são lidas "
-            "pelas telas que as utilizam; reabra o caixa para atualizar sua apresentação.",
+            "Cada aba salva somente suas alterações pelas regras existentes. "
+            "Parâmetros incluem serviço, módulos e autorizações do caixa; revise antes de salvar. "
+            "Reabra as telas operacionais para reler as configurações. Nuvem não inicia "
+            "sincronização de vendas nem contrata serviços automaticamente.",
             "suave"))
         self.abas = QTabWidget()
         for secao, titulo in (("loja", "Identificação e contatos"),
-                              ("preferencias", "Preferências de venda/caixa")):
+                              ("preferencias", "Preferências de venda/caixa"),
+                              ("parametros", "Parâmetros e módulos"),
+                              ("nuvem", "Conexão com a nuvem")):
             pagina = QWidget()
             formulario = QFormLayout(pagina)
             formulario.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -66,8 +69,14 @@ class JanelaConfiguracoes(QDialog):
                 else:
                     # Texto também para inteiros: validação e limites são do controller.
                     editor = QLineEdit()
+                    if chave == "api_token":
+                        editor.setEchoMode(QLineEdit.EchoMode.Password)
+                        editor.setPlaceholderText("Vazio mantém o token atual")
                 self.campos[secao][chave] = editor
                 formulario.addRow(rotulo, editor)
+            if secao == "nuvem":
+                self.apagar_token = QCheckBox("Apagar o token salvo ao salvar esta aba")
+                formulario.addRow(self.apagar_token)
             rolagem = QScrollArea()
             rolagem.setWidgetResizable(True)
             rolagem.setWidget(pagina)
@@ -118,6 +127,9 @@ class JanelaConfiguracoes(QDialog):
             if not permissoes[secao]:
                 self._originais[secao] = {}
         self.btn_salvar.setEnabled(permissoes[SECOES[self.abas.currentIndex()]])
+        self.apagar_token.setEnabled(permissoes["nuvem"])
+        if not permissoes["nuvem"]:
+            self.apagar_token.setChecked(False)
 
     def _autorizar(self, secao):
         try:
@@ -162,7 +174,9 @@ class JanelaConfiguracoes(QDialog):
         carregar = self.ctx.config.loja if secao == "loja" else self.ctx.config.todas
         dados = carregar()
         for chave, editor in self.campos[secao].items():
-            self._definir(editor, dados.get(chave))
+            self._definir(editor, "" if chave == "api_token" else dados.get(chave))
+        if secao == "nuvem":
+            self.apagar_token.setChecked(False)
         # O retorno de todas() inclui segredos: nunca o conservamos na janela.
         self._originais[secao] = self._valores(secao)
 
@@ -191,15 +205,23 @@ class JanelaConfiguracoes(QDialog):
             self._autorizar(secao)
             alterados = {k: v for k, v in self._valores(secao).items()
                          if v != self._originais[secao].get(k)}
+            if secao == "nuvem" and self.apagar_token.isChecked():
+                alterados["api_token"] = ""
             if not alterados:
                 self.mensagem.setText("Nenhuma alteração nesta aba.")
                 return True
             salvar = self.ctx.config.salvar_loja if secao == "loja" else self.ctx.config.salvar_config
             salvar(alterados)
+            if "tema_visual" in alterados:
+                from src.ui_qt import tema
+                tema.aplicar(QApplication.instance(), self.ctx.banco.cfg("tema_visual"))
         except ErroNegocio as erro:
             self.mensagem.setText(str(erro))
             return False
         # Normalizações são relidas do controller, não reproduzidas pela interface.
+        if secao == "nuvem":
+            self.campos["nuvem"]["api_token"].clear()
+            self.apagar_token.setChecked(False)
         self._originais[secao] = self._valores(secao)
         try:
             self._carregar(secao)
@@ -207,4 +229,33 @@ class JanelaConfiguracoes(QDialog):
             self.mensagem.setText("Aba salva, mas não foi possível reler os valores. Recarregue a aba.")
             return True
         self.mensagem.setText("Configurações desta aba salvas.")
+        return True
+
+    def closeEvent(self, evento):
+        self.campos["nuvem"]["api_token"].clear()
+        super().closeEvent(evento)
+
+
+class JanelaCadastroLoja(JanelaConfiguracoes):
+    """Convite do primeiro uso; fechar adia para a próxima entrada, como no Tk."""
+
+    def __init__(self, ctx, parent=None):
+        super().__init__(ctx, parent)
+        self._autorizar("loja")
+        self.setWindowTitle("Cadastro inicial da casa")
+        for indice in range(1, self.abas.count()):
+            self.abas.setTabVisible(indice, False)
+        self.abas.setCurrentIndex(0)
+        self.btn_salvar.setText("Cadastrar a casa")
+        self.mensagem.setText(
+            "Informe o nome que sairá nos comprovantes. Fechar adia o cadastro para a próxima entrada.")
+
+    def salvar(self):
+        try:
+            self._autorizar("loja")
+            self.ctx.config.cadastrar_loja(self._valores("loja"))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+            return False
+        self.accept()
         return True

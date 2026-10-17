@@ -5,13 +5,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication, QAbstractItemView, QPushButton
+from PySide6.QtWidgets import (
+    QApplication, QAbstractItemView, QInputDialog, QMessageBox, QPushButton,
+)
 
 from src.controllers.estoque_controller import EstoqueController
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio, ErroPermissao
 from src.ui.contexto import Contexto
-from src.ui_qt.estoque import JanelaEstoque
+from src.ui_qt.estoque import JanelaEstoque, _DialogoQuantidade
 from src.ui_qt.tema import aplicar
 from tests.base import BaseTeste
 
@@ -235,6 +237,178 @@ class TestEstoqueQt(BaseTeste):
         self.assertEqual(janela.movimentos, [])
         self.assertEqual(janela.mensagem.text(), "Histórico indisponível")
 
+    def test_movimentos_rapidos_entrada_saida_descarte_e_contagem(self):
+        pid = self.novo_produto("GELO", estoque=True, qt=2)
+        janela = self.janela()
+        janela.grade.selectRow(0)
+        self.assertTrue(janela.registrar("entrada", 1.2345))
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (pid,)), 3.2345)
+        self.assertTrue(janela.registrar("saida", 0.5))
+        self.assertTrue(janela.registrar("descarte", 0.25))
+        self.assertTrue(janela.registrar("contagem", 4.125))
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (pid,)), 4.125)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 4)
+        self.assertEqual(
+            [m["tipo"] for m in self.ctx.estoque.historico(pid)],
+            ["contagem", "descarte", "saida", "entrada"])
+        self.assertEqual(janela.produto["id"], pid)
+        self.assertEqual(janela.grade.item(0, 4).text(), "4,1250 UN")
+
+    def test_produto_sem_controle_liga_estoque_com_entrada_e_bloqueia_retiradas(self):
+        pid = self.novo_produto("AGUA")
+        janela = self.janela()
+        self.filtrar(janela, "livre")
+        janela.grade.selectRow(0)
+        self.assertTrue(janela.botoes["entrada"].isEnabled())
+        self.assertTrue(janela.botoes["contagem"].isEnabled())
+        self.assertFalse(janela.botoes["saida"].isEnabled())
+        self.assertFalse(janela.botoes["descarte"].isEnabled())
+        self.assertTrue(janela.registrar("entrada", 2))
+        self.assertEqual(self.banco.valor(
+            "SELECT qt_atual FROM produtos WHERE id = ?", (pid,)), 2)
+        self.assertTrue(self.banco.valor(
+            "SELECT controla_estoque FROM produtos WHERE id = ?", (pid,)))
+        self.assertIsNone(janela.produto)
+        self.assertEqual(janela.grade.rowCount(), 0)
+        self.filtrar(janela, None)
+        janela.grade.selectRow(0)
+        self.assertEqual(janela.produto["situacao"], "normal")
+        self.assertTrue(janela.botoes["saida"].isEnabled())
+
+    def test_movimento_recusado_nao_grava_e_cancelar_dialogo_nao_altera_saldo(self):
+        pid = self.novo_produto("GELO", estoque=True, qt=2)
+        janela = self.janela()
+        janela.grade.selectRow(0)
+        self.assertFalse(janela.registrar("saida", 3))
+        self.assertEqual(janela.mensagem.text(), "Só há 2,000 de 'GELO' em estoque; não dá para tirar 3,000.")
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (pid,)), 2)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 0)
+        with patch.object(janela, "_pedir_quantidade", return_value=None):
+            self.assertFalse(janela.registrar_dialogo("entrada"))
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (pid,)), 2)
+        with patch.object(janela, "_pedir_quantidade", return_value=0.5):
+            self.assertTrue(janela.registrar_dialogo("entrada"))
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (pid,)), 2.5)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 1)
+
+    def test_dialogo_quantidade_valida_confirma_cancela_e_preve_saldo(self):
+        from PySide6.QtWidgets import QDialog
+
+        produto = {"nome": "GELO", "situacao": "normal", "qt_atual": 2, "unidade": "UN"}
+        dialogo = _DialogoQuantidade(produto, "entrada")
+        dialogo.entrada.setText("1,2345")
+        self.assertEqual(dialogo.previa.text(), "Vai ficar com 3,2345 UN")
+        dialogo.confirmar()
+        self.assertEqual(dialogo.quantidade, 1.2345)
+        with patch.object(dialogo, "exec", return_value=QDialog.DialogCode.Accepted):
+            self.assertEqual(dialogo.executar(), 1.2345)
+        self.assertIsNone(_DialogoQuantidade(produto, "saida")._quantidade())
+        saida = _DialogoQuantidade(produto, "saida")
+        saida.entrada.setText("0")
+        saida.confirmar()
+        self.assertIsNone(saida.quantidade)
+        with patch.object(saida, "exec", return_value=QDialog.DialogCode.Rejected):
+            self.assertIsNone(saida.executar())
+        contagem = _DialogoQuantidade(produto, "contagem")
+        contagem.entrada.setText("0")
+        contagem.confirmar()
+        self.assertEqual(contagem.quantidade, 0)
+
+    def test_definir_minimo_confirma_cancela_e_rejeita_negativo(self):
+        pid = self.novo_produto("GELO", estoque=True)
+        janela = self.janela()
+        janela.grade.selectRow(0)
+        with patch.object(QInputDialog, "getText", return_value=("", False)):
+            self.assertFalse(janela.definir_minimo())
+        self.assertEqual(self.banco.valor("SELECT estoque_minimo FROM produtos WHERE id = ?", (pid,)), 0)
+        with patch.object(QInputDialog, "getText", return_value=("-1", True)):
+            self.assertFalse(janela.definir_minimo())
+        self.assertEqual(self.banco.valor("SELECT estoque_minimo FROM produtos WHERE id = ?", (pid,)), 0)
+        with patch.object(QInputDialog, "getText", return_value=("2,3456", True)):
+            self.assertTrue(janela.definir_minimo())
+        self.assertEqual(self.banco.valor("SELECT estoque_minimo FROM produtos WHERE id = ?", (pid,)), 2.3456)
+        self.assertEqual(janela.grade.item(0, 5).text(), "2,3456")
+
+    def test_pedido_sugerido_confirma_com_fornecedor_e_cancelamento_nao_grava(self):
+        self.produtos()
+        fornecedor = self.banco.inserir("fornecedores", {"nome": "AMBEV"})
+        janela = self.janela()
+        saldo_antes = self.banco.valor("SELECT qt_atual FROM produtos WHERE nome = 'BRAHMA'")
+        with patch.object(QInputDialog, "getItem", return_value=("AMBEV", False)):
+            self.assertFalse(janela.gerar_pedido())
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 0)
+        with patch.object(QInputDialog, "getItem", return_value=("AMBEV", True)):
+            self.assertTrue(janela.gerar_pedido())
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 1)
+        pedido = self.ctx.estoque.lancamentos("pedido")[0]
+        self.assertEqual(pedido["fornecedor_id"], fornecedor)
+        self.assertEqual(
+            {item["nome"]: item["quantidade"] for item in self.ctx.estoque.itens(pedido["id"])},
+            {"SKOL": 20, "BRAHMA": 5})
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE nome = 'BRAHMA'"), saldo_antes)
+        self.assertIn("só muda quando a entrega for confirmada", janela.mensagem.text())
+        self.assertEqual(janela._janela_lancamentos.lancamento_id, pedido["id"])
+        janela._janela_lancamentos.close()
+
+    def test_pedido_e_lista_de_compras_respeitam_sem_reposicao_ou_fornecedor(self):
+        pid = self.novo_produto("GELO", estoque=True, qt=3)
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 1 WHERE id = ?", (pid,))
+        janela = self.janela()
+        self.assertFalse(janela.gerar_pedido())
+        self.assertIn("Nenhum produto precisa", janela.mensagem.text())
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 4 WHERE id = ?", (pid,))
+        with patch.object(self.ctx.cadastros, "opcoes", return_value=[]):
+            self.assertFalse(janela.gerar_pedido())
+        self.assertIn("Cadastre um fornecedor", janela.mensagem.text())
+        self.banco.executar("UPDATE produtos SET estoque_minimo = 0 WHERE id = ?", (pid,))
+        self.assertFalse(janela.lista_de_compras())
+        self.assertIn("Nenhum produto precisa", janela.mensagem.text())
+
+    def test_lista_de_compras_exibe_saldo_minimo_e_reposicao(self):
+        pid = self.novo_produto("GELO", estoque=True, qt=3)
+        self.banco.executar(
+            "UPDATE produtos SET estoque_minimo = 4, ult_preco_cent = 275 WHERE id = ?", (pid,))
+        janela = self.janela()
+        with patch.object(QMessageBox, "information") as informar:
+            self.assertTrue(janela.lista_de_compras())
+        texto_lista = informar.call_args.args[2]
+        self.assertIn("GELO", texto_lista)
+        self.assertIn("3", texto_lista)
+        self.assertIn("4", texto_lista)
+        self.assertIn("5", texto_lista)
+        self.assertIn(f"{'GELO':<32}{'3':>9}{'4':>9}{'5':>10}", texto_lista)
+        self.assertEqual(janela.grade.item(0, 6).text(), "5,0000")
+        self.assertEqual(janela.grade.item(0, 7).text(), "R$ 2,75")
+        self.assertEqual(janela.grade.item(0, 8).text(), "R$ 8,25")
+        self.assertEqual(self.ctx.estoque.resumo()["valor_cent"], 825)
+
+    def test_edicao_e_cadastro_abrem_formulario_qt_com_id_selecionado(self):
+        from PySide6.QtWidgets import QDialog
+
+        pid = self.novo_produto("GELO", estoque=True)
+        janela = self.janela()
+        janela.grade.selectRow(0)
+        with patch("src.ui_qt.cadastros.FormularioCadastro") as formulario:
+            formulario.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            self.assertTrue(janela.editar_cadastro())
+            self.assertEqual(formulario.call_args.args[:3], (self.ctx, "produtos", pid))
+        with patch("src.ui_qt.cadastros.FormularioCadastro") as formulario:
+            formulario.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            self.assertFalse(janela.cadastrar_produto())
+            self.assertEqual(formulario.call_args.args[:3], (self.ctx, "produtos", None))
+
+    def test_revogacao_de_acesso_bloqueia_movimento_rapido_e_limpa_tela(self):
+        pid = self.novo_produto("GELO", estoque=True, qt=2)
+        self.banco.executar("UPDATE operadores SET nivel = 2 WHERE id = ?", (self.ctx.operador_id,))
+        janela = self.janela()
+        janela.grade.selectRow(0)
+        self.banco.executar("UPDATE acessos SET nivel = 3 WHERE modulo = 'lanc_estoque'")
+        self.assertFalse(janela.registrar("entrada", 1))
+        self.assertEqual(self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (pid,)), 2)
+        self.assertEqual(janela.linhas, [])
+        self.assertEqual(janela.grade.rowCount(), 0)
+        self.assertIn("não permite", janela.mensagem.text())
+
     def test_tela_funciona_em_banco_somente_leitura_sem_modificar_dados(self):
         sem, *_ = self.produtos()
         self.ctx.estoque.registrar_rapido(sem, "entrada", 2)
@@ -245,7 +419,11 @@ class TestEstoqueQt(BaseTeste):
             self.assertEqual(tabela.editTriggers(), QAbstractItemView.EditTrigger.NoEditTriggers)
         self.assertEqual(
             [b.text() for b in janela.findChildren(QPushButton)],
-            ["Consultar / atualizar (F5)", "Fechar"])
+            ["Gerar pedido do que falta", "Lista de compras",
+             "Lançamentos de estoque",
+             "Consultar / atualizar (F5)", "＋ Entrada", "－ Saída",
+             "Perda / quebra", "Contei e ajustar", "Definir estoque mínimo",
+             "Editar cadastro do produto", "Cadastrar produto", "Fechar"])
         for situacao in (None, "sem", "ponto", "normal", "livre"):
             self.filtrar(janela, situacao)
             if janela.grade.rowCount():

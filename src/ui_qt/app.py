@@ -178,6 +178,7 @@ class JanelaPrincipal(QMainWindow):
         super().__init__()
         self.app, self.ctx = app, app.ctx
         self.janelas = {}
+        self._atualizacoes = None
         self._fechamento_autorizado = False
         self.setWindowTitle(f"WillPDV • {self.ctx.config.nome_loja()} • Qt piloto")
         self.resize(1180, 760)
@@ -193,13 +194,18 @@ class JanelaPrincipal(QMainWindow):
             ("inicio", "Visão geral", self.atualizar),
             ("caixa", "Abrir caixa", self.abrir_caixa),
             ("produtos", "Produtos", lambda: self.abrir_cadastro("produtos")),
-            ("estoque", "Estoque • consulta", self.abrir_estoque),
+            ("estoque", "Estoque", self.abrir_estoque),
             ("relatorio_vendas", "Vendas • relatório", self.abrir_relatorio_vendas),
             ("relatorios", "Mais relatórios", self.abrir_relatorios),
             ("contas", "Contas a pagar / receber", self.abrir_contas),
             ("operadores", "Operadores", lambda: self.abrir_cadastro("operadores")),
             ("mais_cadastros", "Mais cadastros", self.escolher_cadastro_adicional),
             ("configuracoes", "Configurações gerais", self.abrir_configuracoes),
+            ("maquinas", "Máquinas e periféricos", self.abrir_maquinas),
+            ("acessos", "Níveis de acesso", self.abrir_acessos),
+            ("telegram", "Telegram do dono", self.abrir_telegram),
+            ("utilitarios", "Utilitários e manutenção", self.abrir_utilitarios),
+            ("atualizacoes", "Atualizações do programa", self.abrir_atualizacoes),
             ("importar_produtos", "Importar produtos", self.abrir_importacao_produtos),
             ("auditoria", "Auditoria • somente leitura", self.abrir_auditoria),
             ("backup", "Backup externo cifrado", self.abrir_backup),
@@ -207,7 +213,7 @@ class JanelaPrincipal(QMainWindow):
             ("impressora", "Assistente de impressora", self.abrir_assistente_impressora),
             ("fila_impressao", "Fila de impressão", self.abrir_fila_impressao),
             ("composicao", "Composição / ficha técnica", self.abrir_composicao),
-            ("outros", "Outros módulos • indisponíveis", self.mostrar_limites),
+            ("outros", "Escopo e homologação", self.mostrar_limites),
         ):
             botao = QPushButton(titulo)
             botao.clicked.connect(acao)
@@ -244,17 +250,25 @@ class JanelaPrincipal(QMainWindow):
             self.indicadores[chave] = rotulo
             conteudo.addWidget(cartao)
         conteudo.addWidget(tema.texto(
-            "Outras telas ainda estão sendo migradas. Consulte os avisos de cada módulo "
-            "e use --tk para operações ainda indisponíveis. "
+            "Interface em homologação: valide os fluxos em cópia dos dados e com periféricos reais. "
+            "O caminho --tk permanece disponível durante a transição. "
             "Não abra duas instâncias sobre o mesmo banco.", "aviso"))
         self.mensagem = tema.texto("", "aviso")
         conteudo.addWidget(self.mensagem)
+        self.aviso_atualizacao = tema.texto("", "aviso")
+        conteudo.addWidget(self.aviso_atualizacao)
         conteudo.addStretch()
         layout.addLayout(conteudo, 3)
         self._timer = QTimer(self)
         self._timer.setInterval(15000)
         self._timer.timeout.connect(self.atualizar)
         self._timer.start()
+        self._primeiro_uso_timer = QTimer(self)
+        self._primeiro_uso_timer.setSingleShot(True)
+        self._primeiro_uso_timer.timeout.connect(self.oferecer_cadastro_loja)
+        self._atualizacoes_timer = QTimer(self)
+        self._atualizacoes_timer.setInterval(60000)
+        self._atualizacoes_timer.timeout.connect(self.consultar_atualizacoes)
         self.atualizar()
 
     def atualizar(self):
@@ -280,6 +294,12 @@ class JanelaPrincipal(QMainWindow):
             for spec in self._catalogo_relatorios().values()))
         self.botoes["configuracoes"].setEnabled(
             self.ctx.pode("cfg_loja") or self.ctx.pode("cfg_configuracoes"))
+        for chave, modulo in (("maquinas", "cfg_maquinas"), ("acessos", "cfg_acessos"),
+                              ("telegram", "cfg_telegram")):
+            self.botoes[chave].setEnabled(self.ctx.pode(modulo))
+        from src.ui_qt.utilitarios import MODULOS_UTILITARIOS
+        self.botoes["utilitarios"].setEnabled(
+            any(self.ctx.pode(modulo) for modulo in MODULOS_UTILITARIOS))
         self.botoes["importar_produtos"].setEnabled(
             "cad_produtos" not in desligados and self.ctx.pode("cad_produtos"))
         self.botoes["backup"].setEnabled(self.ctx.pode("util_backup"))
@@ -319,10 +339,10 @@ class JanelaPrincipal(QMainWindow):
 
     def mostrar_limites(self):
         self.mensagem.setText(
-            "Disponível neste menu, conforme acesso: caixa, cadastros, consulta de estoque, relatórios, "
-            "configurações gerais, importação, ficha técnica, assistência/fila de impressão, backup e restauração "
-            "(conforme permissão). "
-            "Outros módulos: indisponíveis no piloto. Encerre e use --tk; não há fallback para Tk.")
+            "Disponível conforme acesso: caixa, cadastros, estoque, relatórios, configurações, máquinas, acessos, "
+            "Telegram, utilitários, importação, ficha técnica, impressão, backup e restauração. "
+            "Valide em cópia dos dados. Serviços externos e periféricos indisponíveis não são simulados. "
+            "Encerre antes de usar --tk; não há fallback para Tk nem duas instâncias no mesmo banco.")
 
     def _unica(self, chave, criar):
         janela = self.janelas.get(chave)
@@ -418,6 +438,91 @@ class JanelaPrincipal(QMainWindow):
             from src.ui_qt.configuracoes import JanelaConfiguracoes
             return self._unica(
                 "configuracoes", lambda: JanelaConfiguracoes(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def oferecer_cadastro_loja(self):
+        if self.ctx.config.loja_cadastrada() or self.ctx.operador is None:
+            return None
+        try:
+            from src.ui_qt.configuracoes import JanelaCadastroLoja
+            janela = self._unica(
+                "cadastro_loja", lambda: JanelaCadastroLoja(self.ctx, self))
+            janela.accepted.connect(lambda: self.setWindowTitle(
+                f"WillPDV • {self.ctx.config.nome_loja()} • Qt piloto"))
+            return janela
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_maquinas(self):
+        try:
+            from src.ui_qt.maquinas import JanelaMaquinas
+            janela = self.janelas.get("maquinas")
+            if janela is not None:
+                janela.exigir_acesso()
+            return self._unica("maquinas", lambda: JanelaMaquinas(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_acessos(self):
+        try:
+            from src.ui_qt.acessos import JanelaAcessos
+            janela = self.janelas.get("acessos")
+            if janela is not None:
+                janela.exigir_acesso()
+            return self._unica("acessos", lambda: JanelaAcessos(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_telegram(self):
+        try:
+            from src.ui_qt.telegram import JanelaTelegram
+            janela = self.janelas.get("telegram")
+            if janela is not None:
+                janela.exigir_acesso()
+            return self._unica("telegram", lambda: JanelaTelegram(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def abrir_utilitarios(self):
+        try:
+            from src.ui_qt.utilitarios import JanelaUtilitarios
+            janela = self.janelas.get("utilitarios")
+            if janela is not None:
+                janela.exigir_acesso()
+            return self._unica("utilitarios", lambda: JanelaUtilitarios(self.ctx, self))
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def _janela_atualizacoes(self):
+        from src.ui_qt.atualizacoes import JanelaAtualizacoes
+        if self._atualizacoes is None:
+            self._atualizacoes = JanelaAtualizacoes(self.ctx, self)
+            self._atualizacoes.aviso_alterado.connect(self._mostrar_aviso_atualizacao)
+            self._mostrar_aviso_atualizacao(self._atualizacoes.aviso)
+        self._atualizacoes.exigir_acesso()
+        return self._atualizacoes
+
+    def _mostrar_aviso_atualizacao(self, aviso):
+        self.aviso_atualizacao.setText(
+            f"Atualização {aviso['ultima']} disponível. Consulte Atualizações do programa."
+            if aviso else "")
+
+    def abrir_atualizacoes(self):
+        try:
+            janela = self._janela_atualizacoes()
+            janela.show()
+            janela.raise_()
+            janela.activateWindow()
+            return janela
+        except ErroNegocio as erro:
+            self.mensagem.setText(str(erro))
+
+    def consultar_atualizacoes(self):
+        if self.ctx.banco.caminho == ":memory:":
+            return
+        try:
+            self._janela_atualizacoes().consultar_automaticamente()
         except ErroNegocio as erro:
             self.mensagem.setText(str(erro))
 
@@ -527,11 +632,16 @@ class JanelaPrincipal(QMainWindow):
             if not janela.close():
                 return False
         self.janelas.clear()
+        if self._atualizacoes is not None:
+            self._atualizacoes.cancelar_consulta()
+            self._atualizacoes.close()
         return True
 
     def closeEvent(self, evento):
         if self._fechamento_autorizado:
             self._timer.stop()
+            self._primeiro_uso_timer.stop()
+            self._atualizacoes_timer.stop()
             evento.accept()
         elif self.app.encerrar(confirmar=True):
             evento.accept()
@@ -568,7 +678,7 @@ class App:
         self._gancho = self._erro_na_tela
         sys.excepthook = self._gancho
         self._servicos_habilitados = servicos and self.banco.caminho != ":memory:"
-        tema.aplicar(self.aplicacao)
+        tema.aplicar(self.aplicacao, self.banco.cfg("tema_visual") or "escuro")
         if self._servicos_habilitados:
             idade = self.ctx.utilitarios.idade_backup_horas()
             if idade is None or idade >= 12:
@@ -615,6 +725,10 @@ class App:
         self.login = None
         self.principal = JanelaPrincipal(self)
         self.principal.show()
+        if not self.ctx.config.loja_cadastrada() and self.ctx.pode("cfg_loja"):
+            self.principal._primeiro_uso_timer.start(150)
+        self.principal._atualizacoes_timer.start()
+        self.principal.consultar_atualizacoes()
         if operador.so_caixa:
             self.principal.abrir_caixa()
 
@@ -775,6 +889,16 @@ def autoteste(pasta: Path) -> list[str]:
         if not all(janela is not None and janela.isVisible()
                    for janela in (app.principal, produtos, operadores)):
             raise RuntimeError("Uma das janelas Qt não abriu.")
+        telas_administrativas = (
+            app.principal.abrir_configuracoes, app.principal.abrir_maquinas,
+            app.principal.abrir_acessos, app.principal.abrir_telegram,
+            app.principal.abrir_utilitarios, app.principal.abrir_atualizacoes,
+            app.principal.abrir_estoque,
+        )
+        for abrir in telas_administrativas:
+            janela = abrir()
+            if janela is None or not janela.isVisible():
+                raise RuntimeError(f"A tela Qt {abrir.__name__} não abriu.")
         from src.ui_qt.comissao import DialogoAcerto, DialogoComissao
         for chave, valor in (("imprimir_via_comissao", "N"), ("comissao_na_linha", "S"),
                              ("comissao_em_pontos", "N"), ("comissao_pede_shows", "N"),
@@ -820,7 +944,8 @@ def autoteste(pasta: Path) -> list[str]:
             raise RuntimeError("A saída alterou indevidamente a comissão pendente.")
         return ["Qt Widgets: menu principal e cadastros de produtos/operadores abrem; "
                 "banco em memória, sem rede nem serviços",
-                "caixa Qt: comissão na linha, painel, diálogos de comissão/acerto e saída sem consumo conferidos"]
+                "caixa Qt: comissão na linha, painel, diálogos de comissão/acerto e saída sem consumo conferidos",
+                "configurações, máquinas, acessos, Telegram, utilitários, atualizações e estoque abrem sem rede nem hardware"]
     finally:
         if app is not None:
             app.finalizar()

@@ -35,7 +35,7 @@ QScrollArea { border: 0; }
 """
 
 
-def aplicar(aplicacao: QApplication) -> None:
+def aplicar(aplicacao: QApplication, aparencia: str = "escuro") -> None:
     # O plugin offscreen do Windows não enumera fontes do sistema por conta própria.
     if sys.platform == "win32" and "Segoe UI" not in QFontDatabase.families():
         pasta = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
@@ -44,7 +44,19 @@ def aplicar(aplicacao: QApplication) -> None:
             if caminho.is_file():
                 QFontDatabase.addApplicationFont(str(caminho))
     aplicacao.setStyle("Fusion")
-    aplicacao.setStyleSheet(ESTILO)
+    estilo = ESTILO
+    if aparencia == "claro":
+        cores = {
+            "#101827": "#f3f6fa", "#e6edf7": "#152238", "#1b2739": "#ffffff",
+            "#324158": "#bbc9d9", "#5ee2bb": "#006c55", "#afbdd1": "#40536d",
+            "#ffd28a": "#875000", "#24364d": "#e1e9f2", "#405570": "#a2b2c7",
+            "#304864": "#cedded", "#187e65": "#b0e4d2", "#32b38e": "#168567",
+            "#8190a6": "#64748b", "#1b2534": "#e5eaf0", "#182437": "#ffffff",
+            "#1d2d43": "#edf3f9",
+        }
+        for original, nova in cores.items():
+            estilo = estilo.replace(original, nova)
+    aplicacao.setStyleSheet(estilo)
     aplicacao.setApplicationName("WillPDV • Qt piloto")
 
 

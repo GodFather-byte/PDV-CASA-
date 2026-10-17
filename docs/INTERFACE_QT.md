@@ -1,6 +1,6 @@
 # Interface Qt — piloto opt-in
 
-Esta é a primeira etapa real, não a substituição completa do Tkinter. O caminho Tk
+Esta migração mantém o Qt opt-in durante a homologação. O caminho Tk
 permanece disponível durante a homologação. Nunca mantenha dois programas abertos
 sobre o mesmo banco. Faça backup antes de homologar em uma cópia dos dados.
 
@@ -30,6 +30,9 @@ sincronização contínua pelo painel Qt.
 
 - Login Qt com o `AcessoController` existente: senhas, tentativas/bloqueio e
   troca obrigatória da senha igual ao nome (inclusive ADM/ADM).
+- Primeiro uso: após entrar, operador com `cfg_loja` recebe o convite para
+  cadastrar a casa pelo `ConfigController.cadastrar_loja`. O nome é obrigatório
+  para salvar; fechar adia o convite para a próxima entrada, como no Tk.
 - Licença local pelas APIs existentes, preservando carência, relógio e isenção
   de turno recente. Ativação manual de código e consulta online em thread:
   só a rede sai da thread Qt; o banco e os widgets permanecem na thread principal.
@@ -52,10 +55,10 @@ sincronização contínua pelo painel Qt.
   exclusão de insumos pelas APIs de produto existentes, com acesso `cad_composicao`.
   Quantidades usam a unidade cadastrada do insumo; não há conversão nem alteração
   de estoque nesta tela.
-- Estoque somente para consulta: busca por nome/código, situação e grupo, resumo
-  pelos métodos existentes de `EstoqueController` e até 30 movimentos recentes
-  do produto selecionado. Não permite entrada, baixa, ajuste ou pedido; a tela e
-  o controlador revalidam o acesso.
+- Estoque: busca por nome/código, situação e grupo, resumo e histórico pelas
+  APIs existentes, com entrada, saída/descarte, contagem, mínimo e reposição.
+  Movimentos e cadastros usam as permissões e regras existentes; não há
+  movimentação automática apenas por consultar ou selecionar um produto.
 - Relatório de vendas por período operacional: produtos de vendas fechadas e
   totalizações fornecidas pelo relatório existente, com valores em reais somente
   para exibição. Datas, virada do dia, autorização `rel_vendas` e consulta ficam
@@ -66,17 +69,39 @@ sincronização contínua pelo painel Qt.
   revalidado ao abrir e antes das operações; quitação só muda pelos botões próprios.
 - Catálogo de outros relatórios: os 23 relatórios genéricos que já existiam no Tk
   usam `ctx.relatorios`, filtros equivalentes, as permissões de cada módulo e
-  exportação CSV da estrutura comum. A auditoria detalhada continua em sua tela
+  exportação CSV da estrutura comum, além de pré-visualização textual, salvar
+  texto e envio explícito para impressão com confirmação e revalidação.
+  A auditoria detalhada continua em sua tela
   própria; vendas por cupom e estoque atual usam telas Qt dedicadas.
-- Configurações gerais: identificação/contatos da loja e preferências de venda/
-  caixa em abas salvas separadamente. Usa `ConfigController` e permissões
-  específicas; não expõe senhas, nuvem, licenças, periféricos, módulos ou regras
-  financeiras. Reabra o caixa para que preferências visuais/operacionais sejam
-  relidas.
+- Configurações gerais: todos os campos de loja (inclusive slogan e caminho do
+  logotipo), preferências, parâmetros/módulos e conexão com a nuvem em abas
+  salvas separadamente pelo `ConfigController`. O token da API não é relido
+  para exibição: vazio mantém o atual, substituição exige digitar um novo e
+  remoção exige marcar a opção explícita. Tema claro/escuro vale também no Qt.
+  Reabra as telas operacionais para reler parâmetros; configurar uma URL/token
+  não inicia sincronização nem contrata nuvem.
+- Máquinas e periféricos: configuração completa do terminal pelos campos do
+  controlador, com testes explícitos de impressão/gaveta. Envio não comprova
+  saída física; não instala drivers nem limpa filas do Windows.
+- Níveis de acesso: edição dos níveis mínimos de cada módulo pela API de
+  acesso existente, revalidando a sessão. Operadores continuam no cadastro próprio.
+- Telegram: configuração, pareamento e diagnóstico em janela própria, com
+  rede fora da thread dos widgets/banco e descarte de resultados após fechar.
+  Testes dependem de credenciais reais; abrir a janela não comprova entrega.
+- Atualizações: consulta manual e verificação periódica pelo mesmo serviço do
+  Tk, em thread sem banco/widgets. O painel apenas avisa; download abre o link
+  somente por ação explícita. Não instala automaticamente. Fechar a sessão
+  descarta respostas tardias; falha não apaga o aviso previamente confirmado.
 - Importação de produtos por CSV ou Excel: modelo/exportação, prévia com ações e
   linhas recusadas, opções de atualização/código e confirmação antes de gravar.
   Leitura, validação, centavos e transação pertencem a `ImportacaoProdutos`;
-  cancelamento não grava. Exclusão em massa continua apenas no Tk.
+  cancelamento não grava. Exclusão em massa fica nos utilitários, com as
+  confirmações e bloqueios existentes.
+- Utilitários: backup local manual, pacote de suporte, limpeza do movimento,
+  exclusão em massa de produtos e abertura do programa de comunicação. As
+  ações destrutivas mantêm as confirmações do Tk e as validações do controlador;
+  backup e suporte usam caminhos escolhidos/configurados, nunca enviam dados
+  automaticamente a terceiros.
 - Assistente de impressora: lista e sugere dispositivos do Windows, mostra
   diagnóstico, configura a selecionada e envia uma página de teste somente após
   autorização `cfg_maquinas`; confirma com a pessoa se o papel saiu. Não instala
@@ -196,20 +221,17 @@ sem segurar o processo. Não se usa `terminate()` inseguro.
 
 ## Limites assumidos
 
-Financeiro além de contas a pagar/receber e outras telas
-não foram migrados neste piloto. O menu
-os identifica como indisponíveis. Para esses recursos, encerre o processo e
-inicie com `--tk`.
+A cobertura é descrita acima; isso não certifica paridade de todos os detalhes
+ergonômicos nem a homologação operacional. Tk permanece disponível por `--tk`;
+encerre o processo antes de trocar de interface.
 
 Os fluxos de caixa listados acima estão disponíveis no piloto; isso não substitui
 homologação em cópia do banco. Impressão, gaveta e balança precisam de homologação
 com os periféricos reais. Cancelar a entrada manual de peso não simula uma leitura;
 sem configuração/driver/dispositivo, a interface informa a limitação.
 
-Não há configuração de nuvem, loja, impressoras ou visual pelo Qt nesta etapa:
-prepare esses dados pelo Tk antes da homologação. O tema do piloto é escuro fixo;
-não altera a configuração de aparência do Tk. Não há atualização automática do
-programa nem sincronização contínua de vendas no Qt. Status de backup/licença
+Não há sincronização contínua de vendas pelo painel Qt. Configurações compartilham
+a mesma base do Tk; não abra os dois sobre ela ao mesmo tempo. Status de backup/licença
 não substitui os testes de recuperação e de periféricos reais.
 
 ## Testes
@@ -236,6 +258,8 @@ gaveta indisponível, captura/manual de peso, segunda via, consulta com comissã
 modo cancelar e recusa das operações sem turno/durante gravação.
 `test_qt_contas` cobre os fluxos financeiros e `test_qt_app` cobre a integração
 da janela ao menu, janela única e revalidação do acesso.
+Configurações completas cobrem máscaras de token, preservação de campos não
+alterados, rollback de parâmetros inválidos e aparência clara/escura.
 Homologue também teclado, escala de tela, leitores, impressoras e os fluxos
 operacionais efetivamente disponíveis no caixa.
 
