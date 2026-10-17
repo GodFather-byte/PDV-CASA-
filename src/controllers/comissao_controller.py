@@ -219,7 +219,8 @@ class ComissaoController:
         self.banco.log("comissao_cancelada", f"garota {c['garota']} {fmt.fmt_brl(c['valor_cent'])} {motivo}".strip(), operador_id)
 
     def pagar(self, garota, turno_id: int | None, operador_id: int | None, tirar_do_caixa: bool = True,
-              shows: int = 0, valor_show_cent: int = 0, pix_cent: int = 0, vale_cent: int = 0) -> dict:
+              shows: int = 0, valor_show_cent: int = 0, pix_cent: int = 0, vale_cent: int = 0,
+              permitir_zerado: bool = False) -> dict:
         """Acerta a garota: paga TUDO que está pendente e, se o operador lançou, os shows (`shows` x `valor_show_cent`). Com
         `tirar_do_caixa` registra a saída do dinheiro no turno (uma sangria 'Comissão garota 180 NOME'), então a conferência da
         gaveta já conta com ela. Só shows, sem comissão pendente, também é um acerto válido. Devolve o resumo do pagamento:
@@ -230,7 +231,11 @@ class ComissaoController:
 
         `vale_cent` é o vale que a garota já pegou antes (o dinheiro já saiu do caixa): é descontado do total do acerto, então só
         `total - vale` é pago agora, em dinheiro ou em Pix. O vale não sai do caixa de novo. `pix_cent` é a parte do que sobra
-        (total - vale) paga por Pix; o resto é dinheiro (e a sangria). O vale não pode passar do total."""
+        (total - vale) paga por Pix; o resto é dinheiro (e a sangria). O vale não pode passar do total.
+
+        `permitir_zerado` deixa fechar a conta da garota que não tem comissão pendente nem shows (acerto de R$ 0,00, só para
+        registrar o fechamento e dar o recibo). Só a tela passa True, depois de o operador confirmar; sem ele, chamar de novo
+        com a conta já acertada continua sendo recusado, então um clique repetido não grava um segundo acerto."""
         n = self.validar_numero(garota)
         shows, valor_show_cent = self.validar_shows(shows, valor_show_cent)
         pix_cent = int(pix_cent or 0)
@@ -241,7 +246,7 @@ class ComissaoController:
             raise ErroNegocio("O vale não pode ser negativo.")
         with self.banco.transacao():
             itens = self.lancamentos(n, "pendente")
-            if not itens and not shows:
+            if not itens and not shows and not permitir_zerado:
                 raise ErroNegocio(f"A garota {n} não tem comissão pendente.")
             comissao = sum(i["valor_cent"] for i in itens)
             shows_cent = shows * valor_show_cent

@@ -231,6 +231,63 @@ class TesteDisposicaoResponsiva(BaseCartoes):
         linhas = {a.grid_info()["row"] for a in p._abas.values()}
         self.assertGreater(len(linhas), 1)
 
+    def test_balcao_e_uma_faixa_fina_acima_dos_cartoes_e_as_comandas_ficam_menores(self):
+        from src.ui.painel_mesas import ALTURA, ALTURA_FAIXA, LARGURA
+        for n in range(1, 8):
+            self.comanda(n)
+        self.redimensionar(1700)
+        self.cx.carregar_mesas(); self.cx.update()
+        p = self.cx.painel_mesas
+        self.assertLess(LARGURA, 204)                                              # comandas menores que antes (204 x 146)
+        self.assertLess(ALTURA, 146)
+        self.assertGreater(LARGURA, 150)                                           # mas não pequenas demais
+        self.assertGreater(ALTURA, 100)
+        x, y, largura, altura = p._celula(0)
+        self.assertEqual((x, y, altura), (0, 0, ALTURA_FAIXA))
+        self.assertGreater(largura, 2 * LARGURA)                                   # a faixa ocupa a largura toda, não um cartão
+        self.assertLess(ALTURA_FAIXA, ALTURA // 2 + 10)
+        self.assertEqual(p._celula(1)[:2], (0, ALTURA_FAIXA))                      # a primeira comanda logo abaixo da faixa
+        self.assertEqual(p._celula(2)[:2], (LARGURA, ALTURA_FAIXA))                # e a grade segue em colunas
+        self.assertEqual(self.texto_do_cartao("0", "total"), "R$ 0,00")            # a faixa continua mostrando total e estado
+        self.assertEqual(self.texto_do_cartao("0", "estado"), "Balcão")
+        self.assertIsNone(self.texto_do_cartao("0", "rotulo"))                     # sem o número grande de um cartão
+        linhas = -(-7 // p._por_linha)
+        self.assertEqual(p._altura_total, ALTURA_FAIXA + linhas * ALTURA + 8)
+
+    def test_setas_passam_pela_faixa_do_balcao(self):
+        from types import SimpleNamespace
+        for n in range(1, 8):
+            self.comanda(n)
+        self.redimensionar(1700)
+        self.cx.carregar_mesas(); self.cx.update()
+        p = self.cx.painel_mesas
+        chaves = [t["chave"] for t in p.tiles()]
+        self.assertEqual(chaves[0], "0")
+        p.focar("0")
+        p._tecla(SimpleNamespace(keysym="Down", char=""))
+        self.assertEqual(p.cursor(), chaves[1])                                    # da faixa, desce para a primeira comanda
+        p._tecla(SimpleNamespace(keysym="Down", char=""))
+        self.assertEqual(p.cursor(), chaves[1 + p._por_linha])                     # e dali anda uma linha da grade
+        p._tecla(SimpleNamespace(keysym="Up", char=""))
+        self.assertEqual(p.cursor(), chaves[1])
+        p._tecla(SimpleNamespace(keysym="Up", char=""))
+        self.assertEqual(p.cursor(), "0")                                          # da primeira linha, sobe para a faixa
+        voltou = []
+        p._ao_voltar = lambda: voltou.append(True)
+        p._tecla(SimpleNamespace(keysym="Up", char=""))
+        self.assertEqual(voltou, [True])                                           # e da faixa volta ao campo da posição
+
+    def test_filtro_sem_balcao_mantem_a_grade_sem_faixa(self):
+        from src.ui.painel_mesas import ALTURA
+        for n in range(1, 4):
+            self.comanda(n)
+        self.cx.carregar_mesas(); self.cx.update()
+        p = self.cx.painel_mesas
+        p.var_busca.set("2"); self.cx.update()                                     # a busca esconde o balcão
+        self.assertEqual([t["tipo"] for t in p.tiles()], ["comanda"])              # só a comanda 2: o balcão saiu da lista
+        self.assertEqual(p._celula(0)[:2], (0, 0))
+        self.assertEqual(p._altura_total, ALTURA + 8)
+
     def test_definir_colunas_muda_a_largura_do_painel(self):
         from src.ui.painel_mesas import LARGURA, RESERVA_BARRA
         p = self.cx.painel_mesas

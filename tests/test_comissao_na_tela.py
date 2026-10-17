@@ -526,7 +526,8 @@ class TestePagarECancelarNaComandaDaGarota(BaseNaTela):
 
     def test_f12_sem_nada_a_pagar_segue_avisando_que_falta_item(self):
         avisos = []
-        self.dialogos({"Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
+        self.dialogos({"Acertar a garota": "Não",                                   # comanda sem cadastro: pergunta antes
+                       "Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
         self.posicao("180")
         self.cx.pagar()
         self.assertTrue(any("Lance ao menos um item" in t for t in avisos[0]), avisos)
@@ -902,26 +903,80 @@ class TesteAcertoComShowsNaTela(BaseNaTela):
         self.assertIn("240,00", recibos[0])
         self.sem_travar()
 
-    def test_sem_comissao_o_acerto_exige_shows(self):
+    def test_sem_comissao_e_sem_shows_pergunta_antes_de_fechar_sem_valor(self):
         self.cadastrar(180, "MARIA")
-        avisos = []
+        vistos, acerto = [], []
 
-        def sem_nada(w):
-            clicar(w, "Pagar")
-            w.update()
-            avisos.append(self.textos(w))
-            clicar(w, "Cancelar")
-        self.dialogos({"Pagar comissão": sem_nada})
+        def pagar_depois(w):                       # o clique abre outra janela: tem de sair do passo do robô
+            acerto.append(w)
+            w.after(30, lambda: clicar(w, "Pagar"))
+
+        def responder_nao(w):
+            vistos.append(self.textos(w))
+            clicar(w, "Não")
+            acerto[0].after(30, lambda: clicar(acerto[0], "Cancelar"))
+        self.dialogos({"Pagar comissão": pagar_depois, "Fechar sem valor": responder_nao})
         self.posicao("180")
         self.cx.pagar()
-        self.assertTrue(any("informe os shows" in t for t in avisos[0]), avisos)
+        self.assertTrue(any("não tem comissão nem shows" in t for t in vistos[0]), vistos)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM acertos_garotas"), 0)         # respondeu Não: nada foi gravado
+
+    def test_fecha_a_conta_da_garota_sem_comissao_e_sem_shows_com_recibo_zerado(self):
+        self.cadastrar(180, "MARIA")
+        recibos = []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
+        self.dialogos({"Pagar comissão": lambda w: w.after(30, lambda: clicar(w, "Pagar")), "Fechar sem valor": "Sim"})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        a = self.banco.um("SELECT shows_qtd, comissao_cent, total_cent, tirou_do_caixa FROM acertos_garotas")
+        self.assertEqual(tuple(a), (0, 0, 0, 0))
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)        # nada saiu da gaveta
+        self.assertEqual(len(recibos), 1, recibos)
+        self.assertIn("RECIBO DE ACERTO", recibos[0])
+        self.assertIn("Conta fechada, nada a pagar.", recibos[0])
+        self.assertIn("Conta da garota 180 fechada sem valor", self.status())
+        self.sem_travar()
+
+    def test_garota_que_so_fez_show_acerta_pelo_numero_da_comanda_mesmo_sem_cadastro(self):
+        recibos = []
+        self.robo.quando("Visualizador", lambda w: (recibos.append(w.texto), w.destroy()), vezes=5)
+        self.dialogos({"Acertar a garota": "Sim", "Pagar comissão": self.acertar_com(3, "R$ 60,00")})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertEqual(self.banco.valor("SELECT total_cent FROM acertos_garotas"), 18000)
+        self.assertIn("SHOWS: 3 x 60,00", recibos[0])
+        self.assertIn("Acerto de R$ 180,00 pago à garota 180", self.status())
+        self.sem_travar()
+
+    def test_garota_inativa_pergunta_e_respondendo_nao_volta_ao_aviso_de_sempre(self):
+        self.cadastrar(180, "MARIA", ativa="N")
+        perguntas, avisos = [], []
+        self.dialogos({"Acertar a garota": lambda w: (perguntas.append(self.textos(w)), clicar(w, "Não")),
+                       "Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
+        self.posicao("180")
+        self.cx.pagar()
+        self.assertTrue(any("está inativa" in t for t in perguntas[0]), perguntas)
+        self.assertTrue(any("Lance ao menos um item" in t for t in avisos[0]), avisos)
         self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM acertos_garotas"), 0)
 
+    def test_sem_comissao_os_shows_aparecem_mesmo_com_a_pergunta_desligada(self):
+        self.banco.cfg_set("comissao_pede_shows", "N")
+        self.cadastrar(180, "MARIA")
+        vistos = []
+        self.robo.quando("Visualizador", lambda w: w.destroy(), vezes=5)
+        self.dialogos({"Pagar comissão": lambda w: (vistos.append(self.textos(w)), clicar(w, "Cancelar"))})
+        self.posicao("180")
+        self.cx.pagar(); self.cx.update()
+        self.assertIn("Quantidade de shows:", vistos[0])
+
     def test_comanda_vazia_de_quem_nao_e_garota_cadastrada_continua_pedindo_item(self):
-        avisos = []
-        self.dialogos({"Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
+        self.cadastrar(180, "MARIA")                                               # a casa usa cadastro, e o 7 não está nele
+        avisos, perguntas = [], []
+        self.dialogos({"Acertar a garota": lambda w: (perguntas.append(self.textos(w)), clicar(w, "Não")),
+                       "Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
         self.posicao("7")
         self.cx.pagar()
+        self.assertTrue(any("não está cadastrada" in t for t in perguntas[0]), perguntas)
         self.assertTrue(any("Lance ao menos um item" in t for t in avisos[0]), avisos)
 
     def test_desligado_nas_configuracoes_nao_pergunta_shows(self):

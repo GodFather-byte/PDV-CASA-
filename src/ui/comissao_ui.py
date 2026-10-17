@@ -157,11 +157,13 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
     caixa, ou só parte dele): o resto é dinheiro e o Pix nunca passa pela gaveta. `vale_cent` é o vale que a garota já pegou: é
     descontado do total do acerto (dinheiro ou Pix), mas não sai do caixa de novo, pois aquele dinheiro já saiu quando ela o pegou.
     O Pix digitado é sobre o que sobra depois do vale."""
-    pede_shows = ctx.comissoes.pede_shows()
+    # Sem comissão marcada (a garota fez show mas não tem comissão) os shows aparecem sempre, mesmo com a pergunta desligada.
+    pede_shows = ctx.comissoes.pede_shows() or not quantidade
     dlg = tema.Dialogo(master, "Pagar comissão")
     ttk.Label(dlg.corpo, text=f"Garota {numero} {nome}".strip(), font=tema.FONTE_B).pack(anchor="w")
-    ttk.Label(dlg.corpo, text=f"{quantidade} lançamento(s) de comissão a pagar" if quantidade else "Sem comissão marcada",
-              foreground=tema.COR["suave"]).pack(anchor="w")
+    ttk.Label(dlg.corpo, text=f"{quantidade} lançamento(s) de comissão a pagar" if quantidade else
+              "Sem comissão marcada: informe os shows, ou feche a conta sem valor",
+              foreground=tema.COR["suave"], wraplength=400, justify="left").pack(anchor="w")
     ttk.Label(dlg.corpo, text=f"Comissão: {fmt.fmt_brl(comissao_cent)}", font=("Georgia", 14, "bold")).pack(anchor="w", pady=(6, 0))
     qtd = tk.StringVar(master=dlg)
     valor_show = tk.IntVar(master=dlg, value=0)                    # centavos de cada show; 0 = ainda não escolhido
@@ -274,12 +276,13 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
         except ErroNegocio as e:
             msg.configure(text=str(e))
             return
-        if not quantidade and not n:
-            msg.configure(text="Esta garota não tem comissão marcada: informe os shows para acertar.")
+        total = comissao_cent + n * v
+        if not total and not tema.confirmar(
+                dlg, f"A garota {f'{numero} {nome}'.strip()} não tem comissão nem shows.\nFechar a conta dela sem valor (R$ 0,00)?",
+                "Fechar sem valor", padrao_sim=False):
             if en_qtd is not None:
                 en_qtd.focus_set()
             return
-        total = comissao_cent + n * v
         vl = vale_digitado(total)
         if vl is None:
             msg.configure(text="O vale é inválido ou maior que o total do acerto.")
@@ -290,7 +293,8 @@ def dialogo_pagar(master, ctx, numero: int, nome: str, comissao_cent: int, quant
             msg.configure(text="O valor do Pix é inválido ou maior que o total a pagar.")
             en_pix.focus_set()
             return
-        dlg.ok({"do_caixa": bool(do_caixa.get()), "shows": n, "valor_show_cent": v, "pix_cent": p, "vale_cent": vl})
+        dlg.ok({"do_caixa": bool(do_caixa.get()), "shows": n, "valor_show_cent": v, "pix_cent": p, "vale_cent": vl,
+                "zerado": not total})
 
     b = tema._botoes(dlg, "Pagar", comando_ok=confirmar)
     dlg.bind("<Return>", confirmar)
@@ -311,9 +315,6 @@ def pagar_garota(master, ctx, numero: int) -> dict | None:
     if not autorizar(master, ctx, "caixa_pagar_comissao", "exigir_senha_sangria", "Pagar comissão exige autorização:"):
         return None
     itens = ctx.comissoes.lancamentos(numero)
-    if not itens and not ctx.comissoes.pede_shows():
-        tema.aviso(master, f"A garota {numero} não tem comissão pendente.")
-        return None
     escolha = dialogo_pagar(master, ctx, numero, ctx.comissoes.nome(numero), sum(i["valor_cent"] for i in itens), len(itens),
                             ctx.banco.cfg_bool("comissao_paga_do_caixa", False))
     if escolha is None:
@@ -321,19 +322,19 @@ def pagar_garota(master, ctx, numero: int) -> dict | None:
     turno = ctx.turnos.atual()
     ok, pag = tema.tratar(master, ctx.comissoes.pagar, numero, turno["id"] if turno else None, ctx.operador_id,
                           escolha["do_caixa"], escolha["shows"], escolha["valor_show_cent"], escolha["pix_cent"],
-                          escolha["vale_cent"])
+                          escolha["vale_cent"], permitir_zerado=escolha["zerado"])
     if not ok:
         return None
-    enviar_ou_mostrar(master, ctx, "Recibo de acerto" if pag["shows"] else "Recibo de comissão",
+    enviar_ou_mostrar(master, ctx, "Recibo de acerto" if pag["shows"] or not pag["quantidade"] else "Recibo de comissão",
                       ctx.impressao.recibo_comissao(pag, ctx.operador.nome),
-                      f"recibo_comissao_{numero}", tipo="comprovante", abrir_gaveta=pag["tirou_do_caixa"])
+                      f"recibo_comissao_{numero}", tipo="recibo_garota", abrir_gaveta=pag["tirou_do_caixa"])
     if pag["tirou_do_caixa"]:
         # O dinheiro saiu da gaveta: sai também o comprovante da saída financeira (o mesmo da sangria), só com o que saiu do
         # caixa (o Pix não passa por ela). A gaveta já foi aberta pelo recibo.
         enviar_ou_mostrar(master, ctx, "Comprovante de saída",
                           ctx.impressao.comprovante_movimento("saida", pag["dinheiro_cent"], pag["movimento_descricao"],
                                                               ctx.operador.nome),
-                          f"saida_comissao_{numero}", tipo="comprovante")
+                          f"saida_comissao_{numero}", tipo="saida_garota")
     return pag
 
 

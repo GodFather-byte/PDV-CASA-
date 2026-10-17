@@ -2523,7 +2523,8 @@ class TesteComissaoDasGarotasNoCaixa(BaseUI):
         self.dar(180, 25)
         self.posicao("180")
         avisos = []
-        self.dialogos({"Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
+        self.dialogos({"Acertar a garota": "Não",                                    # comanda fora do cadastro: pergunta antes
+                       "Aviso": lambda w: (avisos.append(self.textos(w)), clicar(w, "OK"))})
         self.cx.pagar()
         self.assertTrue(any("só tem comissão marcada" in t for t in avisos[0]), avisos)
         self.posicao("7")

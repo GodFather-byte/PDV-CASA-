@@ -148,7 +148,7 @@ serviço > Número digitado sem letra no caixa é**. As telas, as listas e os re
 que se digita.
 
 Na **coluna da esquerda** do caixa ficam os cartões das posições abertas (ver [A tela do caixa](#a-tela-do-caixa)): o
-**Balcão** (primeiro cartão), as **mesas**, as **comandas** (ex.: `123`) e as **garotas** com comissão a pagar
+**Balcão** (uma faixa fina no alto, com o total, para não ocupar o lugar de uma comanda), as **mesas**, as **comandas** (ex.: `123`) e as **garotas** com comissão a pagar
 (ver [Comissão das garotas](#comissão-das-garotas)). Uma conta enviada aparece como **Acerto** e a parada além do tempo de
 inatividade ganha o **relógio**. O cartão da venda que está na tela tem a borda grossa. Havendo mais cartões que espaço,
 a coluna rola (barra ou roda do mouse).
@@ -207,8 +207,13 @@ entra na venda: a comanda da garota continua vazia e some sozinha, e a comissão
   nunca contados sozinhos, e a janela só mostra isso na hora de fechar a conta da garota. O total é a comissão marcada mais
   quantidade x valor: comissão de R$ 25,00 (5 pontos) + 10 shows de R$ 50,00 = **R$ 525,00**. O recibo impresso traz a comissão,
   a linha `SHOWS: 10 x 50,00`, o total e a assinatura; o dinheiro (comissão + shows) sai da gaveta como uma só sangria
-  "Acerto garota 180 NOME" (desmarcando a opção, paga fora do caixa). Sem comissão marcada dá para acertar só os shows (F12 na
-  comanda vazia de uma garota cadastrada). O fechamento do turno lista os shows pagos por garota. Em Configurações > Caixa:
+  "Acerto garota 180 NOME" (desmarcando a opção, paga fora do caixa). Sem comissão marcada dá para acertar só os shows, pelo número da
+  comanda dela: F12 na comanda vazia abre o acerto direto para garota cadastrada e ativa; garota inativa ou fora do cadastro
+  pergunta antes (responder Não mantém o aviso de sempre). Sem comissão e sem shows dá para **fechar a conta sem valor**: a
+  janela pergunta se confirma, grava um acerto de R$ 0,00 (nada sai da gaveta) e imprime o recibo com "Conta fechada, nada a
+  pagar." Os shows aparecem na janela mesmo com a pergunta de shows desligada quando não há comissão. O recibo não lista os
+  lançamentos um a um: traz a quantidade e o total; ele e o comprovante de saída da gaveta saem com as linhas importantes em
+  letra mais alta (dobro da altura). O fechamento do turno lista os shows pagos por garota. Em Configurações > Caixa:
   *Valores do show* (padrão `50;60`, separados por ponto e vírgula) e *perguntar quantos shows ela fez* (ligado).
 - **Pix no acerto:** sem dinheiro no caixa, ou só com uma parte dele, a janela *Pagar comissão* tem o campo **Parte paga por Pix
   (R$)** e o botão **Tudo no Pix**. A tela mostra a divisão (`Dinheiro R$ 60,00 + Pix R$ 40,00`): só a parte em dinheiro vira

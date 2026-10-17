@@ -58,6 +58,58 @@ class TesteAcertoComShows(BaseComissao):
             self.com.pagar(180, self.turno, self.adm)
         self.assertIn("não tem comissão pendente", str(e.exception))
 
+    def test_fechar_sem_comissao_nem_shows_so_com_permissao_explicita_e_nao_repete(self):
+        with self.assertRaises(ErroNegocio):
+            self.com.pagar(180, self.turno, self.adm)                         # sem o aval da tela, nada a pagar continua recusado
+        p = self.com.pagar(180, self.turno, self.adm, permitir_zerado=True)
+        self.assertEqual((p["total_cent"], p["quantidade"], p["shows"], p["dinheiro_cent"], p["tirou_do_caixa"]), (0, 0, 0, 0, False))
+        self.assertEqual(self.banco.valor("SELECT total_cent FROM acertos_garotas"), 0)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM movimentos_caixa"), 0)       # nada saiu da gaveta
+        with self.assertRaises(ErroNegocio):
+            self.com.pagar(180, self.turno, self.adm)                         # um segundo clique não grava outro acerto
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM acertos_garotas"), 1)
+
+    def test_vale_nao_passa_do_total_nem_no_fechamento_sem_valor(self):
+        with self.assertRaises(ErroNegocio):
+            self.com.pagar(180, self.turno, self.adm, vale_cent=1000, permitir_zerado=True)
+        self.assertEqual(self.banco.valor("SELECT COUNT(*) FROM acertos_garotas"), 0)
+
+    def test_recibo_nao_lista_os_lancamentos_um_a_um(self):
+        self.garota(180, "MARIA")
+        self.lancar(180, 25); self.lancar(180, 30)
+        recibo = ImpressaoController(self.banco).recibo_comissao(self.com.pagar(180, self.turno, self.adm), "ADM")
+        self.assertNotIn("lançamento", recibo)
+        self.assertIn("RECIBO DE COMISSÃO", recibo)
+        self.assertIn("TOTAL PAGO (2)", recibo)
+        self.assertIn("55,00", recibo)
+        recibo = ImpressaoController(self.banco).recibo_comissao(self.acertar(2, 5000), "ADM")
+        self.assertNotIn("lançamento", recibo)
+        self.assertEqual(recibo.count("-" * 40), 2)                           # sem faixas de traços seguidas onde estavam as linhas
+
+    def test_recibo_do_fechamento_sem_valor(self):
+        p = self.com.pagar(180, self.turno, self.adm, permitir_zerado=True)
+        recibo = ImpressaoController(self.banco).recibo_comissao(p, "ADM")
+        for trecho in ("RECIBO DE ACERTO", "TOTAL PAGO (0)", "Conta fechada, nada a pagar.", "Assinatura da garota"):
+            self.assertIn(trecho, recibo)
+        self.assertNotIn("Pago fora do caixa", recibo)
+
+    def test_papeis_da_garota_saem_com_as_linhas_importantes_em_letra_mais_alta(self):
+        from src.controllers.impressao_controller import _ESTILOS
+        from src.hardware import impressora_termica as term
+        self.garota(180, "MARIA")
+        self.lancar(180, 25)
+        imp = ImpressaoController(self.banco)
+        recibo = imp.recibo_comissao(self.com.pagar(180, self.turno, self.adm), "ADM")
+        dados = term.texto_para_escpos(recibo, **_ESTILOS["recibo_garota"])
+        for linha in ("Garota: 180 MARIA", "TOTAL PAGO (1)"):
+            posicao = dados.index(linha.encode("cp850"))
+            self.assertIn(term.TAMANHO_ALTO, dados[max(0, posicao - 12):posicao], linha)      # o dobro de altura vem logo antes
+        saida = imp.comprovante_movimento("saida", 2500, "Comissão garota 180 MARIA", "ADM")
+        dados = term.texto_para_escpos(saida, **_ESTILOS["saida_garota"])
+        posicao = dados.index(b"Motivo:")
+        self.assertIn(term.TAMANHO_ALTO, dados[max(0, posicao - 12):posicao])
+        self.assertEqual(_ESTILOS["comprovante"], {"negrito_linhas": 1, "grande_prefixos": ("Valor",)})     # a sangria comum não mudou
+
     def test_shows_pagos_fora_do_caixa_nao_mexem_na_gaveta(self):
         self.lancar(180, 25)
         self.acertar(2, 5000, tirar_do_caixa=False)
