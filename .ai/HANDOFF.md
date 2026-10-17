@@ -1,30 +1,28 @@
 # HANDOFF
 
 ## Último trabalho
-- Base: `main` em `e278947` (1.4.0), incluindo comissão/acerto/saída Qt integrados.
-- Corrigido `test_build_inclui_avisos_licencas_e_versoes_reais`: compara os arquivos de
-  licença realmente fornecidos pelas wheels, sem pressupor que todo pacote tenha arquivos
-  `.dist-info` separados. O teste direcionado passou anteriormente com Python 3.12.10 e
-  PySide6 6.12.0; `git diff --check` passou.
-- Correção publicada em `e278947`. CI: PostgreSQL, build Windows, Linux Python 3.10 e 3.12
-  passaram. Windows Python 3.10 passou; Windows Python 3.12 ainda estava executando os
-  testes quando este handoff foi atualizado.
-- Python não está disponível no PATH deste ambiente após reiniciar o VS Code.
-
-- Restaurado o job `licenciador` no `build-windows.yml` (instalador WillPDV Licenças só nos Artifacts, nunca na Release), com README, docs/LICENCIADOR.md e teste de empacotamento de volta ao estado anterior a `734ee2b`. Falta ver o job verde no GitHub após o push.
+- Decisão do titular: a cobrança segue **manual** (Asaas cobra, o WillPDV Licenças emite o código). Nuvem
+  (Render/Neon/Azure) e worker adiados até a carteira crescer. O trabalho de worker/monitor agendado e
+  `render.yaml` pago ficou só na branch `claude/quirky-rubin-pgs2el` (commit `cb10681`, PR 55 fechado,
+  revertido localmente na mesma branch); retomar dali quando for a hora.
+- WillPDV Licenças 1.1.0 (`licenciador/`): faixa de aviso no topo com lojas vencidas ou vencendo em até 7
+  dias; aba **Backup** (histórico copiado a cada emissão/remoção para a pasta escolhida, por exemplo a do
+  Google Drive para computador, 30 cópias diárias; chave só vai criptografada com senha de 12+ caracteres,
+  `.pdvbkp`, via `src/core/backup_seguro.py`); restaurar histórico e chave. Sem API do Google: o app do
+  Drive sincroniza a pasta. Autoteste do executável passou a ter a etapa `backup` e 5 abas.
+- Testes: `tests/test_licenciador.py` (45) passam com Tk em Xvfb. `cryptography` precisa estar no pacote do
+  licenciador (PyInstaller); o autoteste do `.exe` no CI confere isso, confirmar o job verde.
 
 ## Pendências
-- Confirmar a conclusão do job Windows Python 3.12 no workflow de testes:
-  https://github.com/GodFather-byte/PDV-CASA-/actions/runs/38983842283
-- Qt ainda bloqueia partes/montagem, desconto/serviço manual, transferência,
-  caderneta/entrega, sangria/repique, gaveta, balança e consulta de comanda. Homologar
-  em cópia do banco antes de substituir o Tk em operação.
+- Titular: instalar o Google Drive para computador, escolher a pasta na aba Backup e anotar a senha da chave.
+- Ideia aberta (pede OK do titular, regra de licença): renovar a partir do vencimento atual para o cliente
+  não perder dias quando se renova antes. Hoje a validade conta a partir de hoje.
+- Ideias menores: contato/valor/observação por loja, marcar "pago", exportar CSV.
+- Qt ainda bloqueia partes/montagem, desconto/serviço manual, transferência, caderneta/entrega,
+  sangria/repique, gaveta, balança e consulta de comanda. Homologar em cópia do banco.
 - Comissão/acerto/saída: homologar impressão, gaveta e ergonomia com periféricos reais.
-- Backup: escolher pasta e senha no caixa, confirmar sincronização no provedor e ensaiar
+- Backup do PDV: escolher pasta e senha no caixa, confirmar sincronização no provedor e ensaiar
   recuperação em outra máquina; não sincronizar banco em uso nem cópias abertas.
-- Asaas: homologar sandbox/credenciais/webhook e hospedar API e
+- Asaas (quando houver nuvem): homologar sandbox/credenciais/webhook e hospedar API e
   `python -m backend.worker_asaas` sob supervisão; validar custos antes de contratar.
-  Troca de plano/valor e cobrança automática por débito seguem adiadas; cobrança por Pix/
-  boleto via link. Sem worker supervisionado, não há renovação.
-- Painel web e múltiplos caixas seguem fora de escopo. Usar cópias de dados em toda
-  homologação; as confirmações de hardware, provedor e credenciais dependem do titular.
+- Painel web e múltiplos caixas seguem fora de escopo.
