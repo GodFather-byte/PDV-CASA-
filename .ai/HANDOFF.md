@@ -9,9 +9,10 @@
   Autotestes reais Qt/backup cifrado/DPAPI e licenciador 1.1.0 aprovados.
   Corrigidos contrato público do menu de utilitários (`MODULOS_UTILITARIOS`,
   `exigir_acesso`) e inventário de `estoque_lancamentos` no autoteste.
-- O build do commit intermediário 1194fdf falhou por esse contrato ausente.
-  Conferir novo CI/instalador após publicar as correções; não usar o build
-  intermediário como versão homologada.
+- Correções publicadas em 5faefec. CI final aprovado: testes 39052291238
+  (Windows/Linux, Python 3.10/3.12, PostgreSQL 16) e instaladores 39052291329
+  (PDV e licenciador empacotados/instalados, publicação da última versão).
+  O build intermediário 1194fdf falhou; usar o build final corrigido.
 - Integração da modernização Qt com WillPDV Licenças 1.1.0; conflito apenas neste
   handoff, resolvido preservando as duas frentes e a decisão de cobrança manual.
 - Ampliação do piloto opt-in Qt: caixa e operações complementares, cadastros,
