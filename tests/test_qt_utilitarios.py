@@ -17,7 +17,7 @@ from src.controllers.utilitario_controller import UtilitarioController
 from src.core.erros import ErroNegocio, ErroPermissao
 from src.database import protecao
 from src.ui.contexto import Contexto
-from src.ui_qt.utilitarios import JanelaUtilitarios
+from src.ui_qt.utilitarios import JanelaUtilitarios, MODULOS_UTILITARIOS
 from tests.test_caixa import BaseCaixa
 
 
@@ -51,6 +51,23 @@ class TestUtilitariosQt(BaseCaixa):
         janela = JanelaUtilitarios(self.ctx)
         self.janelas.append(janela)
         return janela
+
+    def test_contrato_menu_e_reabertura_revalidam_acesso(self):
+        janela = self.janela()
+        self.assertEqual(set(MODULOS_UTILITARIOS),
+                         {acao[2] for acao in janela.ACOES})
+        self.assertTrue(janela.exigir_acesso())
+        self.banco.executar("UPDATE operadores SET ativo = 0 WHERE id = ?", (self.adm,))
+        with self.assertRaisesRegex(ErroPermissao, "inativo"):
+            janela.exigir_acesso()
+
+    def test_data_vazia_de_limpeza_informa_erro_sem_apagar(self):
+        janela = self.janela()
+        with patch.object(QInputDialog, "getText", return_value=("", True)), \
+                patch.object(UtilitarioController, "limpar_movimento") as limpar:
+            self.assertFalse(janela.limpeza())
+        limpar.assert_not_called()
+        self.assertIn("data", janela.mensagem.text())
 
     def test_backup_real_copia_valida_sem_restauracao(self):
         janela = self.janela()

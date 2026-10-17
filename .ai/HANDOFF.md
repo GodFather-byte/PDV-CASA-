@@ -1,6 +1,17 @@
 # HANDOFF
 
 ## Último trabalho
+- Força-tarefa Qt integrada: estoque operacional e lançamentos/pedidos, máquinas,
+  níveis de acesso, Telegram, utilitários locais, atualizações, visualizador de
+  relatórios, configurações completas, tema claro/escuro e convite de cadastro
+  inicial da casa. Continua opt-in; detalhes em `docs/INTERFACE_QT.md`.
+- Validação final local: 1843 testes, 62 skipped, sem falhas (Python 3.15).
+  Autotestes reais Qt/backup cifrado/DPAPI e licenciador 1.1.0 aprovados.
+  Corrigidos contrato público do menu de utilitários (`MODULOS_UTILITARIOS`,
+  `exigir_acesso`) e inventário de `estoque_lancamentos` no autoteste.
+- O build do commit intermediário 1194fdf falhou por esse contrato ausente.
+  Conferir novo CI/instalador após publicar as correções; não usar o build
+  intermediário como versão homologada.
 - Integração da modernização Qt com WillPDV Licenças 1.1.0; conflito apenas neste
   handoff, resolvido preservando as duas frentes e a decisão de cobrança manual.
 - Ampliação do piloto opt-in Qt: caixa e operações complementares, cadastros,
@@ -10,12 +21,12 @@
   cadastro/edição/cancelamento, filtros, repetição mensal, quitação e reversão.
 - Documentação do piloto em `docs/INTERFACE_QT.md`; autoteste de distribuição
   acompanha os novos módulos Qt em `src/autoteste.py`.
-- Validação: 288 testes Qt passaram; 19 testes de contas, permissões e autoteste
+- Validação da etapa anterior: 288 testes Qt passaram; 19 testes de contas, permissões e autoteste
   passaram; os 5 testes de autoteste passaram após instalar `cryptography`
   (dependência já declarada em `requirements.txt`). Quatro testes direcionados
   do assistente Tk também passaram após tratar stdout indisponível e bytes fora
   de UTF-8 do comando `sc`.
-- Suíte completa passou: 1687 testes, 62 skipped, no Python 3.15 do ambiente.
+- Suíte completa da etapa anterior: 1687 testes, 62 skipped, no Python 3.15 do ambiente.
   `git diff --check` limpo.
 
 - Decisão do titular: a cobrança segue **manual** (Asaas cobra, o WillPDV Licenças emite o código). Nuvem

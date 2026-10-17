@@ -64,6 +64,18 @@ class JanelaUtilitarios(QDialog):
         self.ctx.acesso.exigir(self.ctx.operador, permissao)
         return self.ctx.utilitarios
 
+    def exigir_acesso(self):
+        self._operador()
+        permitido = False
+        for chave, _, modulo in self.ACOES:
+            pode = self.ctx.pode(modulo)
+            self.botoes[chave].setEnabled(pode)
+            permitido = permitido or pode
+        if not permitido:
+            self.status.clear()
+            raise ErroPermissao("Seu acesso não permite os utilitários.")
+        return True
+
     def _executar(self, acao):
         self.mensagem.clear()
         try:
@@ -118,7 +130,7 @@ class JanelaUtilitarios(QDialog):
                 return False
             data = fmt.para_data_iso(data_texto)
             if data is None:
-                return False
+                raise ErroNegocio("Informe a data limite para a limpeza.")
             confirmacao, aceito = self._pedir(
                 permissao, "Confirmar limpeza",
                 f"Serão apagadas as vendas anteriores a {fmt.fmt_data(data)}.\n"
@@ -135,6 +147,7 @@ class JanelaUtilitarios(QDialog):
                 f"Backup anterior à limpeza:\n{resultado['backup']}")
             return True
         return self._executar(acao)
+
 
     def excluir_produtos(self):
         def acao():
@@ -166,3 +179,6 @@ class JanelaUtilitarios(QDialog):
                 "Agora é só importar a planilha.")
             return True
         return self._executar(acao)
+
+
+MODULOS_UTILITARIOS = tuple(dict.fromkeys(acao[2] for acao in JanelaUtilitarios.ACOES))
