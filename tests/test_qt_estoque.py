@@ -329,6 +329,25 @@ class TestEstoqueQt(BaseTeste):
         self.assertEqual(self.banco.valor("SELECT estoque_minimo FROM produtos WHERE id = ?", (pid,)), 2.3456)
         self.assertEqual(janela.grade.item(0, 5).text(), "2,3456")
 
+    def test_revogacao_apos_dialogo_de_minimo_impede_gravacao(self):
+        pid = self.novo_produto("GELO", estoque=True)
+        self.banco.executar(
+            "UPDATE operadores SET nivel = 2 WHERE id = ?", (self.ctx.operador_id,))
+        self.ctx.operador = self.ctx.acesso.operador(self.ctx.operador_id)
+        janela = self.janela()
+        janela.grade.selectRow(0)
+
+        def revogar(*_args, **_kwargs):
+            self.banco.executar(
+                "UPDATE acessos SET nivel = 3 WHERE modulo = 'lanc_estoque'")
+            return "4", True
+
+        with patch.object(QInputDialog, "getText", side_effect=revogar):
+            self.assertFalse(janela.definir_minimo())
+        self.assertEqual(
+            self.banco.valor(
+                "SELECT estoque_minimo FROM produtos WHERE id = ?", (pid,)), 0)
+
     def test_pedido_sugerido_confirma_com_fornecedor_e_cancelamento_nao_grava(self):
         self.produtos()
         fornecedor = self.banco.inserir("fornecedores", {"nome": "AMBEV"})
@@ -349,6 +368,25 @@ class TestEstoqueQt(BaseTeste):
         self.assertIn("só muda quando a entrega for confirmada", janela.mensagem.text())
         self.assertEqual(janela._janela_lancamentos.lancamento_id, pedido["id"])
         janela._janela_lancamentos.close()
+
+    def test_revogacao_apos_escolher_fornecedor_impede_criar_pedido(self):
+        self.produtos()
+        self.banco.inserir("fornecedores", {"nome": "AMBEV"})
+        self.banco.executar(
+            "UPDATE operadores SET nivel = 2 WHERE id = ?", (self.ctx.operador_id,))
+        self.ctx.operador = self.ctx.acesso.operador(self.ctx.operador_id)
+        janela = self.janela()
+
+        def revogar(*_args, **_kwargs):
+            self.banco.executar(
+                "UPDATE acessos SET nivel = 3 WHERE modulo = 'lanc_estoque'")
+            return "AMBEV", True
+
+        with patch.object(QInputDialog, "getItem", side_effect=revogar):
+            self.assertFalse(janela.gerar_pedido())
+        self.assertEqual(
+            self.banco.valor("SELECT COUNT(*) FROM lancamentos_estoque"), 0)
+        self.assertEqual(janela._janela_lancamentos, None)
 
     def test_pedido_e_lista_de_compras_respeitam_sem_reposicao_ou_fornecedor(self):
         pid = self.novo_produto("GELO", estoque=True, qt=3)
@@ -396,6 +434,35 @@ class TestEstoqueQt(BaseTeste):
             formulario.return_value.exec.return_value = QDialog.DialogCode.Rejected
             self.assertFalse(janela.cadastrar_produto())
             self.assertEqual(formulario.call_args.args[:3], (self.ctx, "produtos", None))
+
+    def test_formulario_produto_revalida_permissao_antes_e_depois_do_dialogo(self):
+        from PySide6.QtWidgets import QDialog
+
+        pid = self.novo_produto("GELO", estoque=True)
+        self.banco.executar(
+            "UPDATE operadores SET nivel = 2 WHERE id = ?", (self.ctx.operador_id,))
+        self.ctx.operador = self.ctx.acesso.operador(self.ctx.operador_id)
+        janela = self.janela()
+        janela.grade.selectRow(0)
+
+        self.banco.executar(
+            "UPDATE acessos SET nivel = 3 WHERE modulo = 'cad_produtos'")
+        with patch("src.ui_qt.cadastros.FormularioCadastro") as formulario:
+            self.assertFalse(janela.editar_cadastro())
+            formulario.assert_not_called()
+
+        self.banco.executar(
+            "UPDATE acessos SET nivel = 2 WHERE modulo = 'cad_produtos'")
+        def revogar_ao_fechar(*_args, **_kwargs):
+            self.banco.executar(
+                "UPDATE acessos SET nivel = 3 WHERE modulo = 'cad_produtos'")
+            return QDialog.DialogCode.Accepted
+
+        with patch("src.ui_qt.cadastros.FormularioCadastro") as formulario:
+            formulario.return_value.exec.side_effect = revogar_ao_fechar
+            self.assertFalse(janela.editar_cadastro())
+            formulario.return_value.exec.assert_called_once()
+        self.assertEqual(janela.produto["id"], pid)
 
     def test_revogacao_de_acesso_bloqueia_movimento_rapido_e_limpa_tela(self):
         pid = self.novo_produto("GELO", estoque=True, qt=2)

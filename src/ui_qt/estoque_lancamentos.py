@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDialog, QFormLayout,
+    QAbstractItemView, QComboBox, QDialog, QFormLayout,
     QHBoxLayout, QHeaderView, QInputDialog, QLineEdit, QMessageBox,
     QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
@@ -97,9 +97,8 @@ class JanelaLancamentosEstoque(QDialog):
         self.desconto_item.setPlaceholderText("Desconto (R$)")
         self.minimo_item = QLineEdit()
         self.minimo_item.setPlaceholderText("Estoque mínimo")
-        self.ligar_controle = QCheckBox("Ligar controle de estoque")
         for widget in (self.produto, self.quantidade, self.valor_item,
-                       self.desconto_item, self.minimo_item, self.ligar_controle):
+                       self.desconto_item, self.minimo_item):
             item_form.addWidget(widget)
         layout.addLayout(item_form)
 
@@ -185,14 +184,21 @@ class JanelaLancamentosEstoque(QDialog):
             campo.clear()
 
     def _habilitar_lancamento(self, existe):
+        tipo = self.tipo.currentData()
         self.tipo.setEnabled(not existe)
         self.fornecedor.setEnabled(not existe)
         self.descricao.setEnabled(not existe)
         self.data.setEnabled(not existe)
-        self.valor_nota.setEnabled(not existe and self.tipo.currentData() == "compra")
+        compra = tipo == "compra"
+        self.valor_nota.setEnabled(not existe and compra)
         self.documento.setEnabled(not existe)
         self.nota_fiscal.setEnabled(not existe)
         self.btn_iniciar.setEnabled(not existe)
+        self.produto.setEnabled(existe)
+        self.quantidade.setEnabled(existe)
+        self.valor_item.setEnabled(existe and compra)
+        self.desconto_item.setEnabled(existe and compra)
+        self.minimo_item.setEnabled(existe and tipo == "inicial")
         self.btn_adicionar.setEnabled(existe)
         self.btn_remover.setEnabled(existe and self.grade_itens.currentRow() >= 0)
         self.btn_excluir.setEnabled(existe)
@@ -244,6 +250,10 @@ class JanelaLancamentosEstoque(QDialog):
                         break
         finally:
             self.grade_lancamentos.blockSignals(False)
+        self.mensagem.setText(
+            f"Mostrando os {len(registros)} lançamentos mais recentes de "
+            f"{len(todos)}." if len(todos) > len(registros) else
+            f"{len(registros)} lançamento(s).")
         return True
 
     def _selecionar_lancamento(self):

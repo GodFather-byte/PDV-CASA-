@@ -124,6 +124,9 @@ class TestLancamentosEstoqueQt(BaseTeste):
         fornecedor_id = self.banco.inserir("fornecedores", {"nome": "AMBEV"})
         lancamento_id = self.ctx.estoque.pedido_sugerido(
             fornecedor_id, [(produto_id, 5)])
+        self.banco.executar(
+            "UPDATE operadores SET nivel = 2 WHERE id = ?", (self.ctx.operador_id,))
+        self.ctx.operador = self.ctx.acesso.operador(self.ctx.operador_id)
         janela = self.janela(lancamento_id)
 
         def revogar(*_args, **_kwargs):
@@ -143,6 +146,9 @@ class TestLancamentosEstoqueQt(BaseTeste):
         produto_id = self.novo_produto("GELO", estoque=True)
         lancamento_id = self.ctx.estoque.registrar_rapido(
             produto_id, "entrada", 3)
+        self.banco.executar(
+            "UPDATE operadores SET nivel = 2 WHERE id = ?", (self.ctx.operador_id,))
+        self.ctx.operador = self.ctx.acesso.operador(self.ctx.operador_id)
         janela = self.janela(lancamento_id)
         # Reabre o lançamento, e a resposta afirmativa revoga o módulo antes da gravação.
         def revogar(*_args, **_kwargs):
@@ -182,3 +188,48 @@ class TestLancamentosEstoqueQt(BaseTeste):
             self.banco.valor(
                 "SELECT COUNT(*) FROM lancamentos_estoque WHERE id = ?",
                 (lancamento_id,)), 0)
+
+    def test_lista_de_lancamentos_abre_pedido_existente_e_itens_podem_ser_removidos(self):
+        produto_id = self.novo_produto("GELO", estoque=True, qt=2)
+        fornecedor_id = self.banco.inserir("fornecedores", {"nome": "AMBEV"})
+        lancamento_id = self.ctx.estoque.pedido_sugerido(
+            fornecedor_id, [(produto_id, 5)])
+        janela = self.janela()
+        self.assertEqual(janela.grade_lancamentos.rowCount(), 1)
+        self.assertEqual(janela.grade_lancamentos.item(0, 1).text(), "Pedido")
+        janela.grade_lancamentos.selectRow(0)
+        self.assertEqual(janela.lancamento_id, lancamento_id)
+        self.assertEqual(janela.grade_itens.rowCount(), 1)
+        janela.grade_itens.selectRow(0)
+        with patch.object(QMessageBox, "question",
+                          return_value=QMessageBox.StandardButton.No):
+            self.assertFalse(janela.remover_item())
+        self.assertEqual(self.ctx.estoque.itens(lancamento_id)[0]["quantidade"], 5)
+        with patch.object(QMessageBox, "question",
+                          return_value=QMessageBox.StandardButton.Yes):
+            self.assertTrue(janela.remover_item())
+        self.assertEqual(self.ctx.estoque.itens(lancamento_id), [])
+        self.assertEqual(self.ctx.estoque.lancamento(lancamento_id)["tipo"], "pedido")
+
+    def test_revogacao_apos_dialogo_de_exclusao_de_item_impede_estorno(self):
+        produto_id = self.novo_produto("GELO", estoque=True)
+        lancamento_id = self.ctx.estoque.registrar_rapido(
+            produto_id, "entrada", 3)
+        item = self.ctx.estoque.itens(lancamento_id)[0]
+        self.banco.executar(
+            "UPDATE operadores SET nivel = 2 WHERE id = ?", (self.ctx.operador_id,))
+        self.ctx.operador = self.ctx.acesso.operador(self.ctx.operador_id)
+        janela = self.janela(lancamento_id)
+        janela.grade_itens.selectRow(0)
+
+        def revogar(*_args, **_kwargs):
+            self.banco.executar(
+                "UPDATE acessos SET nivel = 3 WHERE modulo = 'lanc_estoque'")
+            return QMessageBox.StandardButton.Yes
+
+        with patch.object(QMessageBox, "question", side_effect=revogar):
+            self.assertFalse(janela.remover_item())
+        self.assertEqual(
+            self.banco.valor("SELECT qt_atual FROM produtos WHERE id = ?", (produto_id,)),
+            3)
+        self.assertEqual(self.ctx.estoque.itens(lancamento_id)[0]["id"], item["id"])
