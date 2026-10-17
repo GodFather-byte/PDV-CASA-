@@ -25,7 +25,7 @@ entrada (nunca com um turno recente aberto). Renovar é emitir um código novo e
 
 1. No GitHub: aba **Actions > Gerar instalador (Windows)** > clique na execução mais recente (a primeira da lista, com o ✔ verde)
    > role até o fim da página, em **Artifacts** >
-   `WillLicencas-Instalador-<versão>-<commit>`. Baixe, extraia o .zip e rode `WillLicencas-Setup-1.0.0.exe`.
+   `WillLicencas-Instalador-<versão>-<commit>`. Baixe, extraia o .zip e rode `WillLicencas-Setup-1.1.0.exe`.
 2. Se o Windows avisar "protegeu o seu computador", clique em **Mais informações > Executar assim mesmo** (o instalador ainda não
    tem assinatura digital paga).
 3. Não pede senha de administrador. Pode ficar instalado junto com o PDV no mesmo computador.
@@ -58,7 +58,26 @@ computador**, em `C:\Users\SEU_USUARIO\.pdv-casa\`. Abra a aba **Chave de segura
 A aba **Lojas e vencimentos** mostra cada loja uma vez, com a licença mais nova: vermelho = vencida, amarelo = vence em até 7 dias.
 Selecione uma loja e toque em **Renovar a selecionada**: o formulário já vem preenchido com o mesmo tipo e prazo.
 
+Ao abrir o programa, uma **faixa no topo** avisa quando há licença vencida (vermelho) ou vencendo em até 7 dias (amarelo). Clique
+nela para ir direto à aba das lojas. Ela some sozinha quando você renova.
+
 O histórico fica em `C:\Users\SEU_USUARIO\AppData\Local\WillPDV-Licencas\historico.json` (guarda o código de cada licença emitida).
+
+## Backup (Google Drive)
+
+Aba **Backup**. O histórico só existe neste computador; se o disco morrer, você perde quem vence quando. Para guardar fora:
+
+1. Instale o **Google Drive para computador** e entre na sua conta (o programa não acessa a conta Google nem guarda senha dela).
+2. Na aba Backup, toque em **Usar o Google Drive deste computador** (ou **Escolher pasta do backup...** e aponte uma pasta dentro do Meu Drive).
+3. Pronto: a cada licença emitida ou removida o programa copia o histórico para `WillPDV-Licencas\historico-AAAA-MM-DD.json` dentro
+   da pasta, e o Drive sincroniza sozinho. Ficam as últimas 30 cópias diárias. Dá para desligar o automático na mesma aba.
+4. **Fazer backup agora** guarda também a **chave de segurança, criptografada com uma senha sua** (12 caracteres ou mais), em
+   `licenca_privada.key.pdvbkp`. A chave nunca vai para a nuvem sem criptografia: quem tem a chave emite licenças. **Anote a senha em
+   lugar seguro; sem ela o backup da chave não abre.**
+
+Para recuperar em outro computador: instale o programa, abra a aba Backup e use **Restaurar chave...** (escolha o `.pdvbkp` e digite a
+senha) e **Restaurar histórico...** (escolha o `historico-...json`). O que existia antes vira `.bak`. Se o Google Drive estiver fechado
+ou sem pasta, o programa avisa na aba Backup e continua emitindo normalmente.
 
 ## Conferir um código
 

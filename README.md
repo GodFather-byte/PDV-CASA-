@@ -533,7 +533,7 @@ cliente liga dizendo que "não entra".
 - Rodar do código-fonte: `python -m licenciador.app` (precisa do Tkinter, que vem com o Python do Windows). Autoteste:
   `python -m licenciador.app --autoteste`.
 - Testes: `python -m unittest tests.test_licenciador`.
-- A versão do programa fica em `VERSAO` em [`licenciador/nucleo.py`](licenciador/nucleo.py) (hoje 1.0.0); o número do
+- A versão do programa fica em `VERSAO` em [`licenciador/nucleo.py`](licenciador/nucleo.py) (hoje 1.1.0); o número do
   instalador vem dela. Ele usa o mesmo formato de chave e de código do `tools/gerar_licenca.py`, então os dois conversam.
 - O job `licenciador` do workflow gera o instalador, abre o `.exe` (autoteste), instala de verdade (silencioso), roda o autoteste
   do instalado e atualiza por cima com o programa aberto. Se qualquer etapa falhar, a execução fica vermelha e não há artifact.

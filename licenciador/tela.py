@@ -10,7 +10,8 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 
 from licenciador import nucleo
-from licenciador.nucleo import ErroLicenciador, Historico
+from licenciador.nucleo import Configuracao, ErroLicenciador, Historico
+from src.core import backup_seguro
 from src.core import formatacao as fmt
 from src.ui import icone, tema
 from src.ui.tema import COR, Grade
@@ -23,10 +24,12 @@ def _br(iso: str) -> str:
 
 
 class Janela(tk.Tk):
-    def __init__(self, arquivo_chave: Path | None = None, historico: Historico | None = None):
+    def __init__(self, arquivo_chave: Path | None = None, historico: Historico | None = None,
+                 configuracao: Configuracao | None = None):
         super().__init__()
         self.arquivo_chave = arquivo_chave
         self.historico = historico or Historico()
+        self.config = configuracao or Configuracao(self.historico.arquivo.with_name("config.json"))
         self.emitida: nucleo.Emitida | None = None
         self.title(f"WillPDV Licenças {nucleo.VERSAO}")
         self.geometry("860x640")
@@ -41,14 +44,18 @@ class Janela(tk.Tk):
 
         self.aviso_chave = tk.Label(self, text="", anchor="w", justify="left", wraplength=800, padx=14, pady=6)
         self.aviso_chave.pack(fill="x")
+        self.aviso_venc = tk.Label(self, text="", anchor="w", justify="left", wraplength=800, padx=14, pady=6, cursor="hand2")
+        self.aviso_venc.bind("<Button-1>", lambda _e: self.abas.select(self.aba_lojas))
         self.abas = ttk.Notebook(self)
         self.abas.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         self._aba_emitir()
         self._aba_lojas()
         self._aba_conferir()
         self._aba_chave()
+        self._aba_backup()
         self.atualizar_chave()
         self.atualizar_lojas()
+        self.atualizar_backup()
         self.atualizar_validade()
 
     # --------------------------------------------------------------- emitir
@@ -135,6 +142,7 @@ class Janela(tk.Tk):
         self.lbl_status.configure(text=f"Licença {e.descricao.lower()} de {e.loja}, {vence}. Guardada no histórico.")
         self.ent_loja.configure(values=self.historico.lojas())
         self.atualizar_lojas()
+        self._backup_automatico()
 
     def _emitir(self) -> nucleo.Emitida:
         e = nucleo.emitir(self.var_loja.get(), self.var_tipo.get(), self.quantidade(), self.arquivo_chave)
@@ -161,6 +169,7 @@ class Janela(tk.Tk):
     # ---------------------------------------------------------------- lojas
     def _aba_lojas(self) -> None:
         f = ttk.Frame(self.abas, padding=16)
+        self.aba_lojas = f
         self.abas.add(f, text="  Lojas e vencimentos  ")
         ttk.Label(f, text="Cada loja aparece uma vez, com a licença mais nova. Quem vence primeiro fica no alto.",
                   foreground=COR["suave"]).pack(anchor="w")
@@ -182,6 +191,17 @@ class Janela(tk.Tk):
             tag = ("vencida",) if d["situacao"] == "Vencida" else ("vence",) if d["situacao"].startswith("Vence") else ()
             self.grade.adicionar([d["loja"], nucleo.ROTULO.get(d["tipo"], d["tipo"]), _br(d["emitida_em"]),
                                   "—" if d["permanente"] else _br(d["expira_em"]), d["situacao"]], iid=codigo, tags=tag)
+        self.atualizar_aviso_vencimentos()
+
+    def atualizar_aviso_vencimentos(self) -> None:
+        resumo = nucleo.resumo_vencimentos(self.historico)
+        texto = nucleo.texto_do_aviso(resumo)
+        if not texto:
+            self.aviso_venc.pack_forget()
+            return
+        vencida = bool(resumo["vencidas"])
+        self.aviso_venc.configure(text=texto, bg="#fde2e2" if vencida else "#fff1d6", fg="#8a1c1c" if vencida else "#7a4b00")
+        self.aviso_venc.pack(fill="x", before=self.abas)
 
     def _selecionada(self) -> dict | None:
         iid = self.grade.selecionado()
@@ -212,6 +232,7 @@ class Janela(tk.Tk):
         if d is not None and tema.confirmar(self, f"Tirar {d['loja']} do histórico?\nIsso não cancela a licença já entregue.", "Remover"):
             self.historico.remover(d["codigo"])
             self.atualizar_lojas()
+            self._backup_automatico()
 
     # -------------------------------------------------------------- conferir
     def _aba_conferir(self) -> None:
@@ -317,6 +338,142 @@ class Janela(tk.Tk):
                 subprocess.Popen(["xdg-open", str(pasta)])
         except OSError:
             tema.aviso(self, f"A pasta é:\n{pasta}", "Chave")
+
+    # ---------------------------------------------------------------- backup
+    def _aba_backup(self) -> None:
+        f = ttk.Frame(self.abas, padding=16)
+        self.abas.add(f, text="  Backup  ")
+        ttk.Label(f, wraplength=780, justify="left",
+                  text="Guarde cópia do histórico (quem vence quando) e da chave fora deste computador. Para usar o Google Drive: instale o "
+                       "\"Google Drive para computador\", escolha abaixo uma pasta dentro do Meu Drive e pronto, ele sincroniza sozinho. "
+                       "O programa não entra na sua conta Google nem guarda senha dela.").pack(anchor="w")
+        self.lbl_pasta = ttk.Label(f, text="", font=tema.FONTE_B, wraplength=780, justify="left")
+        self.lbl_pasta.pack(anchor="w", pady=(12, 2))
+        linha = ttk.Frame(f)
+        linha.pack(anchor="w", pady=4)
+        ttk.Button(linha, text="Escolher pasta do backup...", command=self.escolher_pasta_backup).pack(side="left")
+        self.btn_drive = ttk.Button(linha, text="Usar o Google Drive deste computador", command=self.usar_google_drive)
+        self.btn_drive.pack(side="left", padx=8)
+        self.var_auto = tk.BooleanVar(value=self.config.backup_automatico)
+        ttk.Checkbutton(f, text="Guardar o histórico sozinho a cada licença emitida ou removida", variable=self.var_auto,
+                        command=self.mudar_automatico).pack(anchor="w", pady=(8, 2))
+        acoes = ttk.Frame(f)
+        acoes.pack(anchor="w", pady=12)
+        self.btn_backup_agora = ttk.Button(acoes, text="Fazer backup agora (histórico e chave)", style="Ok.TButton",
+                                           command=self.backup_agora)
+        self.btn_backup_agora.pack(side="left")
+        ttk.Button(acoes, text="Restaurar histórico...", command=self.restaurar_historico).pack(side="left", padx=8)
+        ttk.Button(acoes, text="Restaurar chave...", command=self.restaurar_chave).pack(side="left")
+        self.lbl_backup = ttk.Label(f, text="", wraplength=780, justify="left")
+        self.lbl_backup.pack(anchor="w", pady=6)
+        ttk.Label(f, wraplength=780, justify="left", foreground=COR["suave"],
+                  text="A chave só vai para a nuvem criptografada com uma senha sua (mínimo 12 caracteres). Anote a senha em lugar seguro: "
+                       "sem ela o backup da chave não abre. O histórico não tem a chave, mas tem os códigos de licença emitidos.").pack(anchor="w", pady=(10, 0))
+
+    def atualizar_backup(self) -> None:
+        pasta = self.config.pasta_backup
+        self.lbl_pasta.configure(text=f"Pasta do backup: {pasta}" if pasta else "Pasta do backup: ainda não escolhida")
+        self.btn_drive.state(["!disabled"] if nucleo.pastas_do_google_drive() else ["disabled"])
+        self.btn_backup_agora.state(["!disabled"] if pasta else ["disabled"])
+        ultimo = self.config.ultimo_backup
+        if ultimo and not self.lbl_backup.cget("text"):
+            self.lbl_backup.configure(text=f"Último backup do histórico: {ultimo}", foreground=COR["ok"])
+
+    def escolher_pasta_backup(self) -> None:
+        drives = nucleo.pastas_do_google_drive()
+        inicial = str(self.config.pasta_backup or (drives[0] if drives else Path.home()))
+        pasta = filedialog.askdirectory(parent=self, title="Em que pasta guardar o backup? (por exemplo, dentro do Meu Drive)",
+                                        initialdir=inicial)
+        if pasta:
+            self._definir_pasta(Path(pasta))
+
+    def usar_google_drive(self) -> None:
+        drives = nucleo.pastas_do_google_drive()
+        if drives:
+            self._definir_pasta(drives[0])
+
+    def _definir_pasta(self, pasta: Path) -> None:
+        self.config.definir(pasta_backup=pasta)
+        self.lbl_backup.configure(text="")
+        self.atualizar_backup()
+        self._backup_automatico()
+
+    def mudar_automatico(self) -> None:
+        self.config.definir(backup_automatico=bool(self.var_auto.get()))
+
+    def _backup_automatico(self) -> None:
+        """Depois de emitir ou remover: copia o histórico se a pasta estiver escolhida. Nunca atrapalha a emissão."""
+        pasta = self.config.pasta_backup
+        if pasta is None or not self.config.backup_automatico:
+            return
+        try:
+            arquivo = nucleo.backup_historico(pasta, self.historico)
+        except ErroLicenciador as e:
+            self.lbl_backup.configure(text=f"Não consegui guardar o backup do histórico: {e}", foreground=COR["perigo"])
+            return
+        agora = fmt.agora()
+        self.config.definir(ultimo_backup=agora)
+        self.lbl_backup.configure(text=f"Histórico guardado em {arquivo} ({agora}).", foreground=COR["ok"])
+
+    def backup_agora(self) -> None:
+        pasta = self.config.pasta_backup
+        if pasta is None:
+            tema.aviso(self, "Escolha antes a pasta do backup.", "Backup")
+            return
+        ok, arquivo = tema.tratar(self, nucleo.backup_historico, pasta, self.historico)
+        if not ok:
+            return
+        self.config.definir(ultimo_backup=fmt.agora())
+        texto = f"Histórico guardado em:\n{arquivo}"
+        if self.arquivo_chave is not None or nucleo.arquivo_chave().exists():
+            senha = tema.pedir_texto(self, "Backup da chave", "Senha para proteger a chave na nuvem (12 caracteres ou mais)",
+                                     senha=True, validar=backup_seguro.validar_senha)
+            if senha is not None:
+                repetida = tema.pedir_texto(self, "Backup da chave", "Digite a senha de novo", senha=True)
+                if repetida != senha:
+                    tema.erro(self, "As senhas não são iguais. A chave não foi guardada.", "Backup da chave")
+                else:
+                    ok, chave = tema.tratar(self, nucleo.backup_chave_protegido, pasta, senha, self.arquivo_chave)
+                    texto += f"\n\nChave (criptografada) guardada em:\n{chave}" if ok else ""
+            else:
+                texto += "\n\nA chave não foi guardada (você não digitou senha)."
+        self.lbl_backup.configure(text=texto, foreground=COR["ok"])
+        tema.mensagem(self, texto, "Backup")
+
+    def restaurar_historico(self) -> None:
+        origem = filedialog.askopenfilename(parent=self, title="Escolha o backup do histórico (historico-AAAA-MM-DD.json)",
+                                            initialdir=str(self.config.pasta_backup or Path.home()),
+                                            filetypes=[("Histórico", "*.json")])
+        if not origem:
+            return
+        if not tema.confirmar(self, "Trocar o histórico deste computador pelo backup escolhido?\nO atual fica guardado como .json.bak.",
+                              "Restaurar histórico", padrao_sim=False):
+            return
+        ok, quantas = tema.tratar(self, nucleo.restaurar_historico, Path(origem), self.historico)
+        self.atualizar_lojas()
+        self.ent_loja.configure(values=self.historico.lojas())
+        if ok:
+            tema.mensagem(self, f"{quantas} licença(s) restaurada(s).", "Restaurar histórico")
+
+    def restaurar_chave(self) -> None:
+        origem = filedialog.askopenfilename(parent=self, title="Escolha o backup da chave (licenca_privada.key.pdvbkp)",
+                                            initialdir=str(self.config.pasta_backup or Path.home()),
+                                            filetypes=[("Backup da chave", "*.pdvbkp")])
+        if not origem:
+            return
+        senha = tema.pedir_texto(self, "Restaurar chave", "Senha do backup", senha=True)
+        if senha is None:
+            return
+        substituir = False
+        if self._arquivo().exists():
+            if not tema.confirmar(self, "Já existe uma chave neste computador. Substituir pela do backup?\nA atual fica guardada como .bak.",
+                                  "Restaurar chave", padrao_sim=False):
+                return
+            substituir = True
+        ok, _ = tema.tratar(self, nucleo.restaurar_chave_protegida, Path(origem), senha, self._arquivo(), substituir)
+        self.atualizar_chave()
+        if ok:
+            tema.mensagem(self, "Chave restaurada.", "Restaurar chave")
 
 
 def main() -> None:

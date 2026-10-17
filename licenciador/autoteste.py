@@ -15,7 +15,7 @@ from datetime import date
 from pathlib import Path
 
 MODULOS = ["licenciador.nucleo", "licenciador.tela", "licenciador.autoteste", "src.core.licenca", "src.core.ed25519",
-           "src.core.formatacao", "src.core.erros", "src.ui.tema", "src.ui.icone"]
+           "src.core.backup_seguro", "src.core.formatacao", "src.core.erros", "src.ui.tema", "src.ui.icone"]
 
 
 def _modulos() -> list[str]:
@@ -61,11 +61,37 @@ def _tela(pasta: Path) -> list[str]:
         raise RuntimeError(f"sem ambiente gráfico (Tk): {e}") from None
     try:
         janela.update()
-        if len(janela.abas.tabs()) != 4:
+        if len(janela.abas.tabs()) != 5:
             raise RuntimeError("a janela abriu sem todas as abas")
     finally:
         janela.destroy()
-    return ["a janela abre com as 4 abas"]
+    return ["a janela abre com as 5 abas"]
+
+
+def _backup(pasta: Path) -> list[str]:
+    from licenciador import nucleo
+    from licenciador.nucleo import Historico
+    from unittest import mock
+    from src.core import licenca
+    chave = pasta / "chave_backup.key"
+    publica = nucleo.criar_chave(chave)
+    with mock.patch.object(licenca, "CHAVE_PUBLICA_HEX", publica):       # a chave temporária faz o papel da chave do PDV
+        historico = Historico(pasta / "historico_backup.json")
+        historico.adicionar(nucleo.emitir("LOJA-TESTE", "mensal", 1, chave, date(2026, 1, 15)))
+        nuvem = pasta / "nuvem"
+        nuvem.mkdir()
+        copia = nucleo.backup_historico(nuvem, historico, date(2026, 1, 15))
+        protegido = nucleo.backup_chave_protegido(nuvem, "senha-de-teste-longa", chave)
+        if chave.read_text(encoding="ascii").strip() in protegido.read_bytes().decode("latin-1"):
+            raise RuntimeError("o backup da chave ficou legível, sem criptografia")
+        outra = pasta / "restaurada.key"
+        nucleo.restaurar_chave_protegida(protegido, "senha-de-teste-longa", outra)
+        if outra.read_text(encoding="ascii") != chave.read_text(encoding="ascii"):
+            raise RuntimeError("a chave restaurada não é igual à original")
+        novo = Historico(pasta / "historico_restaurado.json")
+        if nucleo.restaurar_historico(copia, novo) != 1:
+            raise RuntimeError("o histórico restaurado voltou diferente")
+    return ["backup do histórico e da chave criptografada (cópia e restauração)"]
 
 
 def executar(saida: str | None = None) -> int:
@@ -74,7 +100,8 @@ def executar(saida: str | None = None) -> int:
               f"Python {platform.python_version()} ({'executável' if getattr(sys, 'frozen', False) else 'código-fonte'})"]
     ok = True
     with tempfile.TemporaryDirectory(prefix="willlicencas_autoteste_") as pasta:
-        etapas = [("módulos", _modulos), ("assinatura", lambda: _assinatura(Path(pasta))), ("tela", lambda: _tela(Path(pasta)))]
+        etapas = [("módulos", _modulos), ("assinatura", lambda: _assinatura(Path(pasta))), ("backup", lambda: _backup(Path(pasta))),
+                  ("tela", lambda: _tela(Path(pasta)))]
         for nome, funcao in etapas:
             try:
                 linhas += [f"OK    {nome}: {t}" for t in funcao()]
