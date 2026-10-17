@@ -82,8 +82,9 @@ class TelegramController:
     def token(self) -> str:
         return self.banco.cfg("telegram_token").strip()
 
-    def cliente(self) -> ClienteTelegram:
-        return ClienteTelegram(self.token, self._http)
+    def cliente(self, token: str | None = None) -> ClienteTelegram:
+        """Cria um cliente HTTP independente do banco, inclusive para validar outro token."""
+        return ClienteTelegram(self.token if token is None else token, self._http)
 
     def ligado(self) -> bool:
         return self.banco.cfg_bool("telegram_ativo", False) and bool(self.token)
@@ -102,10 +103,19 @@ class TelegramController:
         if not re.fullmatch(r"\d{5,}:[\w-]{20,}", token):
             raise ErroNegocio("Esse token não parece certo. Ele é como 123456789:ABCdefGhIJK... (copie inteiro do @BotFather).")
         try:
-            bot = ClienteTelegram(token, self._http).quem_sou()
+            bot = self.cliente(token).quem_sou()
         except ErroTelegram as e:
             raise ErroNegocio("O Telegram não aceitou esse token: confira se copiou inteiro."
                               if e.codigo in (401, 404) else str(e)) from None
+        return self.salvar_token_validado(token, bot)
+
+    def salvar_token_validado(self, token: str, bot: dict) -> dict:
+        """Persiste o token e os dados devolvidos por getMe já confirmado pelo chamador.
+
+        Não faz rede. Permite validar fora da thread do banco mantendo a mesma
+        persistência usada por salvar_token e pela interface Tk.
+        """
+        token = (token or "").strip()
         if token != self.token:                                 # outro bot: os pareamentos do anterior não valem
             self.banco.executar("DELETE FROM telegram_chats")
             self.banco.cfg_set("telegram_offset", "0")

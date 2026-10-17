@@ -22,6 +22,16 @@ from src.ui.contexto import Contexto
 from src.ui_qt.app import App, JanelaBackupExterno, JanelaPrincipal, autoteste, preparar_inicio
 from src.ui_qt.cadastros import FormularioCadastro, JanelaCadastro
 from src.ui_qt.auditoria import JanelaAuditoria
+from src.ui_qt.assistente_impressora import JanelaAssistenteImpressora
+from src.ui_qt.configuracoes import JanelaConfiguracoes
+from src.ui_qt.composicao import JanelaComposicao
+from src.ui_qt.contas import JanelaContas
+from src.ui_qt.estoque import JanelaEstoque
+from src.ui_qt.fila_impressao import JanelaFilaImpressao
+from src.ui_qt.importar_produtos import JanelaImportarProdutos
+from src.ui_qt.relatorio_vendas import JanelaRelatorioVendas
+from src.ui_qt.relatorios import JanelaRelatorios
+from src.ui_qt.restaurar_backup import JanelaRestaurarBackup
 from src.ui_qt.login import JanelaLogin, TrocaSenha
 
 
@@ -301,9 +311,21 @@ class TestCadastrosQt(BaseQt):
         self.assertIn("acesso", formulario.mensagem.text())
         self.assertEqual(self.ctx.cadastros.listar("produtos"), [])
 
-    def test_cadastro_nao_migrado_e_explicitamente_recusado(self):
-        with self.assertRaisesRegex(ErroNegocio, "piloto Qt"):
-            JanelaCadastro(self.ctx, "clientes")
+    def test_cadastro_adicional_reutiliza_formulario_e_permissao_do_controller(self):
+        self.banco.cfg_set("usar_caderneta", "1")
+        janela = self.janela(JanelaCadastro(self.ctx, "clientes"))
+        self.assertEqual(janela.chave, "clientes")
+        self.assertIn("Cliente", janela.windowTitle())
+
+    def test_todas_as_entidades_genericas_adicionais_abrem_no_qt(self):
+        from src.ui_qt.app import JanelaPrincipal
+        self.banco.cfg_set("usar_caderneta", "1")
+        self.banco.cfg_set("usar_delivery", "1")
+        self.banco.cfg_set("usar_contas", "1")
+        for chave, _rotulo in JanelaPrincipal.CADASTROS_QT:
+            with self.subTest(cadastro=chave):
+                janela = self.janela(JanelaCadastro(self.ctx, chave))
+                self.assertEqual(janela.chave, chave)
 
 
 class TestAppQt(BaseQt):
@@ -361,6 +383,95 @@ class TestAppQt(BaseQt):
         principal.mostrar_limites()
         self.assertIn("--tk", principal.mensagem.text())
         self.assertIn("indisponíveis", principal.mensagem.text())
+
+    def test_menu_admin_abre_contas_unica_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["contas"].isEnabled())
+        janela = app.principal.abrir_contas()
+        self.assertIsInstance(janela, JanelaContas)
+        self.assertIs(app.principal.abrir_contas(), janela)
+        self.assertIs(app.principal.janelas["contas"], janela)
+        self.assertTrue(app.principal.fechar_filhos())
+        self.assertNotIn("contas", app.principal.janelas)
+
+    def test_menu_contas_revalida_permissao_na_reabertura(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        janela = app.principal.abrir_contas()
+        self.assertIsNotNone(janela)
+        self.banco.executar("UPDATE operadores SET nivel = 2 WHERE id = ?", (app.ctx.operador_id,))
+        self.ctx.acesso.alterar_nivel_modulo("lanc_contas", 3)
+        self.assertIsNone(app.principal.abrir_contas())
+        self.assertIn("acesso", app.principal.mensagem.text().lower())
+
+    def test_menu_novas_configuracoes_utilitarios_e_janelas_unicas(self):
+        from src.ui_qt.acessos import JanelaAcessos
+        from src.ui_qt.maquinas import JanelaMaquinas
+        from src.ui_qt.telegram import JanelaTelegram
+        from src.ui_qt.utilitarios import JanelaUtilitarios
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        for chave, classe in (("maquinas", JanelaMaquinas), ("acessos", JanelaAcessos),
+                              ("telegram", JanelaTelegram), ("utilitarios", JanelaUtilitarios)):
+            with self.subTest(tela=chave):
+                self.assertTrue(app.principal.botoes[chave].isEnabled())
+                abrir = getattr(app.principal, f"abrir_{chave}")
+                janela = abrir()
+                self.assertIsInstance(janela, classe)
+                self.assertIs(abrir(), janela)
+                self.assertTrue(janela.isVisible())
+        self.assertTrue(app.principal.fechar_filhos())
+        self.assertEqual(app.principal.janelas, {})
+
+    def test_menu_novas_telas_revalida_inativacao_ao_reabrir(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        for chave in ("maquinas", "acessos", "telegram", "utilitarios"):
+            abrir = getattr(app.principal, f"abrir_{chave}")
+            with self.subTest(tela=chave):
+                self.banco.executar("UPDATE operadores SET ativo = 1 WHERE id = ?", (app.ctx.operador_id,))
+                self.assertIsNotNone(abrir())
+                self.banco.executar("UPDATE operadores SET ativo = 0 WHERE id = ?", (app.ctx.operador_id,))
+                self.assertIsNone(abrir())
+                self.assertIn("inativo", app.principal.mensagem.text().lower())
+
+    def test_aplicativo_aplica_tema_claro_persistido_ao_iniciar(self):
+        self.banco.cfg_set("tema_visual", "claro")
+        app = self.app()
+        app.iniciar(servicos=False)
+        self.assertIn("#f3f6fa", self.aplicacao.styleSheet())
+        from src.ui_qt import tema
+        tema.aplicar(self.aplicacao)
+
+    def test_convite_cadastro_loja_adia_sem_gravar_e_nao_reabre_ja_cadastrada(self):
+        from src.ui_qt.configuracoes import JanelaCadastroLoja
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        janela = app.principal.oferecer_cadastro_loja()
+        self.assertIsInstance(janela, JanelaCadastroLoja)
+        janela.close()
+        self.assertFalse(app.ctx.config.loja_cadastrada())
+        app.ctx.config.cadastrar_loja({"nome_fantasia": "Casa"})
+        self.assertIsNone(app.principal.oferecer_cadastro_loja())
+
+    def test_atualizacoes_janela_reutilizada_e_cancelada_no_logout(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        with patch("src.ui_qt.atualizacoes.atualizacoes.consultar") as rede:
+            janela = app.principal.abrir_atualizacoes()
+            self.assertIs(app.principal.abrir_atualizacoes(), janela)
+            app.principal.consultar_atualizacoes()
+            rede.assert_not_called()
+        self.assertTrue(app.principal.fechar_filhos())
+        self.assertIsNone(janela._solicitacao)
+        self.assertFalse(janela.isVisible())
 
     def test_caixa_import_local_nao_bloqueante_e_referencia_retida(self):
         import types
@@ -654,6 +765,158 @@ class TestAuditoriaQt(BaseQt):
         self.assertIs(app.principal.abrir_auditoria(), janela)
         self.assertTrue(app.encerrar_sessao())
         self.assertFalse(janela.isVisible())
+
+    def test_menu_admin_abre_consulta_estoque_unica_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["estoque"].isEnabled())
+        janela = app.principal.abrir_estoque()
+        self.assertIsInstance(janela, JanelaEstoque)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_estoque(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_estoque_revalida_permissao_na_abertura(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        app.ctx.operador = None
+        self.assertIsNone(app.principal.abrir_estoque())
+        self.assertNotIn("estoque", app.principal.janelas)
+        self.assertIn("operador", app.principal.mensagem.text())
+
+    def test_menu_admin_abre_relatorio_vendas_unico_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["relatorio_vendas"].isEnabled())
+        janela = app.principal.abrir_relatorio_vendas()
+        self.assertIsInstance(janela, JanelaRelatorioVendas)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_relatorio_vendas(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_abre_catalogo_de_relatorios_com_permissao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["relatorios"].isEnabled())
+        with patch("PySide6.QtWidgets.QInputDialog.getItem", return_value=("Entradas e saídas financeiras do caixa", True)):
+            janela = app.principal.abrir_relatorios()
+        self.assertIsInstance(janela, JanelaRelatorios)
+        self.assertEqual(janela.chave, "caixa_mov")
+        self.assertTrue(janela.isVisible())
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_admin_abre_configuracoes_unica_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["configuracoes"].isEnabled())
+        janela = app.principal.abrir_configuracoes()
+        self.assertIsInstance(janela, JanelaConfiguracoes)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_configuracoes(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_admin_abre_importacao_unica_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["importar_produtos"].isEnabled())
+        janela = app.principal.abrir_importacao_produtos()
+        self.assertIsInstance(janela, JanelaImportarProdutos)
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_importacao_produtos(), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_admin_abre_assistente_impressora_unico_e_fecha_na_sessao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        with patch("src.ui_qt.assistente_impressora.impressoras_so.listar_impressoras", return_value=[]), \
+             patch("src.ui_qt.assistente_impressora.assistente.diagnosticar", return_value=[]):
+            self.assertTrue(app.principal.botoes["impressora"].isEnabled())
+            janela = app.principal.abrir_assistente_impressora()
+            self.assertIsInstance(janela, JanelaAssistenteImpressora)
+            self.assertTrue(janela.isVisible())
+            self.assertIs(app.principal.abrir_assistente_impressora(), janela)
+            self.assertTrue(app.encerrar_sessao())
+            self.assertFalse(janela.isVisible())
+
+    def test_menu_restauracao_rejeita_banco_em_memoria_sem_criar_janela(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["restaurar"].isEnabled())
+        self.assertIsNone(app.principal.abrir_restaurar_backup())
+        self.assertNotIn("restaurar", app.principal.janelas)
+        self.assertIn("banco salvo", app.principal.mensagem.text())
+
+    def test_menu_abre_fila_de_impressao_e_composicao(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        with patch("src.ui_qt.fila_impressao.QMessageBox.warning"), \
+             patch("src.ui_qt.fila_impressao.QMessageBox.information"):
+            self.assertTrue(app.principal.botoes["fila_impressao"].isEnabled())
+            fila = app.principal.abrir_fila_impressao()
+            self.assertIsInstance(fila, JanelaFilaImpressao)
+            self.assertTrue(fila.isVisible())
+        self.banco.cfg_set("usar_delivery", "1")
+        self.assertTrue(app.principal.botoes["composicao"].isEnabled())
+        composicao = app.principal.abrir_composicao()
+        self.assertIsInstance(composicao, JanelaComposicao)
+        self.assertTrue(composicao.isVisible())
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(fila.isVisible())
+        self.assertFalse(composicao.isVisible())
+
+    def test_menu_importacao_revalida_permissao_na_reabertura(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        janela = app.principal.abrir_importacao_produtos()
+        self.assertIsNotNone(janela)
+        app.ctx.operador = None
+        self.assertIsNone(app.principal.abrir_importacao_produtos())
+        self.assertIs(app.principal.janelas["importar_produtos"], janela)
+        self.assertIn("Entre no sistema", app.principal.mensagem.text())
+
+    def test_menu_abre_cadastros_adicionais_pela_entidade_existente(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.principal = JanelaPrincipal(app)
+        self.assertTrue(app.principal.botoes["mais_cadastros"].isEnabled())
+        with patch("PySide6.QtWidgets.QInputDialog.getItem", return_value=("Unidades", True)):
+            janela = app.principal.escolher_cadastro_adicional()
+        self.assertIsInstance(janela, JanelaCadastro)
+        self.assertEqual(janela.chave, "unidades")
+        self.assertTrue(janela.isVisible())
+        self.assertIs(app.principal.abrir_cadastro("unidades"), janela)
+        self.assertTrue(app.encerrar_sessao())
+        self.assertFalse(janela.isVisible())
+
+    def test_menu_cadastros_adicionais_respeita_acesso_e_modulo(self):
+        app = self.app()
+        app.ctx.operador = app.ctx.acesso.autenticar("ADM", "ADM")
+        app.ctx.acesso.alterar_nivel_modulo("cad_unidades", 4)
+        app.principal = JanelaPrincipal(app)
+        self.assertIn(("unidades", "Unidades"), app.principal._cadastros_disponiveis())
+        app.ctx.operador = app.ctx.acesso.operador(app.ctx.operador_id)
+        self.banco.executar("UPDATE operadores SET nivel = 1 WHERE id = ?", (app.ctx.operador_id,))
+        app.principal.atualizar()
+        self.assertNotIn(("unidades", "Unidades"), app.principal._cadastros_disponiveis())
+        with patch("PySide6.QtWidgets.QInputDialog.getItem") as escolha:
+            self.assertIsNone(app.principal.escolher_cadastro_adicional())
+            escolha.assert_not_called()
+        self.assertIn("não permite", app.principal.mensagem.text())
 
     def test_menu_nao_admin_desabilita_e_chamada_direta_nao_contorna(self):
         id_ = self.ctx.cadastros.salvar("operadores", {"nome": "SUP", "senha": "Segura123", "nivel": 3})

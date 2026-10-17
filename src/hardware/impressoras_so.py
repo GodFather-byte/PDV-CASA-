@@ -285,9 +285,11 @@ def servico_spooler_rodando() -> bool | None:
         return None
     import subprocess
     try:
-        saida = subprocess.run(["sc", "query", "spooler"], capture_output=True, text=True, timeout=8,
+        saida = subprocess.run(["sc", "query", "spooler"], capture_output=True, text=True, errors="replace", timeout=8,
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
     except (OSError, subprocess.SubprocessError):
+        return None
+    if saida is None:
         return None
     if "RUNNING" in saida.upper():
         return True

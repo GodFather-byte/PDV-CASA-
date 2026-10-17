@@ -27,7 +27,7 @@ PostgreSQL fica na nuvem, sem dependência de internet para vender no caixa.
 | `src/database/` | `esquema.py` (tabelas, migrações e histórico de produtos separado do catálogo), `conexao.py`, `protecao.py` (integridade e backup), `sementes.py` (dados iniciais) |
 | `src/controllers/` | Regras de negócio, um arquivo por assunto (lista abaixo) |
 | `src/ui/` | Telas Tkinter: `app.py` (janela principal), `caixa_ui.py` (caixa), `painel_mesas.py` (cartões, busca e abas das comandas), `caixa_tema.py` (cores e estilos do caixa), `paleta.py` (modo claro/escuro: as paletas e a troca), `login.py`, `tema.py` e uma tela por módulo |
-| `src/ui_qt/` | Migração gradual PySide6/Qt: login, navegação, cadastros e caixa piloto; escopo em `docs/INTERFACE_QT.md` |
+| `src/ui_qt/` | Migração PySide6/Qt: login, caixa, cadastros, estoque operacional, relatórios, configurações, máquinas, acessos, Telegram e utilitários; escopo em `docs/INTERFACE_QT.md` |
 | `src/hardware/` | Impressora térmica ESC/POS e gaveta, balança, logotipo no cupom, impressoras do Windows |
 | `src/sync/` | `sincronizador.py`, `licenca_nuvem.py`, `atualizacoes.py`, `telegram_api.py` |
 | `licenciador/` | `nucleo.py` (regras), `tela.py` (janela), `app.py`, `autoteste.py` |

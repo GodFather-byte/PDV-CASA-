@@ -113,8 +113,6 @@ class FormularioCadastro(QDialog):
 class JanelaCadastro(QDialog):
     def __init__(self, ctx, chave, parent=None):
         super().__init__(parent)
-        if chave not in ("produtos", "operadores"):
-            raise ErroNegocio("Este cadastro ainda não está disponível no piloto Qt. Use --tk.")
         self.ctx, self.chave = ctx, chave
         self.entidade = exigir_acesso(ctx, chave)
         self.setWindowTitle(self.entidade.titulo + " • Qt")
