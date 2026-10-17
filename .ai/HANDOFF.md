@@ -1,17 +1,19 @@
 # HANDOFF
 
 ## Último trabalho
-- Base: `main` em `4f089df` (1.4.0), comissão/acerto/saída Qt integrados. A validação
-  anterior passou em 245 testes e no build/autotestes Windows; confira `docs/INTERFACE_QT.md`.
-- Investigação do CI: PostgreSQL e build Windows passaram. Linux Python 3.10/3.12 falhou
-  somente em `test_build_inclui_avisos_licencas_e_versoes_reais`: algumas versões de wheel
-  não fornecem arquivos `.dist-info` de licença separados. O teste agora exige cópia exata
-  dos arquivos que cada wheel realmente fornece, sem pressupor a existência de pasta vazia.
-- Teste direcionado da distribuição passou com o runtime Python 3.12.10/PySide6 6.12.0;
-  `git diff --check` passou. A correção ainda não foi publicada nem validada no CI remoto.
+- Base: `main` em `e278947` (1.4.0), incluindo comissão/acerto/saída Qt integrados.
+- Corrigido `test_build_inclui_avisos_licencas_e_versoes_reais`: compara os arquivos de
+  licença realmente fornecidos pelas wheels, sem pressupor que todo pacote tenha arquivos
+  `.dist-info` separados. O teste direcionado passou anteriormente com Python 3.12.10 e
+  PySide6 6.12.0; `git diff --check` passou.
+- Correção publicada em `e278947`. CI: PostgreSQL, build Windows, Linux Python 3.10 e 3.12
+  passaram. Windows Python 3.10 passou; Windows Python 3.12 ainda estava executando os
+  testes quando este handoff foi atualizado.
+- Python não está disponível no PATH deste ambiente após reiniciar o VS Code.
 
 ## Pendências
-- Publicar a correção de `tests/test_modernizacao_integracao.py` e confirmar o CI Linux.
+- Confirmar a conclusão do job Windows Python 3.12 no workflow de testes:
+  https://github.com/GodFather-byte/PDV-CASA-/actions/runs/38983842283
 - Qt ainda bloqueia partes/montagem, desconto/serviço manual, transferência,
   caderneta/entrega, sangria/repique, gaveta, balança e consulta de comanda. Homologar
   em cópia do banco antes de substituir o Tk em operação.
