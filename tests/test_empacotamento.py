@@ -61,10 +61,12 @@ class TesteWorkflowDeBuild(unittest.TestCase):
         self.assertIn("needs: build", trecho)                        # só publica o que passou nos autotestes
 
 
-    def test_workflow_gera_so_o_willpdv_e_nao_o_programa_de_licencas(self):
-        for trecho in ("licenciador", "WillLicencas", "build_licenciador"):
-            self.assertNotIn(trecho, self.texto)                      # o instalador de licenças é gerado na máquina do fornecedor
-        self.assertGreaterEqual(self.texto.count("--autoteste"), 2)   # PDV: no .exe e no instalado
+    def test_programa_de_licencas_tem_job_proprio_e_nao_vai_para_a_aba_releases(self):
+        for trecho in ("python build_licenciador.py", "WillLicencas-Instalador-", "WillLicencas-Setup-*.exe", "docs/LICENCIADOR.md"):
+            self.assertIn(trecho, self.texto)
+        release = self.texto[self.texto.index("  publicar:"):]
+        self.assertNotIn("WillLicencas", release)                    # é ferramenta do fornecedor: nada de link público no Releases
+        self.assertGreaterEqual(self.texto.count("--autoteste"), 4)   # PDV: no .exe e no instalado; licenças: no .exe e no instalado
 
 
 class TesteInstaladores(unittest.TestCase):

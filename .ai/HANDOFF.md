@@ -11,6 +11,8 @@
   testes quando este handoff foi atualizado.
 - Python não está disponível no PATH deste ambiente após reiniciar o VS Code.
 
+- Restaurado o job `licenciador` no `build-windows.yml` (instalador WillPDV Licenças só nos Artifacts, nunca na Release), com README, docs/LICENCIADOR.md e teste de empacotamento de volta ao estado anterior a `734ee2b`. Falta ver o job verde no GitHub após o push.
+
 ## Pendências
 - Confirmar a conclusão do job Windows Python 3.12 no workflow de testes:
   https://github.com/GodFather-byte/PDV-CASA-/actions/runs/38983842283

@@ -22,7 +22,7 @@ O repositório gera **dois programas Windows diferentes**. Não confunda:
 | Programa | Para quem | O que faz | Onde baixar | Guia |
 | --- | --- | --- | --- | --- |
 | **WillPDV** (o PDV) | o **cliente** (a boate, o bar) | caixa, mesas e comandas, estoque, relatórios, impressão | [aba Releases](https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao) · [instalador direto](https://github.com/GodFather-byte/PDV-CASA-/releases/download/ultima-versao/WillPDV-Instalador.exe) | [`docs/INSTALAR_E_TESTAR.md`](docs/INSTALAR_E_TESTAR.md) |
-| **WillPDV Licenças** (o gerador de licenças) | **só você**, o fornecedor | emite os códigos de licença (mensal, permanente, teste) | gerado na sua máquina (`python build_licenciador.py`); não fica na Releases, que é pública | [seção abaixo](#willpdv-licenças-o-gerador-de-licenças) · [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md) |
+| **WillPDV Licenças** (o gerador de licenças) | **só você**, o fornecedor | emite os códigos de licença (mensal, permanente, teste) | [aba Actions](https://github.com/GodFather-byte/PDV-CASA-/actions/workflows/build-windows.yml) > *Artifacts* (não fica na Releases, que é pública) | [seção abaixo](#willpdv-licenças-o-gerador-de-licenças) · [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md) |
 
 > **Procurando o programa que cria as licenças?** Vá direto para
 > [WillPDV Licenças: o gerador de licenças](#willpdv-licenças-o-gerador-de-licenças): lá estão onde ele fica no GitHub,
@@ -428,23 +428,30 @@ segurança; **não precisa de Python, de servidor, de bot nem de internet**.
 | O quê | Link |
 | --- | --- |
 | **Código-fonte do programa** | [`licenciador/`](https://github.com/GodFather-byte/PDV-CASA-/tree/main/licenciador): [`nucleo.py`](licenciador/nucleo.py) (regras: chave, emissão, histórico), [`tela.py`](licenciador/tela.py) (a janela), [`autoteste.py`](licenciador/autoteste.py), [`app.py`](licenciador/app.py) (entrada) |
-| **Instalador** | gerado na sua máquina com `python build_licenciador.py` (o GitHub Actions não gera mais o instalador deste programa) |
+| **Onde baixar o instalador pronto** | [GitHub Actions > Gerar instalador (Windows)](https://github.com/GodFather-byte/PDV-CASA-/actions/workflows/build-windows.yml) > abrir a execução mais recente > **Artifacts** > `WillLicencas-Instalador-<versão>-<commit>` (passo a passo [abaixo](#baixar-e-instalar)) |
 | Guia de uso (documentação) | [`docs/LICENCIADOR.md`](docs/LICENCIADOR.md) |
 | Gerar o `.exe` e o instalador | [`build_licenciador.py`](build_licenciador.py) e o script do Inno Setup [`instalador/WillLicencas.iss`](instalador/WillLicencas.iss) |
+| Automação que gera e testa o instalador | job `licenciador` de [`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml) |
 | Testes | [`tests/test_licenciador.py`](tests/test_licenciador.py) |
 | Alternativa pela linha de comando | [`tools/gerar_licenca.py`](tools/gerar_licenca.py) (ver [Emitir licenças pela linha de comando](#emitir-licenças-pela-linha-de-comando)) |
 
-O programa **não está na aba Releases** de propósito: a Release é pública e o gerador é só seu. O GitHub Actions não gera mais o
-instalador dele: gere na sua máquina com `python build_licenciador.py` (precisa do Inno Setup 6; sem ele sai só o `.exe`).
+O programa **não está na aba Releases** de propósito: a Release é pública e o gerador é só seu. Por isso ele só existe nos
+*Artifacts* do GitHub Actions (entra com a sua conta do GitHub; ficam guardados por 30 dias, e dá para gerar de novo quando quiser).
 
 ### Baixar e instalar
 
-1. No Windows, com Python 3.10+ e o [Inno Setup 6](https://jrsoftware.org/isdl.php) instalados, rode na raiz do repositório:
-   `python build_licenciador.py`. O instalador sai em `instalador\saida\WillLicencas-Setup-<versão>.exe`.
-2. Dê dois cliques em `WillLicencas-Setup-<versão>.exe` > Avançar > Instalar. **Não pede senha de administrador** e pode ficar
+1. Abra a página do workflow: <https://github.com/GodFather-byte/PDV-CASA-/actions/workflows/build-windows.yml>. (Se preferir:
+   aba **Actions** do repositório > **Gerar instalador (Windows)**, na lista da esquerda.)
+2. Clique na execução **mais recente com o ✔ verde** (a primeira da lista).
+3. Role até o fim da página, em **Artifacts**, e baixe `WillLicencas-Instalador-<versão>-<commit>`. Vem um `.zip`: extraia.
+4. Dê dois cliques em `WillLicencas-Setup-<versão>.exe` > Avançar > Instalar. **Não pede senha de administrador** e pode ficar
    instalado no mesmo computador do PDV.
-3. Se o Windows avisar *"O Windows protegeu o seu computador"*, clique em **Mais informações > Executar assim mesmo** (o
+5. Se o Windows avisar *"O Windows protegeu o seu computador"*, clique em **Mais informações > Executar assim mesmo** (o
    instalador ainda não tem assinatura digital paga). Se o antivírus reclamar, libere o arquivo.
+
+**Não há execução recente, ou o artifact venceu (30 dias)?** Abra a mesma página do workflow, clique em **Run workflow**, escolha
+a branch (`main`) e confirme. Em uns 6 a 12 minutos a execução termina e o artifact reaparece. O mesmo vale se a execução mais
+recente estiver vermelha: use a última verde.
 
 **Atualizar ou desinstalar:** rode o instalador novo por cima (se o programa estiver aberto, o instalador avisa e fecha). A
 **chave de segurança e o histórico não são apagados** nem ao atualizar nem ao desinstalar.
@@ -612,11 +619,12 @@ para a aba Releases.
 ### Como o GitHub Actions gera tudo
 
 O workflow [`build-windows.yml`](.github/workflows/build-windows.yml) roda a cada push na `main` ou numa branch `claude/**`, numa
-tag `v*` e sob demanda (**Run workflow**). Gera só o WillPDV, com autoteste e instalação de verdade (o programa de licenças não passa mais por aqui):
+tag `v*` e sob demanda (**Run workflow**). Tem dois jobs de geração, ambos com autoteste e instalação de verdade:
 
 | Job | Gera | Onde fica |
 | --- | --- | --- |
 | Programa e instalador | WillPDV (instalador e versão portátil) | Artifacts; na `main`, também na [Release "última versão"](https://github.com/GodFather-byte/PDV-CASA-/releases/tag/ultima-versao); numa tag `v*`, numa Release de versão |
+| Programa de licenças | WillPDV Licenças (instalador) | **só** nos Artifacts (30 dias) |
 
 A suíte de testes ([`testes.yml`](.github/workflows/testes.yml)) roda a cada push e pull request, em Windows e Linux, com Python
 3.10 e 3.12.
