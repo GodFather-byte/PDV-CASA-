@@ -270,6 +270,205 @@ class TesteTela(BaseLicenciador):
 
 
 @unittest.skipUnless(_tk_disponivel(), "sem ambiente gráfico")
+class TesteVencimentos(BaseLicenciador):
+    def emitir(self, loja, tipo, qtd, quando):
+        self.historico.adicionar(nucleo.emitir(loja, tipo, qtd, self.chave, quando))
+
+    def test_separa_vencidas_de_quem_vence_em_breve_e_ignora_permanente_e_em_dia(self):
+        self.emitir("BAR", "mensal", 1, date(2026, 9, 5))            # venceu em 05/10
+        self.emitir("LOUNGE", "mensal", 1, date(2026, 9, 12))        # vence em 12/10: faltam 3 dias
+        self.emitir("HOJE", "mensal", 1, date(2026, 9, 9))           # vence em 09/10: hoje
+        self.emitir("BOATE", "mensal", 1, date(2026, 10, 1))         # em dia
+        self.emitir("CASA", "permanente", 0, date(2026, 7, 1))
+        resumo = nucleo.resumo_vencimentos(self.historico, HOJE)
+        self.assertEqual(resumo["vencidas"], ["BAR"])
+        self.assertEqual(resumo["vencendo"], [("HOJE", 0), ("LOUNGE", 3)])
+
+    def test_texto_do_aviso(self):
+        self.emitir("BAR", "mensal", 1, date(2026, 9, 5))
+        self.emitir("LOUNGE", "mensal", 1, date(2026, 9, 12))
+        texto = nucleo.texto_do_aviso(nucleo.resumo_vencimentos(self.historico, HOJE))
+        self.assertIn("1 licença vencida: BAR", texto)
+        self.assertIn("LOUNGE (3 dias)", texto)
+
+    def test_sem_nada_a_renovar_o_aviso_some(self):
+        self.emitir("BOATE", "mensal", 1, date(2026, 10, 1))
+        self.assertEqual(nucleo.texto_do_aviso(nucleo.resumo_vencimentos(self.historico, HOJE)), "")
+
+
+class TesteBackup(BaseLicenciador):
+    SENHA = "uma-senha-bem-longa"
+
+    def setUp(self):
+        super().setUp()
+        self.nuvem = self.pasta / "meu-drive"
+        self.nuvem.mkdir()
+        self.historico.adicionar(nucleo.emitir("BAR", "mensal", 1, self.chave, HOJE))
+
+    def test_historico_vai_para_a_subpasta_com_a_data_e_fica_igual(self):
+        arquivo = nucleo.backup_historico(self.nuvem, self.historico, HOJE)
+        self.assertEqual(arquivo, self.nuvem / nucleo.PASTA_BACKUP / "historico-2026-10-09.json")
+        self.assertEqual(arquivo.read_bytes(), self.historico.arquivo.read_bytes())
+        self.assertEqual(list(arquivo.parent.glob(".*.tmp")), [])
+
+    def test_no_mesmo_dia_a_copia_e_trocada_e_as_mais_antigas_saem(self):
+        for dia in range(1, 6):
+            nucleo.backup_historico(self.nuvem, self.historico, date(2026, 10, dia), manter=3)
+        nucleo.backup_historico(self.nuvem, self.historico, date(2026, 10, 5), manter=3)
+        nomes = sorted(p.name for p in (self.nuvem / nucleo.PASTA_BACKUP).iterdir())
+        self.assertEqual(nomes, ["historico-2026-10-03.json", "historico-2026-10-04.json", "historico-2026-10-05.json"])
+
+    def test_recusa_historico_vazio_e_pasta_que_nao_existe(self):
+        with self.assertRaisesRegex(ErroLicenciador, "Ainda não há licenças"):
+            nucleo.backup_historico(self.nuvem, Historico(self.pasta / "vazio.json"), HOJE)
+        with self.assertRaisesRegex(ErroLicenciador, "Google Drive"):
+            nucleo.backup_historico(self.pasta / "nao_existe", self.historico, HOJE)
+
+    def test_chave_so_vai_criptografada_e_volta_igual(self):
+        arquivo = nucleo.backup_chave_protegido(self.nuvem, self.SENHA, self.chave)
+        self.assertEqual(arquivo.name, "licenca_privada.key.pdvbkp")
+        semente = self.chave.read_text(encoding="ascii").strip()
+        self.assertNotIn(semente.encode("ascii"), arquivo.read_bytes())
+        destino = self.pasta / "outra" / "licenca_privada.key"
+        estado = nucleo.restaurar_chave_protegida(arquivo, self.SENHA, destino)
+        self.assertTrue(estado.pronta)
+        self.assertEqual(destino.read_text(encoding="ascii"), self.chave.read_text(encoding="ascii"))
+
+    def test_senha_errada_ou_curta_e_arquivo_alterado_sao_recusados(self):
+        with self.assertRaisesRegex(ErroLicenciador, "12 a 1024"):
+            nucleo.backup_chave_protegido(self.nuvem, "curta", self.chave)
+        arquivo = nucleo.backup_chave_protegido(self.nuvem, self.SENHA, self.chave)
+        destino = self.pasta / "restaurada.key"
+        with self.assertRaisesRegex(ErroLicenciador, "Senha incorreta"):
+            nucleo.restaurar_chave_protegida(arquivo, "outra-senha-longa-demais", destino)
+        self.assertFalse(destino.exists())
+        dados = bytearray(arquivo.read_bytes())
+        dados[-20] ^= 1
+        arquivo.write_bytes(bytes(dados))
+        with self.assertRaises(ErroLicenciador):
+            nucleo.restaurar_chave_protegida(arquivo, self.SENHA, destino)
+
+    def test_restaurar_chave_nao_troca_a_existente_sem_confirmacao(self):
+        arquivo = nucleo.backup_chave_protegido(self.nuvem, self.SENHA, self.chave)
+        with self.assertRaisesRegex(ErroLicenciador, "Já existe"):
+            nucleo.restaurar_chave_protegida(arquivo, self.SENHA, self.chave)
+        nucleo.restaurar_chave_protegida(arquivo, self.SENHA, self.chave, substituir=True)
+
+    def test_restaurar_historico_guarda_o_atual_e_recusa_lixo_e_codigo_de_outra_chave(self):
+        copia = nucleo.backup_historico(self.nuvem, self.historico, HOJE)
+        novo = Historico(self.pasta / "novo" / "historico.json")
+        self.assertEqual(nucleo.restaurar_historico(copia, novo), 1)
+        self.assertEqual([d["loja"] for d in novo.todas()], ["BAR"])
+        self.assertEqual(nucleo.restaurar_historico(copia, novo), 1)
+        self.assertTrue(novo.arquivo.with_suffix(".json.bak").exists())
+        lixo = self.pasta / "lixo.json"
+        lixo.write_text("{ nao e json", encoding="utf-8")
+        with self.assertRaisesRegex(ErroLicenciador, "não é um backup"):
+            nucleo.restaurar_historico(lixo, novo)
+        lixo.write_text("[]", encoding="utf-8")
+        with self.assertRaisesRegex(ErroLicenciador, "nenhuma licença"):
+            nucleo.restaurar_historico(lixo, novo)
+        with mock.patch.object(licenca, "CHAVE_PUBLICA_HEX", ed25519.chave_publica(bytes(range(32))).hex()):
+            with self.assertRaisesRegex(ErroLicenciador, "não confere"):
+                nucleo.restaurar_historico(copia, novo)
+        self.assertEqual(len(novo.todas()), 1)               # nada foi trocado pelo backup recusado
+
+    def test_configuracao_guarda_e_arquivo_estragado_volta_ao_padrao(self):
+        config = nucleo.Configuracao(self.pasta / "config.json")
+        self.assertIsNone(config.pasta_backup)
+        self.assertTrue(config.backup_automatico)
+        config.definir(pasta_backup=self.nuvem, backup_automatico=False)
+        outra = nucleo.Configuracao(self.pasta / "config.json")
+        self.assertEqual((outra.pasta_backup, outra.backup_automatico), (self.nuvem, False))
+        config.arquivo.write_text("{ nao e json", encoding="utf-8")
+        self.assertIsNone(config.pasta_backup)
+
+    def test_acha_a_pasta_do_google_drive_quando_ela_existe(self):
+        casa = self.pasta / "casa"
+        (casa / "Meu Drive").mkdir(parents=True)
+        with mock.patch.object(Path, "home", return_value=casa):
+            self.assertIn(casa / "Meu Drive", nucleo.pastas_do_google_drive())
+        with mock.patch.object(Path, "home", return_value=self.pasta / "vazia"):
+            self.assertNotIn(self.pasta / "vazia" / "Meu Drive", nucleo.pastas_do_google_drive())
+
+
+@unittest.skipUnless(_tk_disponivel(), "sem ambiente gráfico")
+class TesteTelaBackup(BaseLicenciador):
+    def setUp(self):
+        super().setUp()
+        from licenciador.tela import Janela
+        self.nuvem = self.pasta / "drive"
+        self.nuvem.mkdir()
+        self.janela = Janela(self.chave, self.historico)
+        self.addCleanup(self.janela.destroy)
+        self.janela.update()
+
+    def emitir_pela_tela(self, loja="BAR"):
+        self.janela.var_loja.set(loja)
+        self.janela.var_tipo.set("mensal"); self.janela.var_qtd.set("1")
+        self.janela.gerar(); self.janela.update()
+
+    def copias(self):
+        pasta = self.nuvem / nucleo.PASTA_BACKUP
+        return sorted(pasta.glob("historico-*.json")) if pasta.exists() else []
+
+    def test_tem_cinco_abas_e_sem_pasta_nao_copia_nada(self):
+        self.assertEqual(len(self.janela.abas.tabs()), 5)
+        self.assertTrue(self.janela.btn_backup_agora.instate(["disabled"]))
+        self.emitir_pela_tela()
+        self.assertEqual(self.copias(), [])
+
+    def test_emitir_guarda_o_historico_sozinho_na_pasta_escolhida(self):
+        with mock.patch("licenciador.tela.filedialog.askdirectory", return_value=str(self.nuvem)):
+            self.janela.escolher_pasta_backup()
+        self.assertEqual(self.janela.config.pasta_backup, self.nuvem)
+        self.emitir_pela_tela()
+        self.assertEqual(len(self.copias()), 1)
+        self.assertIn("Histórico guardado", self.janela.lbl_backup.cget("text"))
+        self.assertTrue(self.janela.config.ultimo_backup)
+
+    def test_automatico_desligado_nao_copia(self):
+        self.janela.config.definir(pasta_backup=self.nuvem)
+        self.janela.var_auto.set(False); self.janela.mudar_automatico()
+        self.emitir_pela_tela()
+        self.assertEqual(self.copias(), [])
+
+    def test_pasta_que_sumiu_avisa_mas_nao_atrapalha_a_emissao(self):
+        self.janela.config.definir(pasta_backup=self.pasta / "sumiu")
+        self.emitir_pela_tela()
+        self.assertEqual(len(self.historico.todas()), 1)
+        self.assertIn("Não consegui guardar", self.janela.lbl_backup.cget("text"))
+
+    def test_backup_agora_guarda_historico_e_chave_criptografada(self):
+        self.historico.adicionar(nucleo.emitir("BAR", "mensal", 1, self.chave, HOJE))
+        self.janela.config.definir(pasta_backup=self.nuvem)
+        senhas = iter(["uma-senha-bem-longa", "uma-senha-bem-longa"])
+        with mock.patch("src.ui.tema.pedir_texto", side_effect=lambda *a, **k: next(senhas)), \
+                mock.patch("src.ui.tema.mensagem"):
+            self.janela.backup_agora()
+        self.assertEqual(len(self.copias()), 1)
+        self.assertTrue((self.nuvem / nucleo.PASTA_BACKUP / "licenca_privada.key.pdvbkp").exists())
+
+    def test_senhas_diferentes_nao_guardam_a_chave(self):
+        self.historico.adicionar(nucleo.emitir("BAR", "mensal", 1, self.chave, HOJE))
+        self.janela.config.definir(pasta_backup=self.nuvem)
+        senhas = iter(["uma-senha-bem-longa", "outra-senha-bem-longa"])
+        with mock.patch("src.ui.tema.pedir_texto", side_effect=lambda *a, **k: next(senhas)), \
+                mock.patch("src.ui.tema.erro") as erro, mock.patch("src.ui.tema.mensagem"):
+            self.janela.backup_agora()
+        erro.assert_called_once()
+        self.assertFalse((self.nuvem / nucleo.PASTA_BACKUP / "licenca_privada.key.pdvbkp").exists())
+
+    def test_faixa_de_aviso_aparece_para_licenca_vencida_e_some_ao_renovar(self):
+        self.assertFalse(self.janela.aviso_venc.winfo_ismapped())
+        self.historico.adicionar(nucleo.emitir("BAR", "mensal", 1, self.chave, date(2020, 1, 1)))
+        self.janela.atualizar_lojas(); self.janela.update()
+        self.assertIn("vencida", self.janela.aviso_venc.cget("text"))
+        self.assertTrue(self.janela.aviso_venc.winfo_ismapped())
+        self.emitir_pela_tela("BAR")
+        self.assertFalse(self.janela.aviso_venc.winfo_ismapped())
+
+
 class TesteAutoteste(unittest.TestCase):
     def test_lista_de_modulos_cobre_o_pacote_licenciador(self):
         reais = {".".join(p.relative_to(RAIZ).with_suffix("").parts) for p in (RAIZ / "licenciador").glob("*.py")
@@ -282,7 +481,7 @@ class TesteAutoteste(unittest.TestCase):
             self.assertEqual(autoteste.executar(str(saida)), 0)
             texto = saida.read_text(encoding="utf-8")
         self.assertIn("RESULTADO: TUDO CERTO", texto)
-        for etapa in ("módulos", "assinatura", "tela"):
+        for etapa in ("módulos", "assinatura", "backup", "tela"):
             self.assertIn(f"OK    {etapa}:", texto)
 
     def test_linha_de_comando(self):

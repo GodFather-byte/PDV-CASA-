@@ -9,6 +9,7 @@ import json
 import os
 import secrets
 import shutil
+import tempfile
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -17,7 +18,7 @@ from src.core import ed25519, licenca
 from src.core import formatacao as fmt
 from src.core.erros import ErroNegocio
 
-VERSAO = "1.0.0"
+VERSAO = "1.1.0"
 MAX_MESES = 60
 MAX_DIAS_TESTE = 90
 TIPOS = ("mensal", "permanente", "teste")
@@ -233,6 +234,185 @@ class Historico:
                            "situacao": "Permanente" if permanente else "Vencida" if dias < 0 else "Vence hoje" if dias == 0
                            else f"Vence em {dias} dia{'s' if dias != 1 else ''}" if dias <= licenca.AVISO_DIAS else "Em dia"})
         return sorted(linhas, key=lambda x: (x["permanente"], x["dias"]))
+
+
+# ------------------------------------------------------------------ vencimentos
+def resumo_vencimentos(historico: "Historico", hoje: date | None = None) -> dict:
+    """Lojas vencidas e as que vencem dentro do prazo de aviso do PDV, para avisar assim que o programa abre."""
+    vencidas, vencendo = [], []
+    for linha in historico.situacao_das_lojas(hoje):
+        if linha["permanente"]:
+            continue
+        if linha["dias"] < 0:
+            vencidas.append(linha["loja"])
+        elif linha["dias"] <= licenca.AVISO_DIAS:
+            vencendo.append((linha["loja"], linha["dias"]))
+    return {"vencidas": vencidas, "vencendo": vencendo}
+
+
+def texto_do_aviso(resumo: dict) -> str:
+    """Frase curta para a faixa do topo; vazia quando não há nada a renovar."""
+    partes = []
+    if resumo["vencidas"]:
+        n = len(resumo["vencidas"])
+        partes.append(f"{n} licença{'s' if n != 1 else ''} vencida{'s' if n != 1 else ''}: " + ", ".join(resumo["vencidas"]))
+    if resumo["vencendo"]:
+        itens = ", ".join(f"{loja} ({'hoje' if dias == 0 else f'{dias} dia' + ('s' if dias != 1 else '')})"
+                          for loja, dias in resumo["vencendo"])
+        partes.append("vencendo em breve: " + itens)
+    return ("⚠ " + "; ".join(partes) + ". Veja a aba Lojas e vencimentos.") if partes else ""
+
+
+# ----------------------------------------------------------------- backup
+PASTA_BACKUP = "WillPDV-Licencas"          # subpasta criada dentro da pasta escolhida (por exemplo, a do Google Drive)
+COPIAS_DO_HISTORICO = 30                   # quantas cópias diárias manter; as mais antigas saem
+
+
+class Configuracao:
+    """Preferências do programa (um JSON ao lado do histórico): pasta do backup e se o backup é automático."""
+
+    def __init__(self, arquivo: Path | None = None):
+        self.arquivo = arquivo or arquivo_historico().with_name("config.json")
+
+    def _ler(self) -> dict:
+        try:
+            dados = json.loads(self.arquivo.read_text(encoding="utf-8"))
+            return dados if isinstance(dados, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _gravar(self, dados: dict) -> None:
+        self.arquivo.parent.mkdir(parents=True, exist_ok=True)
+        provisorio = self.arquivo.with_suffix(".tmp")
+        provisorio.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
+        provisorio.replace(self.arquivo)
+
+    @property
+    def pasta_backup(self) -> Path | None:
+        texto = self._ler().get("pasta_backup")
+        return Path(texto) if texto else None
+
+    @property
+    def backup_automatico(self) -> bool:
+        return bool(self._ler().get("backup_automatico", True))
+
+    @property
+    def ultimo_backup(self) -> str:
+        return str(self._ler().get("ultimo_backup", ""))
+
+    def definir(self, **campos) -> None:
+        dados = self._ler()
+        for chave, valor in campos.items():
+            dados[chave] = str(valor) if isinstance(valor, Path) else valor
+        self._gravar(dados)
+
+
+def pastas_do_google_drive() -> list[Path]:
+    """Pastas do aplicativo Google Drive para computador que existem neste PC (ele sincroniza a pasta sozinho)."""
+    home = Path.home()
+    candidatas = [home / "Google Drive", home / "My Drive", home / "Meu Drive", home / "Google Drive" / "Meu Drive",
+                  home / "Google Drive" / "My Drive", Path("G:/Meu Drive"), Path("G:/My Drive")]
+    achadas = []
+    for pasta in candidatas:
+        try:
+            if pasta.is_dir() and pasta not in achadas:
+                achadas.append(pasta)
+        except OSError:
+            continue
+    return achadas
+
+
+def _pasta_do_backup(pasta: Path) -> Path:
+    pasta = Path(pasta)
+    if not pasta.is_dir():
+        raise ErroLicenciador(f"A pasta de backup não existe: {pasta}\nSe for o Google Drive, confira se ele está aberto neste computador.")
+    destino = pasta / PASTA_BACKUP
+    try:
+        destino.mkdir(exist_ok=True)
+    except OSError as e:
+        raise ErroLicenciador(f"Não consegui criar a pasta de backup em {pasta}: {e}") from None
+    return destino
+
+
+def _gravar_inteiro(destino: Path, conteudo: bytes) -> None:
+    """Grava num arquivo temporário e troca de uma vez: o Drive nunca sincroniza um arquivo pela metade."""
+    provisorio = destino.with_name(f".{destino.name}.tmp")
+    try:
+        provisorio.write_bytes(conteudo)
+        provisorio.replace(destino)
+    finally:
+        provisorio.unlink(missing_ok=True)
+
+
+def backup_historico(pasta: Path, historico: "Historico", hoje: date | None = None, manter: int = COPIAS_DO_HISTORICO) -> Path:
+    """Copia o histórico para `pasta/WillPDV-Licencas/historico-AAAA-MM-DD.json` (uma cópia por dia, as mais antigas saem)."""
+    if not historico.todas():
+        raise ErroLicenciador("Ainda não há licenças no histórico para guardar.")
+    hoje = hoje or date.fromisoformat(fmt.hoje())
+    destino = _pasta_do_backup(pasta)
+    arquivo = destino / f"historico-{hoje.isoformat()}.json"
+    try:
+        _gravar_inteiro(arquivo, historico.arquivo.read_bytes())
+        copias = sorted(destino.glob("historico-????-??-??.json"))
+        for velha in copias[:-manter] if manter > 0 else []:
+            velha.unlink(missing_ok=True)
+    except OSError as e:
+        raise ErroLicenciador(f"Não consegui gravar o backup do histórico: {e}") from None
+    return arquivo
+
+
+def backup_chave_protegido(pasta: Path, senha: str, arquivo: Path | None = None) -> Path:
+    """Cópia da chave privada CRIPTOGRAFADA com senha. Só assim ela pode ir para um serviço de nuvem como o Google Drive."""
+    try:
+        from src.core import backup_seguro
+    except ImportError:
+        raise ErroLicenciador("Faltou o componente de criptografia neste programa; use a cópia comum da chave em um pendrive.") from None
+    arquivo = arquivo or arquivo_chave()
+    _ler_semente(arquivo)
+    try:
+        backup_seguro.validar_senha(senha)
+    except ValueError as e:
+        raise ErroLicenciador(str(e)) from None
+    destino = _pasta_do_backup(pasta) / "licenca_privada.key.pdvbkp"
+    try:
+        backup_seguro.criptografar(arquivo, destino, senha)
+    except OSError as e:
+        raise ErroLicenciador(f"Não consegui gravar o backup da chave: {e}") from None
+    return destino
+
+
+def restaurar_chave_protegida(origem: Path, senha: str, destino: Path | None = None, substituir: bool = False) -> EstadoChave:
+    """Abre o backup criptografado da chave e instala como chave deste computador (mesmas regras de `importar_chave`)."""
+    from src.core import backup_seguro
+    with tempfile.TemporaryDirectory(prefix="willlic_") as pasta:
+        aberto = Path(pasta) / "licenca_privada.key"
+        try:
+            backup_seguro.descriptografar(origem, aberto, senha)
+        except ValueError as e:
+            raise ErroLicenciador(str(e)) from None
+        except OSError as e:
+            raise ErroLicenciador(f"Não consegui ler o backup: {e}") from None
+        return importar_chave(aberto, destino, substituir)
+
+
+def restaurar_historico(origem: Path, historico: "Historico") -> int:
+    """Troca o histórico por um backup (o atual vira .bak). Devolve quantas licenças voltaram."""
+    try:
+        dados = json.loads(Path(origem).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ErroLicenciador("Esse arquivo não é um backup de histórico válido.") from None
+    itens = [d for d in dados if isinstance(d, dict) and d.get("codigo")] if isinstance(dados, list) else []
+    if not itens:
+        raise ErroLicenciador("Esse backup não tem nenhuma licença.")
+    for d in itens:
+        try:
+            licenca.ler_licenca(d["codigo"])
+        except licenca.LicencaInvalida:
+            raise ErroLicenciador("Esse backup tem um código de licença que não confere com a chave do PDV.") from None
+    if historico.arquivo.exists():
+        shutil.copy2(historico.arquivo, historico.arquivo.with_suffix(".json.bak"))
+    historico._gravar(itens)
+    return len(itens)
 
 
 # -------------------------------------------------------------- mensagem
