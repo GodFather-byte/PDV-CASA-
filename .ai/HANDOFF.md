@@ -1,32 +1,30 @@
 # HANDOFF
 
 ## Último trabalho
-- Decisão do titular: hospedar a API no **Render (instância paga `starter`) + Neon** e rodar o worker
-  do Asaas como **agendador no GitHub Actions**; ao crescer, migrar o worker para o Background Worker
-  do Render (mesmo comando, sem `--uma-vez`).
-- Novos: `.github/workflows/worker-asaas.yml` (lote a cada 5 min), `.github/workflows/monitor-asaas.yml`
-  (indicador a cada 30 min) e `tools/monitor_asaas.py` com `tests/test_monitor_asaas.py`.
-- `render.yaml`: plano `starter` e variáveis `ASAAS_*` declaradas (valores só no painel). Guia
-  `docs/COBRANCA_LICENCAS_ASAAS.md` (seção 5.2 e 11) atualizado.
-- Os agendamentos do GitHub só valem depois que estes arquivos estiverem no `main`. Sem os segredos
-  configurados os jobs avisam e saem sem falhar.
-- Os testes do backend ficam pulados se SQLAlchemy/httpx não estiverem instalados; no CI rodam.
+- Base: `main` em `e278947` (1.4.0), incluindo comissão/acerto/saída Qt integrados.
+- Corrigido `test_build_inclui_avisos_licencas_e_versoes_reais`: compara os arquivos de
+  licença realmente fornecidos pelas wheels, sem pressupor que todo pacote tenha arquivos
+  `.dist-info` separados. O teste direcionado passou anteriormente com Python 3.12.10 e
+  PySide6 6.12.0; `git diff --check` passou.
+- Correção publicada em `e278947`. CI: PostgreSQL, build Windows, Linux Python 3.10 e 3.12
+  passaram. Windows Python 3.10 passou; Windows Python 3.12 ainda estava executando os
+  testes quando este handoff foi atualizado.
+- Python não está disponível no PATH deste ambiente após reiniciar o VS Code.
 
-## Pendências (dependem do titular)
-- Neon: criar dois projetos (teste e produção). Render: serviço de teste e serviço de produção,
-  Secret File `licenca_privada.key` (a chave já usada nos PDVs, nunca um par novo).
-- GitHub > Settings > Secrets and variables > Actions: segredos `PDV_NUVEM_DB_URL`, `ASAAS_API_KEY`,
-  `PDV_API_TOKEN`; variáveis `ASAAS_AMBIENTE` e `PDV_API_URL`. Um worker agendado serve a um banco
-  só: para testar no sandbox e depois produção, troque os valores ao virar de ambiente.
-- Homologar tudo no sandbox (seção 9 do guia) antes de vincular a loja real. A loja real já tem
-  licença manual: registrar a validade atual com `python -m backend.lojas assinatura` **antes** de
-  `cobranca vincular`.
-- Custo estimado (render.com/pricing, 17/10/2026): instância paga mínima US$ 7/mês, workspace Hobby
-  US$ 0; worker no GitHub sem custo. Valores em dólar, sem IOF/câmbio.
-- Qt ainda bloqueia partes/montagem, desconto/serviço manual, transferência, caderneta/entrega,
-  sangria/repique, gaveta, balança e consulta de comanda. Homologar em cópia do banco.
+- Restaurado o job `licenciador` no `build-windows.yml` (instalador WillPDV Licenças só nos Artifacts, nunca na Release), com README, docs/LICENCIADOR.md e teste de empacotamento de volta ao estado anterior a `734ee2b`. Falta ver o job verde no GitHub após o push.
+
+## Pendências
+- Confirmar a conclusão do job Windows Python 3.12 no workflow de testes:
+  https://github.com/GodFather-byte/PDV-CASA-/actions/runs/38983842283
+- Qt ainda bloqueia partes/montagem, desconto/serviço manual, transferência,
+  caderneta/entrega, sangria/repique, gaveta, balança e consulta de comanda. Homologar
+  em cópia do banco antes de substituir o Tk em operação.
 - Comissão/acerto/saída: homologar impressão, gaveta e ergonomia com periféricos reais.
 - Backup: escolher pasta e senha no caixa, confirmar sincronização no provedor e ensaiar
   recuperação em outra máquina; não sincronizar banco em uso nem cópias abertas.
-- Troca de plano/valor e cobrança automática por débito seguem adiadas. Painel web e múltiplos
-  caixas seguem fora de escopo.
+- Asaas: homologar sandbox/credenciais/webhook e hospedar API e
+  `python -m backend.worker_asaas` sob supervisão; validar custos antes de contratar.
+  Troca de plano/valor e cobrança automática por débito seguem adiadas; cobrança por Pix/
+  boleto via link. Sem worker supervisionado, não há renovação.
+- Painel web e múltiplos caixas seguem fora de escopo. Usar cópias de dados em toda
+  homologação; as confirmações de hardware, provedor e credenciais dependem do titular.
